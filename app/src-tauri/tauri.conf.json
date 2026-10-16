@@ -31,6 +31,12 @@
     "category": "Finance",
     "shortDescription": "Self-hosted bookkeeping",
     "longDescription": "Open-source double-entry bookkeeping with bank feeds, invoices, bills and reports. Your books live in one file on your computer.",
-    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns", "icons/icon.ico"]
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
   }
 }

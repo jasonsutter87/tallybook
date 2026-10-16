@@ -4,17 +4,22 @@ on:
   push:
     branches: [main]
   pull_request:
+  # The release workflow runs these same checks before building anything.
+  workflow_call:
 
 jobs:
   backend:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # The keychain crate talks to the Linux Secret Service over D-Bus.
+      - name: System libraries
+        run: sudo apt-get update && sudo apt-get install -y libdbus-1-dev pkg-config
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
       - uses: Swatinem/rust-cache@v2
-      # The desktop shell needs WebKitGTK; everything else is pure Rust.
+      # The desktop shell needs WebKitGTK; the release workflow builds it.
       - run: cargo clippy --workspace --exclude tallybook-desktop --all-targets -- -D warnings
       - run: cargo test --workspace --exclude tallybook-desktop
 

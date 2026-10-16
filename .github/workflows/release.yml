@@ -1,0 +1,110 @@
+name: Release
+
+# Push a tag like v0.2.0 (see docs/RELEASING.md) to build installers for
+# macOS, Windows and Linux. They're attached to a DRAFT GitHub Release;
+# nothing is public until you review it and click "Publish release".
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  checks:
+    uses: ./.github/workflows/ci.yml
+
+  version:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tag must match the app version
+        run: |
+          app=$(node -p "require('./app/src-tauri/tauri.conf.json').version")
+          if [ "${GITHUB_REF_NAME}" != "v${app}" ]; then
+            echo "::error::Tag ${GITHUB_REF_NAME} doesn't match app version ${app}. Run scripts/bump-version.py first."
+            exit 1
+          fi
+
+  build:
+    needs: [checks, version]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS (Apple silicon)
+            runner: macos-latest
+            args: --target aarch64-apple-darwin
+            rust_targets: aarch64-apple-darwin
+          - name: macOS (Intel)
+            runner: macos-latest
+            args: --target x86_64-apple-darwin
+            rust_targets: x86_64-apple-darwin
+          - name: Windows
+            runner: windows-latest
+            args: ""
+            rust_targets: ""
+          - name: Linux
+            runner: ubuntu-22.04
+            args: ""
+            rust_targets: ""
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Linux system libraries
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libdbus-1-dev pkg-config
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust_targets }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.runner }}-${{ matrix.rust_targets }}
+
+      - run: npm ci
+        working-directory: app
+
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Optional macOS signing + notarization. Leave these secrets unset to
+          # ship unsigned builds (see docs/RELEASING.md for what that means).
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        with:
+          projectPath: app
+          tagName: ${{ github.ref_name }}
+          releaseName: Tallybook ${{ github.ref_name }}
+          releaseBody: |
+            Download the installer for your computer below.
+
+            - **Mac (Apple silicon, M1 and newer):** `Tallybook_*_aarch64.dmg`
+            - **Mac (Intel):** `Tallybook_*_x64.dmg`
+            - **Windows:** `Tallybook_*_x64-setup.exe` (or the `.msi`)
+            - **Linux:** `.AppImage`, `.deb` or `.rpm`
+
+            Your books stay on your computer. See the README for what's new.
+          releaseDraft: true
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          args: ${{ matrix.args }}
