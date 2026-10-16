@@ -7,6 +7,9 @@ import { BrowserRouter } from "react-router-dom";
 import { queryClient } from "./api";
 import App from "./App";
 import { ToastProvider } from "./components/ui";
+import { applySavedTheme } from "./theme";
+
+applySavedTheme();
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

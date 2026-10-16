@@ -1,0 +1,373 @@
+/* Page styles for Accounts, Register, Reconcile and their flows.
+   Variables only, so light and dark themes both work. */
+
+.acct-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 22px 10px;
+  border-bottom: 1px solid var(--line);
+}
+
+.acct-section-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.acct-row .acct-code {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--ink-3);
+  min-width: 38px;
+}
+
+.acct-row .acct-balance {
+  font-weight: 700;
+  font-size: 15px;
+  white-space: nowrap;
+}
+
+.acct-row.archived {
+  opacity: 0.6;
+}
+
+.acct-chevron {
+  color: var(--ink-3);
+  flex-shrink: 0;
+}
+
+/* ------------------------------------------------------------- register */
+
+.reg-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 16px 22px;
+  border-bottom: 1px solid var(--line);
+}
+
+.reg-search {
+  position: relative;
+  flex: 1;
+  min-width: 200px;
+}
+
+.reg-search svg {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--ink-3);
+  pointer-events: none;
+}
+
+.reg-search .input {
+  padding-left: 36px;
+}
+
+.reg-date {
+  width: 150px;
+}
+
+.reg-table td {
+  padding-top: 11px;
+  padding-bottom: 11px;
+}
+
+.reg-table tr.voided td {
+  color: var(--ink-3);
+}
+
+.reg-table tr.voided .reg-memo,
+.reg-table tr.voided .reg-amt {
+  text-decoration: line-through;
+}
+
+.reg-memo {
+  max-width: 380px;
+}
+
+.cleared-mark {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: inline-grid;
+  place-items: center;
+  font-size: 10.5px;
+  font-weight: 800;
+}
+
+.cleared-mark.uncleared {
+  border: 1.5px solid var(--line-strong);
+}
+
+.cleared-mark.cleared {
+  background: var(--pos-soft);
+  color: var(--pos);
+}
+
+.cleared-mark.reconciled {
+  background: var(--brand-soft);
+  color: var(--brand-soft-ink);
+}
+
+.reg-more {
+  display: flex;
+  justify-content: center;
+  padding: 14px;
+  border-top: 1px solid var(--line);
+}
+
+/* overflow menu */
+.menu-wrap {
+  position: relative;
+}
+
+.menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 40;
+  min-width: 200px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  box-shadow: var(--shadow-lg);
+  padding: 6px;
+}
+
+.menu button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  padding: 9px 10px;
+  border-radius: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+}
+
+.menu button:hover {
+  background: var(--surface-hover);
+}
+
+.menu button.danger {
+  color: var(--neg);
+}
+
+/* entry detail */
+.flow-line {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+}
+
+.flow-acct {
+  flex: 1;
+  min-width: 0;
+}
+
+.flow-acct .label {
+  display: block;
+  margin-bottom: 2px;
+}
+
+.details-disclosure summary {
+  cursor: pointer;
+  font-weight: 700;
+  color: var(--ink-2);
+  font-size: 13px;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.details-disclosure summary::-webkit-details-marker {
+  display: none;
+}
+
+.details-disclosure[open] summary .chev {
+  transform: rotate(90deg);
+}
+
+.details-disclosure .chev {
+  transition: transform 0.12s;
+}
+
+.kv {
+  display: grid;
+  grid-template-columns: 110px 1fr;
+  gap: 8px 12px;
+  align-items: center;
+}
+
+.kv > .k {
+  color: var(--ink-3);
+  font-weight: 600;
+  font-size: 12.5px;
+}
+
+/* ------------------------------------------------------------- journal modal */
+
+.je-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 2.2fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.4fr) 34px;
+  gap: 8px;
+  align-items: center;
+}
+
+.je-head {
+  font-size: 11.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink-3);
+}
+
+.je-totals {
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+  font-weight: 800;
+}
+
+.from-to {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 32px minmax(0, 1fr);
+  gap: 8px;
+  align-items: end;
+}
+
+.from-to .arrow {
+  height: 40px;
+  display: grid;
+  place-items: center;
+  color: var(--ink-3);
+}
+
+.type-desc {
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  font-size: 12.5px;
+  color: var(--ink-2);
+}
+
+/* ------------------------------------------------------------- reconcile */
+
+.rec-cols {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  align-items: start;
+}
+
+@media (max-width: 1000px) {
+  .rec-cols {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.rec-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 18px;
+  border-top: 1px solid var(--line);
+  cursor: pointer;
+  user-select: none;
+}
+
+.rec-row:hover {
+  background: var(--surface-2);
+}
+
+.rec-row.checked {
+  background: var(--brand-soft);
+}
+
+.rec-row.checked:hover {
+  background: var(--brand-soft);
+  filter: brightness(0.98);
+}
+
+.rec-list {
+  max-height: 560px;
+  overflow-y: auto;
+}
+
+.rec-bar {
+  position: sticky;
+  bottom: 16px;
+  margin-top: 20px;
+  z-index: 20;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-lg);
+  padding: 16px 22px;
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+
+.rec-stat .label {
+  display: block;
+  font-size: 11.5px;
+  color: var(--ink-3);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.rec-stat .v {
+  font-weight: 700;
+  font-size: 16px;
+}
+
+.rec-op {
+  color: var(--ink-3);
+  font-weight: 700;
+  font-size: 18px;
+}
+
+.rec-diff {
+  margin-left: auto;
+  padding: 10px 18px;
+  border-radius: 18px;
+  text-align: right;
+}
+
+.rec-diff.ok {
+  background: var(--pos-soft);
+  color: var(--pos);
+}
+
+.rec-diff.off {
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+
+.rec-diff .v {
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+
+.stat-value .cents {
+  font-size: 0.6em;
+  opacity: 0.6;
+}

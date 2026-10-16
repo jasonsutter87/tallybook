@@ -176,6 +176,31 @@ pub struct AppliedPayment {
     pub date: NaiveDate,
     pub amount: Cents,
     pub method: String,
+    pub reference: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PaymentKind {
+    Received,
+    Made,
+}
+
+/// A payment with its applications, for activity lists.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct PaymentSummary {
+    pub id: PaymentId,
+    pub kind: PaymentKind,
+    pub contact_id: ContactId,
+    pub contact_name: String,
+    pub date: NaiveDate,
+    pub amount: Cents,
+    pub account_id: AccountId,
+    pub method: String,
+    pub reference: String,
+    pub voided: bool,
+    /// Invoice or bill ids this payment was applied to.
+    pub document_ids: Vec<i64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -582,12 +607,55 @@ impl Store {
 
     fn applied_payments(&self, column: &str, id: i64) -> Result<Vec<AppliedPayment>> {
         let mut stmt = self.conn.prepare(&format!(
-            "SELECT p.id, p.date, pa.amount, p.method FROM payment_applications pa JOIN payments p ON p.id = pa.payment_id
+            "SELECT p.id, p.date, pa.amount, p.method, p.reference FROM payment_applications pa JOIN payments p ON p.id = pa.payment_id
              WHERE pa.{column} = ?1 AND p.voided = 0 ORDER BY p.date, p.id"
         ))?;
         Ok(stmt
-            .query_map([id], |r| Ok(AppliedPayment { payment_id: r.get(0)?, date: r.get(1)?, amount: Cents(r.get(2)?), method: r.get(3)? }))?
+            .query_map([id], |r| {
+                Ok(AppliedPayment { payment_id: r.get(0)?, date: r.get(1)?, amount: Cents(r.get(2)?), method: r.get(3)?, reference: r.get(4)? })
+            })?
             .collect::<rusqlite::Result<_>>()?)
+    }
+
+    /// Payments dated within `[from, to]`, newest first, optionally for one kind or contact.
+    pub fn payments(
+        &self,
+        kind: Option<PaymentKind>,
+        contact_id: Option<ContactId>,
+        from: NaiveDate,
+        to: NaiveDate,
+    ) -> Result<Vec<PaymentSummary>> {
+        let kind_str = kind.map(|k| match k {
+            PaymentKind::Received => "received",
+            PaymentKind::Made => "made",
+        });
+        let mut stmt = self.conn.prepare(
+            "SELECT p.id, p.kind, p.contact_id, c.name, p.date, p.amount, p.account_id, p.method, p.reference, p.voided,
+                    (SELECT group_concat(IFNULL(pa.invoice_id, pa.bill_id)) FROM payment_applications pa WHERE pa.payment_id = p.id)
+             FROM payments p JOIN contacts c ON c.id = p.contact_id
+             WHERE p.date BETWEEN ?1 AND ?2 AND (?3 IS NULL OR p.kind = ?3) AND (?4 IS NULL OR p.contact_id = ?4)
+             ORDER BY p.date DESC, p.id DESC",
+        )?;
+        let rows = stmt
+            .query_map(params![from, to, kind_str, contact_id], |r| {
+                let kind: String = r.get(1)?;
+                let docs: Option<String> = r.get(10)?;
+                Ok(PaymentSummary {
+                    id: r.get(0)?,
+                    kind: if kind == "received" { PaymentKind::Received } else { PaymentKind::Made },
+                    contact_id: r.get(2)?,
+                    contact_name: r.get(3)?,
+                    date: r.get(4)?,
+                    amount: Cents(r.get(5)?),
+                    account_id: r.get(6)?,
+                    method: r.get(7)?,
+                    reference: r.get(8)?,
+                    voided: r.get(9)?,
+                    document_ids: docs.unwrap_or_default().split(',').filter_map(|d| d.parse().ok()).collect(),
+                })
+            })?
+            .collect::<rusqlite::Result<_>>()?;
+        Ok(rows)
     }
 
     // ------------------------------------------------------------ bills

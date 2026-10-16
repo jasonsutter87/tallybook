@@ -248,6 +248,14 @@ struct UpdateContact {
 }
 
 #[derive(Deserialize)]
+struct PaymentsQuery {
+    kind: Option<PaymentKind>,
+    contact_id: Option<ContactId>,
+    from: Option<NaiveDate>,
+    to: Option<NaiveDate>,
+}
+
+#[derive(Deserialize)]
 struct UpdateInvoice {
     id: InvoiceId,
     draft: InvoiceDraft,
@@ -700,6 +708,12 @@ impl App {
             "payments.pay" => {
                 let p: NewPayment = params(p)?;
                 self.with(|s| s.pay_bills(&p))
+            }
+            "payments.list" => {
+                let p: PaymentsQuery = params(p)?;
+                let to = p.to.unwrap_or_else(today);
+                let from = p.from.unwrap_or(NaiveDate::MIN);
+                self.with(|s| s.payments(p.kind, p.contact_id, from, to))
             }
             "payments.void" => {
                 let p: IdDate = params(p)?;

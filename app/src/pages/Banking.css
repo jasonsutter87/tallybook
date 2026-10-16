@@ -1,0 +1,88 @@
+/* Bank connections. Colors come from the design tokens only. */
+
+.bk-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.75fr) minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+
+@media (max-width: 1000px) {
+  .bk-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.bk-link {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto auto;
+  gap: 14px;
+  align-items: center;
+  padding: 12px 22px;
+  border-top: 1px solid var(--line);
+}
+
+.bk-arrow {
+  color: var(--ink-3);
+  display: inline-flex;
+  vertical-align: middle;
+  margin: 0 4px;
+}
+
+.bk-choice {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  text-align: left;
+  width: 100%;
+  padding: 18px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--line-strong);
+  background: var(--surface);
+  cursor: pointer;
+  transition: border-color 0.12s, box-shadow 0.12s, background 0.12s;
+}
+
+.bk-choice:hover {
+  border-color: var(--brand);
+  box-shadow: var(--focus);
+}
+
+.bk-feed-row {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  padding: 14px 16px;
+  background: var(--surface);
+}
+
+.bk-feed-row.skipped {
+  background: var(--surface-2);
+  opacity: 0.7;
+}
+
+.bk-wait {
+  text-align: center;
+  padding: 18px 8px 8px;
+}
+
+.bk-wait-ring {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  margin: 0 auto 16px;
+  display: grid;
+  place-items: center;
+  background: var(--brand-soft);
+  color: var(--brand-soft-ink);
+  animation: bk-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes bk-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 var(--brand-soft);
+  }
+  50% {
+    box-shadow: 0 0 0 12px transparent;
+  }
+}

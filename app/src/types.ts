@@ -405,6 +405,22 @@ export interface AppliedPayment {
   date: ISODate;
   amount: Cents;
   method: string;
+  reference: string;
+}
+
+export interface PaymentSummary {
+  id: number;
+  kind: "received" | "made";
+  contact_id: number;
+  contact_name: string;
+  date: ISODate;
+  amount: Cents;
+  account_id: number;
+  method: string;
+  reference: string;
+  voided: boolean;
+  /** Invoice ids (received) or bill ids (made). */
+  document_ids: number[];
 }
 
 export interface InvoiceDetail extends InvoiceSummary {

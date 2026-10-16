@@ -232,3 +232,30 @@ fn guards() {
     bad.due_date = d(2, 1);
     assert!(b.s.create_invoice(&bad).is_err());
 }
+
+#[test]
+fn payments_list_with_references() {
+    let mut b = book();
+    let id = b.s.create_invoice(&draft(&b)).unwrap();
+    b.s.finalize_invoice(id).unwrap();
+    let p = b
+        .s
+        .receive_payment(&NewPayment {
+            contact_id: b.acme,
+            date: d(3, 10),
+            account_id: b.checking,
+            method: "Check".into(),
+            reference: "#4411".into(),
+            memo: "".into(),
+            applications: vec![Application { document_id: id, amount: Cents(100_00) }],
+        })
+        .unwrap();
+    let list = b.s.payments(Some(PaymentKind::Received), None, d(1, 1), d(12, 31)).unwrap();
+    assert_eq!(list.len(), 1);
+    assert_eq!(list[0].document_ids, vec![id]);
+    assert_eq!(list[0].contact_name, "Acme Co");
+    assert_eq!(b.s.invoice(id, d(3, 10)).unwrap().payments[0].reference, "#4411");
+    b.s.void_payment(p, d(3, 11)).unwrap();
+    assert!(b.s.payments(None, Some(b.acme), d(1, 1), d(12, 31)).unwrap()[0].voided);
+    assert!(b.s.payments(Some(PaymentKind::Made), None, d(1, 1), d(12, 31)).unwrap().is_empty());
+}
