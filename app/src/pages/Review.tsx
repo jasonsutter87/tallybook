@@ -1,11 +1,11 @@
 // For Review: every bank/card transaction lands here until the user says
 // where the money went (or came from). One row open at a time.
 
-import { CheckCheck, ChevronRight, Clock, Landmark, Link2, PartyPopper, Plus, RefreshCw, Split as SplitIcon, Tag, Trash2, Undo2, Upload } from "lucide-react";
+import { CheckCheck, ChevronRight, Clock, Landmark, Link2, PartyPopper, Plus, RefreshCw, Split as SplitIcon, Tag, Trash2, Undo2, Upload, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { call, queryClient, useAction, useApi } from "../api";
-import { AccountSelect, Card, EmptyState, ErrorBanner, Loading, MoneyInput, Spinner, Tabs, useAccountNames, useToast } from "../components/ui";
+import { AccountSelect, Card, ContactSelect, EmptyState, ErrorBanner, Loading, MoneyInput, Spinner, Tabs, useAccountNames, useToast } from "../components/ui";
 import ImportModal from "../flows/ImportModal";
 import { date, money, plural, shortDate } from "../format";
 import type { Account, AccountKind, ReviewedTxn, Cents, InboxItem, Split, Suggestion, SyncReport } from "../types";
@@ -400,6 +400,10 @@ function RowEditor({ item, onDone }: { item: InboxItem; onDone: (id: number, tex
   const [accountId, setAccountId] = useState<number | null>(suggested);
   const [memo, setMemo] = useState("");
   const [remember, setRemember] = useState(false);
+  // Who was paid / who paid you. Optional, but it's how bank payments to
+  // contractors reach the 1099 summary.
+  const [payeeId, setPayeeId] = useState<number | null>(null);
+  const [payeeOpen, setPayeeOpen] = useState(false);
   const total = Math.abs(item.amount);
   const sign = item.amount < 0 ? -1 : 1;
   const nextKey = useRef(3);
@@ -410,7 +414,7 @@ function RowEditor({ item, onDone }: { item: InboxItem; onDone: (id: number, tex
   const navigated = useRef(false);
   const excludeSelf = useMemo(() => [item.ledger_account_id], [item.ledger_account_id]);
 
-  const accept = useAction<number, { id: number; account_id: number; memo: string | null; remember: boolean }>("inbox.accept");
+  const accept = useAction<number, { id: number; account_id: number; memo: string | null; remember: boolean; payee_id: number | null }>("inbox.accept");
   const exclude = useAction<void, { ids: number[] }>("inbox.exclude");
   const split = useAction<number, { id: number; splits: Split[]; memo: string | null }>("inbox.split");
   const match = useAction<void, { id: number; line_id: number }>("inbox.match");
@@ -420,6 +424,8 @@ function RowEditor({ item, onDone }: { item: InboxItem; onDone: (id: number, tex
   const inflow = item.amount > 0;
   // Money in usually comes from income; money out usually goes to an expense.
   const preferKinds: AccountKind[] = inflow ? ["income", "equity", "liability"] : ["expense", "liability"];
+  const isContractLabor = accountId != null && name(accountId).toLowerCase().includes("contract");
+  const showPayee = payeeOpen || payeeId != null || isContractLabor;
   const effectiveMode: Mode = mode === "match" && matches.length === 0 && !candidates.isLoading ? "categorize" : mode;
 
   const run = async (fn: () => Promise<unknown>, text: string) => {
@@ -434,7 +440,7 @@ function RowEditor({ item, onDone }: { item: InboxItem; onDone: (id: number, tex
   const doAccept = () => {
     if (accountId == null || busy) return;
     void run(
-      () => accept.mutateAsync({ id: item.id, account_id: accountId, memo: memo.trim() || null, remember }),
+      () => accept.mutateAsync({ id: item.id, account_id: accountId, memo: memo.trim() || null, remember, payee_id: payeeId }),
       remember ? `Filed under ${name(accountId)} — we'll remember ${label}` : `Filed under ${name(accountId)}`,
     );
   };
@@ -510,13 +516,54 @@ function RowEditor({ item, onDone }: { item: InboxItem; onDone: (id: number, tex
               />
             </label>
           </div>
-          <div className="row-between" style={{ flexWrap: "wrap" }}>
-            <label className="switch">
-              <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} />
-              <span className="small">
-                Remember for <b>{label}</b>
+          {showPayee && (
+            <div className="rv-editor-grid">
+              <div className="field">
+                <span className="label">
+                  {inflow ? "Received from" : "Paid to"} <span className="subtle" style={{ fontWeight: 500 }}>(optional)</span>
+                </span>
+                <div className="row" style={{ gap: 6 }}>
+                  <div className="grow">
+                    <ContactSelect value={payeeId} onChange={setPayeeId} kind={inflow ? "customer" : "vendor"} placeholder={inflow ? "Choose a customer" : "Choose a vendor or contractor"} />
+                  </div>
+                  {!isContractLabor && (
+                    <button
+                      className="btn btn-ghost btn-icon"
+                      aria-label="Remove payee"
+                      title="Remove payee"
+                      onClick={() => {
+                        setPayeeId(null);
+                        setPayeeOpen(false);
+                      }}
+                    >
+                      <X size={15} />
+                    </button>
+                  )}
+                </div>
+              </div>
+              <span className="hint" style={{ paddingBottom: 10 }}>
+                {isContractLabor
+                  ? "Needed for 1099s — so Tallybook can total what you paid each contractor this year."
+                  : inflow
+                    ? "Links this deposit to a customer."
+                    : "Tagging who you paid helps with 1099s."}
               </span>
-            </label>
+            </div>
+          )}
+          <div className="row-between" style={{ flexWrap: "wrap" }}>
+            <div className="row" style={{ gap: 14, flexWrap: "wrap" }}>
+              <label className="switch">
+                <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} />
+                <span className="small">
+                  Remember for <b>{label}</b>
+                </span>
+              </label>
+              {!showPayee && (
+                <button className="btn btn-ghost btn-sm" onClick={() => setPayeeOpen(true)}>
+                  <Plus size={14} /> Add payee
+                </button>
+              )}
+            </div>
             <div className="row">
               <span className="subtle tiny" style={{ marginRight: 4 }}>
                 <kbd>Enter</kbd> to accept

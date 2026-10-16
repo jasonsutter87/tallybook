@@ -36,6 +36,7 @@ export default function Taxes() {
   const props: TaxTabProps = { year, go };
   return (
     <div className="page">
+      <div className="no-print">
       <PageHeader
         title="Taxes"
         subtitle="Worksheets, estimates and forms prepared from your books."
@@ -49,6 +50,7 @@ export default function Taxes() {
           </select>
         }
       />
+      </div>
 
       <div className="banner warn no-print" style={{ marginBottom: 20, alignItems: "flex-start" }}>
         <ShieldAlert size={18} style={{ flexShrink: 0, marginTop: 2 }} />

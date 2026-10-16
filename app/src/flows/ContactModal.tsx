@@ -4,7 +4,8 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useAction } from "../api";
 import { ErrorBanner, Field, Modal, useToast } from "../components/ui";
-import type { Contact, ContactKind, NewContact } from "../types";
+import type { Contact, ContactKind, ContactTaxInput, NewContact } from "../types";
+import { ContactTaxFields, cleanTax, taxFromContact, tinError } from "./ContactTaxFields";
 
 const KINDS: { value: ContactKind; label: string; hint: string }[] = [
   { value: "customer", label: "Customer", hint: "Pays you" },
@@ -45,17 +46,21 @@ export default function ContactModal(props: {
   const create = useAction<number, NewContact>("contacts.create");
   const update = useAction<null, { id: number; contact: NewContact }>("contacts.update");
   const [form, setForm] = useState<NewContact>(() => (props.contact ? fromContact(props.contact) : blank(props.defaultKind ?? "customer")));
+  const [tax, setTax] = useState<ContactTaxInput>(() => taxFromContact(props.contact));
+  const saveTax = useAction<null, { id: number } & ContactTaxInput>("tax.set_contact");
   const [error, setError] = useState<Error | null>(null);
 
   // Reset whenever the modal is (re)opened for a different contact.
   useEffect(() => {
     if (!props.open) return;
     setForm(props.contact ? fromContact(props.contact) : blank(props.defaultKind ?? "customer"));
+    setTax(taxFromContact(props.contact));
     setError(null);
   }, [props.open, props.contact, props.defaultKind]);
 
   const set = <K extends keyof NewContact>(k: K, v: NewContact[K]) => setForm((f) => ({ ...f, [k]: v }));
-  const busy = create.isPending || update.isPending;
+  const busy = create.isPending || update.isPending || saveTax.isPending;
+  const paysThem = form.kind === "vendor" || form.kind === "both";
   const editing = !!props.contact;
 
   const submit = async (e?: FormEvent) => {
@@ -63,6 +68,11 @@ export default function ContactModal(props: {
     const c = clean(form);
     if (!c.name) {
       setError(new Error("Give this contact a name."));
+      return;
+    }
+    const tinErr = paysThem ? tinError(tax.tin_last4) : null;
+    if (tinErr) {
+      setError(new Error(`Tax ID: ${tinErr}`));
       return;
     }
     try {
@@ -73,6 +83,11 @@ export default function ContactModal(props: {
       } else {
         id = await create.mutateAsync(c);
       }
+      // Tax details only apply to people you pay; skip the call when nothing would change.
+      const before = taxFromContact(props.contact);
+      const after = cleanTax(tax);
+      const changed = (Object.keys(after) as (keyof ContactTaxInput)[]).some((k) => after[k] !== before[k]);
+      if (paysThem && changed) await saveTax.mutateAsync({ id, ...after });
       toast({ text: editing ? `${c.name} updated` : `${c.name} added` });
       props.onSaved?.(id);
       props.onClose();
@@ -153,6 +168,15 @@ export default function ContactModal(props: {
             <textarea className="textarea" rows={2} value={form.notes ?? ""} onChange={(e) => set("notes", e.target.value)} />
           </Field>
         </div>
+        {paysThem && (
+          <div className="stack-sm" style={{ borderTop: "1px solid var(--line)", paddingTop: 16 }}>
+            <div>
+              <div className="bold">Taxes</div>
+              <div className="subtle small">If you pay them for work, this helps Tallybook prepare your 1099 summary.</div>
+            </div>
+            <ContactTaxFields value={tax} onChange={setTax} />
+          </div>
+        )}
         <button type="submit" hidden />
       </form>
     </Modal>

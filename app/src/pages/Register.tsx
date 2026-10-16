@@ -23,6 +23,7 @@ import { useAction, useApi } from "../api";
 import {
   BigMoney,
   ConfirmModal,
+  ContactSelect,
   EmptyState,
   ErrorBanner,
   Field,
@@ -35,7 +36,7 @@ import {
 } from "../components/ui";
 import JournalEntryModal from "../flows/JournalEntryModal";
 import { SUBTYPE_LABEL, date, money, plural, shortDate, todayISO } from "../format";
-import type { Account, Cleared, Connection, Entry, RegisterRow } from "../types";
+import type { Account, Cleared, Connection, Contact, Entry, RegisterRow } from "../types";
 import "./accounts.css";
 
 const PAGE = 200;
@@ -426,12 +427,17 @@ function EntryModal(props: { entryId: number | null; onClose: () => void; onOpen
   const names = useAccountNames();
   const entry = useApi<Entry>("entries.get", { id: props.entryId }, { enabled: props.entryId != null });
   const voidEntry = useAction<number, { id: number; date: string }>("entries.void");
+  const accounts = useApi<Account[]>("accounts.list");
+  const contacts = useApi<Contact[]>("contacts.list");
+  const setPayee = useAction<null, { entry_id: number; contact_id: number | null }>("tax.set_payee");
+  const [editingPayee, setEditingPayee] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [voidDate, setVoidDate] = useState(todayISO());
 
   useEffect(() => {
     setConfirming(false);
     setVoidDate(todayISO());
+    setEditingPayee(false);
   }, [props.entryId]);
 
   const e = entry.data;
@@ -441,6 +447,23 @@ function EntryModal(props: { entryId: number | null; onClose: () => void; onOpen
   const docSource = e && (e.source === "invoice" || e.source === "bill" || e.source === "payment");
   const canVoid = e && !e.voided_by_id && !e.reverses_id && !docSource;
   const locked = e?.lines.some((l) => l.cleared === "reconciled");
+  // Money into a bank/card account came from a customer; money out went to a vendor.
+  const cashLine = e?.lines.find((l) => {
+    const st = accounts.data?.find((a) => a.id === l.account_id)?.subtype;
+    return st === "bank" || st === "credit_card";
+  });
+  const payeeKind = cashLine && cashLine.amount > 0 ? "customer" : "vendor";
+  const payeeName = e?.payee_id != null ? (contacts.data?.find((c) => c.id === e.payee_id)?.name ?? `Contact #${e.payee_id}`) : null;
+  const changePayee = async (contactId: number | null) => {
+    if (!e) return;
+    try {
+      await setPayee.mutateAsync({ entry_id: e.id, contact_id: contactId });
+      setEditingPayee(false);
+      toast({ text: contactId == null ? "Payee removed" : `Tagged ${contacts.data?.find((c) => c.id === contactId)?.name ?? "payee"}` });
+    } catch (err) {
+      toast.error(err);
+    }
+  };
 
   return (
     <>
@@ -509,6 +532,41 @@ function EntryModal(props: { entryId: number | null; onClose: () => void; onOpen
               <div className="grid-2">
                 <FlowList title="From" lines={fromLines.map((l) => ({ name: names(l.account_id), amount: -l.amount, memo: l.memo }))} />
                 <FlowList title="To" lines={toLines.map((l) => ({ name: names(l.account_id), amount: l.amount, memo: l.memo }))} />
+              </div>
+            )}
+
+            <div className="row-between" style={{ gap: 12, minHeight: 40 }}>
+              <span className="muted bold nowrap">{payeeKind === "customer" ? "Received from" : "Paid to"}</span>
+              {editingPayee ? (
+                <div className="row" style={{ gap: 6, flex: 1, maxWidth: 340 }}>
+                  <div className="grow">
+                    <ContactSelect value={e.payee_id} onChange={(id) => id != null && changePayee(id)} kind={payeeKind} />
+                  </div>
+                  <button className="btn btn-ghost btn-sm" onClick={() => setEditingPayee(false)}>
+                    Cancel
+                  </button>
+                </div>
+              ) : (
+                <div className="row" style={{ gap: 6 }}>
+                  {payeeName ? <span className="bold">{payeeName}</span> : <span className="subtle">No payee</span>}
+                  {!docSource && (
+                    <>
+                      <button className="btn btn-ghost btn-sm" onClick={() => setEditingPayee(true)} disabled={setPayee.isPending}>
+                        {payeeName ? "Change" : "Add payee"}
+                      </button>
+                      {payeeName && (
+                        <button className="btn btn-ghost btn-sm" onClick={() => changePayee(null)} disabled={setPayee.isPending}>
+                          Remove
+                        </button>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+            {cashLine && payeeKind === "vendor" && !payeeName && !editingPayee && (
+              <div className="subtle small" style={{ marginTop: -10 }}>
+                Paid a contractor? Tagging them here counts this payment toward their 1099.
               </div>
             )}
 

@@ -283,12 +283,13 @@ pub fn seed(s: &mut Store, today: NaiveDate) -> Result<(), StoreError> {
     s.set_pref("tax.profile", Some(&profile.to_string()))?;
     let year = today.year();
     for (q, due) in tally_core::tax::quarterly_due_dates(year).iter().enumerate() {
-        if *due < today && *due >= start {
+        if *due < today {
             s.record_tax_payment(&NewTaxPayment {
                 tax_year: year,
                 quarter: q as u8 + 1,
                 jurisdiction: Jurisdiction::Federal,
-                date: *due,
+                // The sample's books start mid-year; earlier payments land on day one.
+                date: (*due).max(start),
                 amount: Cents(6_150_00),
                 account_id: checking,
             })?;
