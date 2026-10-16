@@ -31,14 +31,49 @@ To throw away a bad tag before publishing:
 `git push --delete origin v0.2.0 && git tag -d v0.2.0`, then delete the
 draft release.
 
+## Auto-update
+
+Installed copies check
+`https://github.com/jasonsutter87/tallybook/releases/latest/download/latest.json`
+a few seconds after launch and every six hours. When a newer **published**
+release exists, a card offers to update. It backs up the open book,
+downloads, installs and restarts. Drafts and pre-releases are never offered.
+
+- **Every update is signed.** The release workflow signs update packages with
+  the private key in the `TAURI_SIGNING_PRIVATE_KEY` and
+  `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` repository secrets. The app only
+  installs a package whose signature matches the public key in
+  `app/src-tauri/tauri.conf.json`.
+- **The private key lives at `~/.tauri/tallybook-updater.key`** on the
+  machine that created it. Its password is in the macOS Keychain under
+  `tallybook-updater-key-password`. **Back up both somewhere safe**, such as
+  a password manager. If the key is lost, existing installs can never be
+  updated automatically again. Everyone would have to download a new version
+  by hand, and you'd have to ship a new public key.
+- **The repository must be public** for auto-update to work. The app
+  downloads `latest.json` and the update package without logging in, which
+  GitHub only allows for public repositories. Until then, the check fails
+  quietly. A manual check in Settings → Updates shows the error.
+
+### Building a release locally
+
+Because update packages are signed, a local `tauri build` needs the key:
+
+```sh
+export TAURI_SIGNING_PRIVATE_KEY="$(cat ~/.tauri/tallybook-updater.key)"
+export TAURI_SIGNING_PRIVATE_KEY_PASSWORD="$(security find-generic-password -a "$USER" -s tallybook-updater-key-password -w)"
+cd app && npx tauri build
+```
+
 ## What gets built
 
 | Platform | Files |
 |---|---|
-| macOS, Apple silicon | `.dmg`, `.app.tar.gz` |
-| macOS, Intel | `.dmg`, `.app.tar.gz` |
-| Windows | `-setup.exe` (NSIS), `.msi` |
-| Linux | `.AppImage`, `.deb`, `.rpm` |
+| macOS, Apple silicon | `.dmg`, plus `.app.tar.gz` + `.sig` (update package) |
+| macOS, Intel | `.dmg`, plus `.app.tar.gz` + `.sig` |
+| Windows | `-setup.exe` (NSIS), `.msi`, plus `.sig` files |
+| Linux | `.AppImage`, `.deb`, `.rpm`, plus `.sig` files |
+| All | `latest.json`: the update manifest installed copies check |
 
 ## Code signing (optional, recommended before a public launch)
 
@@ -48,7 +83,7 @@ Unsigned builds work, but each operating system warns first-time users:
   "is damaged"). Users can right-click → **Open**, or run
   `xattr -cr /Applications/Tallybook.app`. Signing and notarizing removes
   this. It needs an Apple Developer account ($99/year). Add these repository
-  secrets and the workflow uses them automatically: `APPLE_CERTIFICATE`
+  secrets, then uncomment the matching lines in `release.yml`: `APPLE_CERTIFICATE`
   (base64 .p12), `APPLE_CERTIFICATE_PASSWORD`, `APPLE_SIGNING_IDENTITY`,
   `APPLE_ID`, `APPLE_PASSWORD` (an app-specific password), `APPLE_TEAM_ID`.
   Tauri's guide: <https://v2.tauri.app/distribute/sign/macos/>

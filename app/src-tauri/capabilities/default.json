@@ -1,7 +1,15 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Main window: app IPC, file dialogs for books/imports, opening bank sign-in pages in the system browser.",
-  "windows": ["main"],
-  "permissions": ["core:default", "dialog:default", "opener:default"]
+  "description": "Main window: app IPC, file dialogs for books/imports, opening bank sign-in pages in the system browser, signed self-updates.",
+  "windows": [
+    "main"
+  ],
+  "permissions": [
+    "core:default",
+    "dialog:default",
+    "opener:default",
+    "updater:default",
+    "process:allow-restart"
+  ]
 }

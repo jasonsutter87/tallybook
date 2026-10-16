@@ -15,7 +15,11 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_process::init())
         .setup(|app| {
+            // Signed self-updates from GitHub Releases (see docs/RELEASING.md).
+            #[cfg(desktop)]
+            app.handle().plugin(tauri_plugin_updater::Builder::new().build())?;
             let config_dir = app.path().app_config_dir()?;
             app.manage(Arc::new(App::new(Arc::new(Keychain::new("app.tallybook")), config_dir)));
             Ok(())

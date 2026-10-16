@@ -37,6 +37,15 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEFGQ0YyQzhBRkYzNDZCQTcKUldTbmF6VC9paXpQcndnV0hBZ0NvQ0xzUHFMQjhrR1pTaStTajlHMk1SSmVNbS9XQjErSGQzN0cK",
+      "endpoints": [
+        "https://github.com/jasonsutter87/tallybook/releases/latest/download/latest.json"
+      ]
+    }
   }
 }
