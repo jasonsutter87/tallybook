@@ -19,6 +19,12 @@ SimpleFIN, or CSV/OFX import.
 - **Bills**: enter what you owe, pay from checking or a card, track due dates.
 - **Reconciliation**: check off a statement until the difference is $0.00.
 - **Reports**: Profit & Loss, Balance Sheet, Trial Balance, A/R and A/P aging.
+- **Tax Center** (sole proprietors): a Schedule C worksheet built from your
+  books, quarterly estimated-tax plans (prior-year safe harbor or this year's
+  projection), 1099-NEC tracking that only counts bank payments (card
+  payments are reported by the networks), and an accountant package. It
+  prepares and explains; it never files. Tax tables are checked against IRS
+  Revenue Procedures. See [docs/TAXES.md](docs/TAXES.md).
 - **Accountant-grade underneath**: real double-entry, a full chart of
   accounts, manual journal entries, a lock date for closed periods.
 
