@@ -778,8 +778,11 @@ impl App {
     }
 }
 
-/// `~/Documents/Tallybook`.
+/// `~/Documents/Tallybook`, or `$TALLYBOOK_DIR` when set (development, tests).
 pub fn default_dir() -> PathBuf {
+    if let Some(dir) = std::env::var_os("TALLYBOOK_DIR") {
+        return PathBuf::from(dir);
+    }
     std::env::var_os("HOME").map(PathBuf::from).unwrap_or_default().join("Documents").join("Tallybook")
 }
 
