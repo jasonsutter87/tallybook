@@ -196,7 +196,10 @@ async fn encryption_lifecycle_and_new_machine_recovery() {
     // A different machine (fresh keychain) gets "locked", then the recovery key opens it.
     let (other, _) = self::app("encrypt-other");
     assert_eq!(other.call("book.open", json!({ "path": path })).await.unwrap_err().code, "locked");
-    let typo = format!("{}X", &recovery[..recovery.len() - 1]);
+    // Change one character in the middle (never the same character).
+    let mid = recovery.len() / 2;
+    let swap = if recovery.as_bytes()[mid] == b'Q' { "R" } else { "Q" };
+    let typo = format!("{}{swap}{}", &recovery[..mid], &recovery[mid + 1..]);
     assert_eq!(other.call("book.unlock", json!({ "path": path, "recovery_key": typo })).await.unwrap_err().code, "rule");
     other.call("book.unlock", json!({ "path": path, "recovery_key": recovery.to_lowercase() })).await.unwrap();
     assert_eq!(other.call("reports.trial_balance", Value::Null).await.unwrap(), before);

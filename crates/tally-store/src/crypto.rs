@@ -9,7 +9,7 @@
 use crate::{Result, Store, StoreError, rule};
 use rusqlite::Connection;
 use std::path::Path;
-use tally_core::bank::fnv1a64;
+use sha2::{Digest, Sha256};
 
 pub const KEY_LEN: usize = 32;
 pub type BookKey = [u8; KEY_LEN];
@@ -43,8 +43,11 @@ pub(crate) fn key_literal(key: &BookKey) -> String {
     format!("x'{}'", hex(key))
 }
 
+/// First 16 bits of SHA-256(key). (A non-cryptographic hash was tried first
+/// and missed typos near the end of the key: its top bits barely depend on
+/// the last input byte. SHA-256 mixes every input bit into every output bit.)
 fn checksum(key: &BookKey) -> [u8; 2] {
-    let h = fnv1a64(key).to_be_bytes();
+    let h = Sha256::digest(key);
     [h[0], h[1]]
 }
 
@@ -93,6 +96,11 @@ pub fn parse_recovery_key(input: &str) -> Result<BookKey> {
     }
     if bytes.len() != KEY_LEN + 2 {
         return rule("that recovery key is the wrong length; check for missing or extra characters");
+    }
+    // The last character carries 3 unused bits; they must be zero, so each
+    // key has exactly one valid spelling.
+    if buf != 0 {
+        return rule("that recovery key has a typo in its last group");
     }
     let mut key = [0u8; KEY_LEN];
     key.copy_from_slice(&bytes[..KEY_LEN]);
@@ -177,12 +185,22 @@ mod tests {
         assert_eq!(parse_recovery_key(&rk).unwrap(), key);
         // Forgiving about formatting.
         assert_eq!(parse_recovery_key(&rk.to_lowercase().replace('-', " ")).unwrap(), key);
-        // A single changed character is caught.
-        let mut chars: Vec<char> = rk.chars().collect();
-        let i = chars.len() - 3;
-        chars[i] = if chars[i] == 'A' { 'B' } else { 'A' };
-        let typo: String = chars.into_iter().collect();
-        assert!(parse_recovery_key(&typo).is_err());
+        // Any single changed character is caught, at every position.
+        let chars: Vec<char> = rk.chars().collect();
+        for i in 4..chars.len() {
+            if chars[i] == '-' {
+                continue;
+            }
+            for replacement in ['0', 'Z'] {
+                if chars[i] == replacement {
+                    continue;
+                }
+                let mut typo = chars.clone();
+                typo[i] = replacement;
+                let typo: String = typo.into_iter().collect();
+                assert!(parse_recovery_key(&typo).is_err(), "typo at {i} accepted: {typo} (original {rk})");
+            }
+        }
         assert!(parse_recovery_key("TB1-SHORT").is_err());
         assert!(parse_recovery_key("TB1-#####").is_err());
     }
