@@ -12,6 +12,7 @@
 pub mod account;
 pub mod bank;
 pub mod chart;
+pub mod invoice;
 pub mod journal;
 pub mod money;
 pub mod reconcile;

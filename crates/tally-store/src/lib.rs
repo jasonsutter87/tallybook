@@ -16,12 +16,14 @@ use tally_core::report::{self, BalanceSheet, Balances, ProfitAndLoss, TrialBalan
 use tally_core::{Account, AccountId, AccountSubtype, Cents, EntryError, EntryLine, NewEntry};
 
 mod feed;
+mod sales;
 pub use feed::*;
+pub use sales::*;
 
 pub type LineId = i64;
 pub type ReconciliationId = i64;
 
-const SCHEMA_VERSION: i64 = 2;
+const SCHEMA_VERSION: i64 = 3;
 
 #[derive(Debug, thiserror::Error)]
 pub enum StoreError {
@@ -251,6 +253,12 @@ impl Store {
             let tx = self.conn.transaction()?;
             tx.execute_batch(include_str!("schema_v2.sql"))?;
             tx.pragma_update(None, "user_version", 2)?;
+            tx.commit()?;
+        }
+        if version < 3 {
+            let tx = self.conn.transaction()?;
+            tx.execute_batch(include_str!("schema_v3.sql"))?;
+            tx.pragma_update(None, "user_version", 3)?;
             tx.commit()?;
         }
         Ok(())
