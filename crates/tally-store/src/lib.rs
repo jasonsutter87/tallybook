@@ -15,10 +15,13 @@ use tally_core::reconcile::ReconcileSummary;
 use tally_core::report::{self, BalanceSheet, Balances, ProfitAndLoss, TrialBalance};
 use tally_core::{Account, AccountId, AccountSubtype, Cents, EntryError, EntryLine, NewEntry};
 
+mod feed;
+pub use feed::*;
+
 pub type LineId = i64;
 pub type ReconciliationId = i64;
 
-const SCHEMA_VERSION: i64 = 1;
+const SCHEMA_VERSION: i64 = 2;
 
 #[derive(Debug, thiserror::Error)]
 pub enum StoreError {
@@ -242,6 +245,12 @@ impl Store {
             let tx = self.conn.transaction()?;
             tx.execute_batch(include_str!("schema.sql"))?;
             tx.pragma_update(None, "user_version", 1)?;
+            tx.commit()?;
+        }
+        if version < 2 {
+            let tx = self.conn.transaction()?;
+            tx.execute_batch(include_str!("schema_v2.sql"))?;
+            tx.pragma_update(None, "user_version", 2)?;
             tx.commit()?;
         }
         Ok(())

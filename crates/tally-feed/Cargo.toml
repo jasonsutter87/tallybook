@@ -1,0 +1,17 @@
+[package]
+name = "tally-feed"
+description = "Bank-feed adapters for Tallybook: Plaid, SimpleFIN, CSV, OFX/QFX."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+tally-core = { path = "../tally-core" }
+chrono.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+serde_json = "1"
+csv = "1"
+base64 = "0.22"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }

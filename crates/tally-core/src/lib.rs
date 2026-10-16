@@ -10,11 +10,13 @@
 //! credits) only at the edge.
 
 pub mod account;
+pub mod bank;
 pub mod chart;
 pub mod journal;
 pub mod money;
 pub mod reconcile;
 pub mod report;
+pub mod rules;
 
 pub use account::{Account, AccountId, AccountKind, AccountSubtype};
 pub use journal::{EntryError, EntryLine, NewEntry};
