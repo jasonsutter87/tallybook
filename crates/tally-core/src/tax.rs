@@ -78,7 +78,7 @@ use FilingStatus::*;
 pub static TAX_YEARS: &[TaxYear] = &[
     TaxYear {
         year: 2025,
-        source: "IRS Rev. Proc. 2024-40 as amended by Pub. L. 119-21 (standard deduction); SSA 2025 wage base",
+        source: "IRS Rev. Proc. 2024-40 (brackets, QBI); standard deduction as amended by Pub. L. 119-21; SSA 2025 wage base",
         standard_deduction: [(Single, 15_750), (MarriedJoint, 31_500), (MarriedSeparate, 15_750), (HeadOfHousehold, 23_625)],
         brackets: [
             (Single, [b(0, 1000), b(11_925, 1200), b(48_475, 2200), b(103_350, 2400), b(197_300, 3200), b(250_525, 3500), b(626_350, 3700)]),
@@ -92,7 +92,7 @@ pub static TAX_YEARS: &[TaxYear] = &[
     },
     TaxYear {
         year: 2026,
-        source: "IRS Rev. Proc. 2025-32; SSA 2026 wage base; Pub. L. 119-21 (1099-NEC threshold)",
+        source: "IRS Rev. Proc. 2025-32 (brackets, standard deduction, QBI); SSA 2026 wage base; Pub. L. 119-21 (1099-NEC threshold)",
         standard_deduction: [(Single, 16_100), (MarriedJoint, 32_200), (MarriedSeparate, 16_100), (HeadOfHousehold, 24_150)],
         brackets: [
             (Single, [b(0, 1000), b(12_400, 1200), b(50_400, 2200), b(105_700, 2400), b(201_775, 3200), b(256_225, 3500), b(640_600, 3700)]),
@@ -101,7 +101,7 @@ pub static TAX_YEARS: &[TaxYear] = &[
             (HeadOfHousehold, [b(0, 1000), b(17_700, 1200), b(67_450, 2200), b(105_700, 2400), b(201_750, 3200), b(256_200, 3500), b(640_600, 3700)]),
         ],
         ss_wage_base: 184_500,
-        qbi_threshold: [(Single, 201_750), (MarriedJoint, 403_500), (MarriedSeparate, 201_750), (HeadOfHousehold, 201_750)],
+        qbi_threshold: [(Single, 201_750), (MarriedJoint, 403_500), (MarriedSeparate, 201_775), (HeadOfHousehold, 201_750)],
         nec_threshold: 2_000,
     },
 ];
@@ -552,6 +552,41 @@ mod tests {
         assert_eq!(income_tax(Cents::ZERO, Single, ty), Cents::ZERO);
         // Exactly at a bracket edge.
         assert_eq!(income_tax(usd(12_400), Single, ty), usd(1_240));
+    }
+
+    /// The Revenue Procedures print the cumulative tax at each bracket
+    /// boundary ("$39,207 plus 32% of the excess over $201,750"). Checking
+    /// those pins every threshold and rate to the official tables.
+    #[test]
+    fn matches_irs_published_cumulative_tax() {
+        let cases: &[(i32, FilingStatus, i64, Cents)] = &[
+            // Rev. Proc. 2025-32, tax year 2026
+            (2026, HeadOfHousehold, 17_700, usd(1_770)),
+            (2026, HeadOfHousehold, 67_450, usd(7_740)),
+            (2026, HeadOfHousehold, 105_700, usd(16_155)),
+            (2026, HeadOfHousehold, 201_750, usd(39_207)),
+            (2026, HeadOfHousehold, 256_200, usd(56_631)),
+            (2026, HeadOfHousehold, 640_600, usd(191_171)),
+            (2026, MarriedSeparate, 105_700, usd(17_966)),
+            (2026, MarriedSeparate, 201_775, usd(41_024)),
+            (2026, MarriedSeparate, 256_225, usd(58_448)),
+            (2026, MarriedSeparate, 384_350, Cents(103_291_75)),
+            // Rev. Proc. 2024-40, tax year 2025
+            (2025, HeadOfHousehold, 64_850, usd(7_442)),
+            (2025, HeadOfHousehold, 103_350, usd(15_912)),
+            (2025, HeadOfHousehold, 197_300, usd(38_460)),
+            (2025, HeadOfHousehold, 250_500, usd(55_484)),
+            (2025, HeadOfHousehold, 626_350, Cents(187_031_50)),
+            (2025, Single, 11_925, Cents(1_192_50)),
+            (2025, Single, 48_475, Cents(5_578_50)),
+            (2025, Single, 103_350, usd(17_651)),
+            (2025, Single, 197_300, usd(40_199)),
+            (2025, MarriedSeparate, 250_525, usd(57_231)),
+            (2025, MarriedSeparate, 375_800, Cents(101_077_25)),
+        ];
+        for &(year, status, income, expected) in cases {
+            assert_eq!(income_tax(usd(income), status, tax_year(year).unwrap()), expected, "{year} {status:?} at ${income}");
+        }
     }
 
     #[test]
