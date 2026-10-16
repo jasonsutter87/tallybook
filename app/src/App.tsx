@@ -22,6 +22,7 @@ const Contacts = lazy(() => import("./pages/Contacts"));
 const Reports = lazy(() => import("./pages/Reports"));
 const Settings = lazy(() => import("./pages/Settings"));
 const Rules = lazy(() => import("./pages/Rules"));
+const Taxes = lazy(() => import("./pages/Taxes"));
 
 export default function App() {
   const status = useApi<BookStatus>("book.status");
@@ -51,6 +52,8 @@ export default function App() {
             <Route path="/reports/:report" element={<Reports />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="/rules" element={<Rules />} />
+            <Route path="/taxes" element={<Taxes />} />
+            <Route path="/taxes/:tab" element={<Taxes />} />
             <Route path="*" element={<Dashboard />} />
           </Routes>
         </Suspense>

@@ -7,6 +7,7 @@ import {
   Landmark,
   LogOut,
   Receipt,
+  Scale,
   Settings,
   Users,
   Wand2,
@@ -28,6 +29,7 @@ const MONEY = [
 
 const INSIGHT = [
   { to: "/reports", label: "Reports", icon: BarChart3 },
+  { to: "/taxes", label: "Taxes", icon: Scale },
   { to: "/banking", label: "Bank connections", icon: Building2 },
   { to: "/rules", label: "Rules", icon: Wand2 },
   { to: "/settings", label: "Settings", icon: Settings },

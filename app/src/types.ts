@@ -83,6 +83,8 @@ export interface Entry {
   source: string;
   reverses_id: number | null;
   voided_by_id: number | null;
+  /** Customer or vendor this entry was with. */
+  payee_id: number | null;
   lines: PostedLine[];
 }
 
@@ -375,6 +377,10 @@ export interface Contact extends NewContact {
   id: number;
   archived: boolean;
   open_balance: Cents;
+  is_1099: boolean;
+  w9_on_file: boolean;
+  legal_name: string | null;
+  tin_last4: string | null;
 }
 
 export type DocStatus = "draft" | "open" | "partial" | "paid" | "overdue" | "void";
@@ -513,4 +519,200 @@ export interface Settings {
   prefs: Record<string, string>;
   fiscal_year_start_month: number;
   lock_date: ISODate | null;
+}
+
+// ------------------------------------------------------------- tax center
+
+export type FilingStatus = "single" | "married_joint" | "married_separate" | "head_of_household";
+
+export type ScheduleCLine =
+  | "l1_gross_receipts"
+  | "l2_returns"
+  | "l4_cost_of_goods"
+  | "l6_other_income"
+  | "l8_advertising"
+  | "l9_car_truck"
+  | "l10_commissions"
+  | "l11_contract_labor"
+  | "l13_depreciation"
+  | "l14_employee_benefits"
+  | "l15_insurance"
+  | "l16a_mortgage_interest"
+  | "l16b_other_interest"
+  | "l17_legal"
+  | "l18_office"
+  | "l19_pension"
+  | "l20a_rent_vehicles"
+  | "l20b_rent_other"
+  | "l21_repairs"
+  | "l22_supplies"
+  | "l23_taxes"
+  | "l24a_travel"
+  | "l24b_meals"
+  | "l25_utilities"
+  | "l26_wages"
+  | "l27a_other"
+  | "not_deductible";
+
+export interface TaxYears {
+  supported: number[];
+  current: number;
+  disclaimer: string;
+}
+
+export interface LineInfo {
+  line: ScheduleCLine;
+  /** Form line number, e.g. "24b"; "—" for not on Schedule C. */
+  number: string;
+  label: string;
+  help: string;
+}
+
+export interface TaxMappingRow {
+  account_id: number;
+  code: string | null;
+  name: string;
+  kind: AccountKind;
+  amount: Cents;
+  line: ScheduleCLine;
+  /** False = only Tallybook's suggestion so far. */
+  confirmed: boolean;
+}
+
+export interface ScheduleCLineTotal {
+  line: ScheduleCLine;
+  number: string;
+  label: string;
+  booked: Cents;
+  amount: Cents;
+}
+
+export interface ScheduleC {
+  line1_gross_receipts: Cents;
+  line2_returns: Cents;
+  line3: Cents;
+  line4_cogs: Cents;
+  line5_gross_profit: Cents;
+  line6_other_income: Cents;
+  line7_gross_income: Cents;
+  expenses: ScheduleCLineTotal[];
+  line28_total_expenses: Cents;
+  line29_tentative_profit: Cents;
+  line30_home_office: Cents;
+  line31_net_profit: Cents;
+  meals_disallowed: Cents;
+}
+
+export interface ScheduleCResponse {
+  report: { year: number; from: ISODate; to: ISODate; schedule: ScheduleC; rows: TaxMappingRow[]; unconfirmed: number };
+  home_office_sqft: number;
+  disclaimer: string;
+}
+
+export interface TaxProfile {
+  filing_status: FilingStatus;
+  method: "safe_harbor" | "current_year";
+  other_income: Cents;
+  w2_wages: Cents;
+  withholding: Cents;
+  last_year_tax: Cents | null;
+  last_year_agi: Cents | null;
+  /** Overrides the annualized projection when set. */
+  projected_profit: Cents | null;
+  home_office_sqft: number;
+  /** Rough state rate in basis points (500 = 5%). */
+  state_rate_bp: number;
+}
+
+export interface SeTax {
+  net_earnings: Cents;
+  social_security: Cents;
+  medicare: Cents;
+  total: Cents;
+  deductible_half: Cents;
+}
+
+export interface TaxEstimateDetail {
+  year: number;
+  source: string;
+  se: SeTax;
+  additional_medicare: Cents;
+  agi: Cents;
+  standard_deduction: Cents;
+  qbi_deduction: Cents;
+  qbi_limited: boolean;
+  taxable_income: Cents;
+  income_tax: Cents;
+  total_tax: Cents;
+  withholding: Cents;
+  to_pay: Cents;
+  /** Basis points of business profit to set aside. */
+  set_aside_bp: number;
+  not_included: string[];
+}
+
+export type Jurisdiction = "federal" | "state";
+
+export interface TaxPayment {
+  id: number;
+  tax_year: number;
+  quarter: number;
+  jurisdiction: Jurisdiction;
+  date: ISODate;
+  amount: Cents;
+  account_id: number;
+  entry_id: number;
+  voided: boolean;
+}
+
+export interface QuarterPlan {
+  quarter: number;
+  due: ISODate;
+  planned: Cents;
+  paid_federal: Cents;
+  paid_state: Cents;
+  status: "paid" | "nothing_due" | "late" | "due_soon" | "upcoming";
+}
+
+export interface TaxEstimate {
+  year: number;
+  profile: TaxProfile;
+  profit_to_date: Cents;
+  profit_annualized: Cents;
+  profit_used: Cents;
+  profit_basis: string;
+  estimate: TaxEstimateDetail;
+  safe_harbor: Cents | null;
+  ninety_percent_current: Cents;
+  plan_annual: Cents;
+  plan_method: "safe_harbor" | "current_year";
+  quarters: QuarterPlan[];
+  state_set_aside: Cents;
+  payments: TaxPayment[];
+  disclaimer: string;
+}
+
+export interface Payee1099 {
+  contact_id: number;
+  name: string;
+  legal_name: string | null;
+  is_1099: boolean;
+  w9_on_file: boolean;
+  tin_last4: string | null;
+  paid_reportable: Cents;
+  paid_by_card: Cents;
+  over_threshold: boolean;
+}
+
+export interface Report1099 {
+  year: number;
+  threshold: Cents;
+  rows: Payee1099[];
+}
+
+export interface ContactTaxInput {
+  is_1099: boolean;
+  w9_on_file: boolean;
+  legal_name: string | null;
+  tin_last4: string | null;
 }
