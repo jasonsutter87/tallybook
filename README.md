@@ -1,10 +1,26 @@
 # Tallybook
 
-Open-source, self-hosted small-business bookkeeping. A QuickBooks alternative
-where your books are a single SQLite file on your own machine.
+**Open-source, self-hosted bookkeeping for small businesses.** A QuickBooks
+alternative where your books are one file on your own computer.
 
-**Stack:** Rust (Tauri v2 desktop) · React · SQLite · bank feeds via Plaid,
+Rust core · Tauri desktop app · React UI · SQLite · bank feeds via Plaid,
 SimpleFIN, or CSV/OFX import.
+
+## What it does
+
+- **Home dashboard**: cash on hand, card balances, money in/out, what's owed
+  to you and by you, six-month cash flow, and where the money went.
+- **Bank feeds & review inbox**: transactions arrive from Plaid, SimpleFIN or
+  a statement file. Each one comes with a suggestion: a *match* to something
+  you already entered, a *rule*, or *what you picked last time*. Accept,
+  split, match or exclude, all undoable. Tick "remember" and it becomes a rule.
+- **Invoices**: drafts, issuing, tax, printable/PDF invoices, partial
+  payments. Recorded payments auto-match the bank deposit when it arrives.
+- **Bills**: enter what you owe, pay from checking or a card, track due dates.
+- **Reconciliation**: check off a statement until the difference is $0.00.
+- **Reports**: Profit & Loss, Balance Sheet, Trial Balance, A/R and A/P aging.
+- **Accountant-grade underneath**: real double-entry, a full chart of
+  accounts, manual journal entries, a lock date for closed periods.
 
 ## Principles
 
@@ -15,40 +31,55 @@ SimpleFIN, or CSV/OFX import.
   a reversing entry. SQLite triggers enforce this even if the API is bypassed.
 - **No closing entries.** Retained earnings are derived from the fiscal-year
   boundary at report time.
-- **Your data, your keys.** Bank credentials (Plaid/SimpleFIN tokens) live in
-  your OS keychain and are never sent anywhere but the provider.
+- **Your data, your keys.** Bank credentials live in your OS keychain, never
+  in the book file, and go only to the provider. See
+  [docs/BANK_FEEDS.md](docs/BANK_FEEDS.md).
 
 ## Layout
 
 ```
 crates/
-  tally-core/    pure accounting domain: money, accounts, entries, reports, reconciliation (no I/O)
-  tally-store/   SQLite persistence + bookkeeping rules (lock date, voids, reconciliation workflow)
+  tally-core/       pure accounting: money, accounts, entries, reports, reconciliation,
+                    invoice math, feed records, categorization rules (no I/O)
+  tally-store/      SQLite persistence and bookkeeping rules (lock date, voids,
+                    reconciliation, bank-feed inbox, invoices/bills/payments)
+  tally-feed/       Plaid (Hosted Link + /transactions/sync), SimpleFIN, CSV, OFX/QFX
+  tally-api/        the application layer: one JSON dispatcher, App::call(method, params)
+  tally-devserver/  serves tally-api over HTTP for browser development
+app/                React UI (Vite)
+app/src-tauri/      desktop shell: a single IPC command forwarding to tally-api
 ```
 
-## Roadmap (hardest → easiest)
-
-- [x] **P1: Ledger engine.** Money type, chart of accounts, balanced entries,
-      void-by-reversal, lock date, account registers, trial balance, P&L,
-      balance sheet with fiscal-year retained earnings, statement reconciliation
-      (start / check off / finish / cancel / undo)
-- [ ] **P2: Bank feeds.** `BankFeed` provider trait; Plaid (Hosted Link in the
-      system browser plus `/transactions/sync` cursors), SimpleFIN, CSV/OFX import;
-      dedupe; match-to-existing; categorization rules; auto-clear on match
-- [ ] **P3: Desktop app.** Tauri shell, React UI (registers, review-transactions
-      inbox, reconcile screen, reports), keychain secrets, auto-backup
-- [ ] **P4: Sales & purchases.** Customers/vendors, invoices (PDF), payments,
-      A/R + A/P aging, bills, sales tax
-- [ ] **P5: Niceties.** Budgets, attachments/receipts, QuickBooks/CSV import,
-      multi-currency, year-end export for your accountant
+The desktop app and the dev server both forward to the same `App::call`, so
+what you test in a browser is exactly what ships.
 
 ## Development
 
+Requirements: Rust (stable), Node 20+.
+
 ```sh
-cargo test
-cargo clippy --all-targets
+cargo test                      # all backend tests
+cd app && npm install
+
+# Desktop app
+npm run tauri dev
+
+# Or in a browser, against the real backend
+npm run devserver               # terminal 1: API on 127.0.0.1:1441
+npm run dev                     # terminal 2: UI on http://localhost:1440
+```
+
+Set `TALLYBOOK_DIR` to keep development books out of `~/Documents/Tallybook`.
+"Explore with sample data" on the welcome screen builds a realistic sample
+business with six months of history.
+
+## Building a release
+
+```sh
+cd app && npm run tauri build
 ```
 
 ## License
 
-AGPL-3.0-or-later
+[AGPL-3.0-or-later](LICENSE). You're free to use, modify and self-host it.
+If you offer a modified version to others over a network, share your changes.
