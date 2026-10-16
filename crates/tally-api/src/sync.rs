@@ -39,6 +39,12 @@ struct SetupToken {
 }
 
 #[derive(Deserialize)]
+struct SimplefinReconnect {
+    connection_id: ConnectionId,
+    setup_token: String,
+}
+
+#[derive(Deserialize)]
 struct NewLedgerAccount {
     name: String,
     subtype: AccountSubtype,
@@ -225,6 +231,18 @@ impl App {
                 let id = self
                     .run(|s| s.create_connection(Provider::Simplefin, &institution, None, Some(&secret_ref)))?;
                 ok(PollView::Linked { connection_id: id, institution, accounts: accounts.into_iter().map(|a| a.account).collect() })
+            }
+            "bank.simplefin_reconnect" => {
+                let p: SimplefinReconnect = params(p)?;
+                let conn = self.run(|s| s.connection(p.connection_id))?;
+                if conn.provider != Provider::Simplefin {
+                    return Err(ApiError::new("rule", "that isn't a SimpleFIN connection"));
+                }
+                let key = conn.secret_ref.clone().ok_or_else(|| ApiError::new("rule", "this connection was disconnected; connect it again instead"))?;
+                let access_url = simplefin::claim(&p.setup_token).await.map_err(sfin_err)?;
+                // Same connection, same links: only the credential changes.
+                self.secrets.set(&key, &access_url).map_err(|e| ApiError::new("keychain", e))?;
+                self.with(|s| s.set_connection_status(p.connection_id, ConnectionStatus::Ok, None))
             }
             "bank.feed_accounts" => {
                 let p: ConnectionParam = params(p)?;

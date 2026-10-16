@@ -96,6 +96,7 @@ export default function Banking() {
   const [linkTarget, setLinkTarget] = useState<LinkTarget | null>(null);
   const [importOpen, setImportOpen] = useState(false);
   const [relink, setRelink] = useState<Connection | null>(null);
+  const [sfRelink, setSfRelink] = useState<Connection | null>(null);
   const sync = useAction<SyncReport[], { connection_id?: number }>("bank.sync");
 
   const conns = (connections.data ?? []).filter((c) => c.provider !== "file" && c.status !== "disconnected");
@@ -162,7 +163,7 @@ export default function Banking() {
                 conn={c}
                 accounts={accounts.data ?? []}
                 onLinkMore={(t) => setLinkTarget(t)}
-                onReconnect={() => (c.provider === "plaid" ? setRelink(c) : setConnectOpen("simplefin"))}
+                onReconnect={() => (c.provider === "plaid" ? setRelink(c) : setSfRelink(c))}
               />
             ))
           )}
@@ -214,6 +215,7 @@ export default function Banking() {
         />
       )}
       {relink && <RelinkModal conn={relink} onClose={() => setRelink(null)} />}
+      {sfRelink && <SimplefinRelinkModal conn={sfRelink} onClose={() => setSfRelink(null)} />}
       {linkTarget && <LinkStepModal target={linkTarget} accounts={accounts.data ?? []} onClose={() => setLinkTarget(null)} />}
       <ImportModal open={importOpen} onClose={() => setImportOpen(false)} />
     </div>
@@ -804,6 +806,60 @@ function RelinkModal(props: { conn: Connection; onClose: () => void }) {
       {state === "starting" && <Loading label="Opening Plaid…" />}
       {state === "wait" && link && <Waiting url={link.url} onCancel={props.onClose} />}
       {state === "exited" && !error && <div className="muted">The sign-in wasn't finished. Try again whenever you're ready.</div>}
+    </Modal>
+  );
+}
+
+// ------------------------------------------------------------- SimpleFIN reconnect
+
+function SimplefinRelinkModal(props: { conn: Connection; onClose: () => void }) {
+  const toast = useToast();
+  const [token, setToken] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
+  const submit = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await call("bank.simplefin_reconnect", { connection_id: props.conn.id, setup_token: token.trim() });
+      try {
+        await call("bank.sync", { connection_id: props.conn.id });
+      } catch {
+        // The sync result shows on the card; reconnecting itself worked.
+      }
+      await queryClient.invalidateQueries();
+      toast({ text: `${props.conn.institution} reconnected` });
+      props.onClose();
+    } catch (e) {
+      setError(e as Error);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Modal
+      open
+      onClose={props.onClose}
+      title={`Reconnect ${props.conn.institution}`}
+      subtitle="Your linked accounts and history stay as they are."
+      footer={
+        <>
+          <button className="btn btn-secondary" onClick={props.onClose}>
+            Cancel
+          </button>
+          <button className="btn btn-primary" disabled={!token.trim() || busy} onClick={submit}>
+            {busy ? "Reconnecting…" : "Reconnect"}
+          </button>
+        </>
+      }
+    >
+      <div className="stack">
+        <ErrorBanner error={error} />
+        <div className="muted">
+          In SimpleFIN Bridge, create a new setup token for Tallybook and paste it here. It replaces the expired access for this connection.
+        </div>
+        <textarea className="textarea" autoFocus value={token} onChange={(e) => setToken(e.target.value)} placeholder="Paste your SimpleFIN setup token" />
+      </div>
     </Modal>
   );
 }
