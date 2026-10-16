@@ -116,7 +116,7 @@ pub fn build(store: &Store, today: NaiveDate) -> Result<Dashboard> {
             (amount.0 > 0).then(|| Category { account_id: a.id, name: a.name.clone(), amount })
         })
         .collect();
-    top.sort_by(|a, b| b.amount.cmp(&a.amount));
+    top.sort_by_key(|c| std::cmp::Reverse(c.amount));
     top.truncate(5);
 
     let overdue: Vec<_> = store.invoices(today)?.into_iter().filter(|i| i.status == DocStatus::Overdue).collect();
