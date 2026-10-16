@@ -20,8 +20,14 @@ pub fn run() {
             // Signed self-updates from GitHub Releases (see docs/RELEASING.md).
             #[cfg(desktop)]
             app.handle().plugin(tauri_plugin_updater::Builder::new().build())?;
-            let config_dir = app.path().app_config_dir()?;
-            app.manage(Arc::new(App::new(Arc::new(Keychain::new("app.tallybook")), config_dir)));
+            // Development builds keep their own recent list and keychain entries,
+            // so testing never touches the installed app's books or bank keys.
+            let (config_dir, service) = if cfg!(debug_assertions) {
+                (app.path().app_config_dir()?.join("dev"), "app.tallybook.dev")
+            } else {
+                (app.path().app_config_dir()?, "app.tallybook")
+            };
+            app.manage(Arc::new(App::new(Arc::new(Keychain::new(service)), config_dir)));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![call])

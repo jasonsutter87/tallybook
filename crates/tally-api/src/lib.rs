@@ -7,6 +7,7 @@
 //!
 //! Money crosses the boundary as integer cents; dates as `YYYY-MM-DD`.
 
+mod books;
 mod dashboard;
 mod demo;
 pub mod secrets;
@@ -92,6 +93,8 @@ pub struct App {
     secrets: Arc<dyn Secrets>,
     /// Where `recent.json` lives (the OS app-config dir).
     config_dir: PathBuf,
+    /// How deleted books leave the disk: the OS Trash, or plain removal in tests.
+    remove_file: fn(&Path) -> std::io::Result<()>,
 }
 
 // ---------------------------------------------------------------- param types
@@ -337,7 +340,13 @@ struct OfxPreview {
 
 impl App {
     pub fn new(secrets: Arc<dyn Secrets>, config_dir: impl Into<PathBuf>) -> App {
-        App { book: Mutex::new(None), secrets, config_dir: config_dir.into() }
+        App { book: Mutex::new(None), secrets, config_dir: config_dir.into(), remove_file: books::move_to_trash }
+    }
+
+    /// Replaces the Trash with permanent removal (tests, headless servers).
+    pub fn with_file_remover(mut self, remove: fn(&Path) -> std::io::Result<()>) -> App {
+        self.remove_file = remove;
+        self
     }
 
     fn lock(&self) -> MutexGuard<'_, Option<OpenBook>> {
@@ -635,6 +644,7 @@ impl App {
             // ---------------------------------------------------- bank connections
             m if m.starts_with("bank.") => self.bank(m, p).await,
             m if m.starts_with("tax.") => self.tax(m, p).await,
+            "book.delete" => self.books(method, p).await,
 
             // ---------------------------------------------------- reconciliation
             "reconcile.active" => {

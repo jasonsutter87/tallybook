@@ -10,7 +10,7 @@ fn temp_dir(name: &str) -> PathBuf {
 
 fn app(name: &str) -> (App, PathBuf) {
     let dir = temp_dir(name);
-    (App::new(Arc::new(MemorySecrets::default()), dir.join("config")), dir)
+    (App::new(Arc::new(MemorySecrets::default()), dir.join("config")).with_file_remover(|p| std::fs::remove_file(p)), dir)
 }
 
 #[tokio::test]
@@ -137,4 +137,31 @@ async fn tax_center_end_to_end() {
     assert!(std::fs::read_to_string(out.join("README.txt")).unwrap().contains("not tax advice"));
 
     assert_eq!(app.call("tax.estimate", json!({ "year": 2019 })).await.unwrap_err().code, "unsupported_year");
+}
+
+#[tokio::test]
+async fn delete_book_tears_everything_down() {
+    let (app, dir) = app("delete");
+    let path = dir.join("Gone.tallybook");
+    app.call("book.create", json!({ "path": path, "company_name": "Gone Co" })).await.unwrap();
+    app.call("book.backup", Value::Null).await.unwrap();
+    // A bank connection whose credential lives in the keychain.
+    app.secrets.set("simplefin:test", "https://user:pass@bridge.example/simplefin").unwrap();
+    app.run(|s| s.create_connection(Provider::Simplefin, "CU", None, Some("simplefin:test"))).unwrap();
+
+    let wrong = app.call("book.delete", json!({ "path": path, "confirm_name": "gone co" })).await.unwrap_err();
+    assert_eq!(wrong.code, "rule", "the name must match exactly");
+    assert!(path.exists());
+
+    let r = app.call("book.delete", json!({ "path": path, "confirm_name": "Gone Co", "include_backups": true })).await.unwrap();
+    assert!(!path.exists());
+    assert_eq!(r["keychain_entries_removed"], 1);
+    assert!(app.secrets.get("simplefin:test").unwrap().is_none(), "credential removed from the keychain");
+    assert!(std::fs::read_dir(dir.join("Backups")).unwrap().next().is_none(), "backups removed too");
+    assert!(!app.is_open(), "the open book was closed first");
+    assert!(app.call("book.recent", Value::Null).await.unwrap().as_array().unwrap().is_empty());
+
+    let not_a_book = dir.join("notes.txt");
+    std::fs::write(&not_a_book, "hi").unwrap();
+    assert_eq!(app.call("book.delete", json!({ "path": not_a_book, "confirm_name": "x" })).await.unwrap_err().code, "rule");
 }

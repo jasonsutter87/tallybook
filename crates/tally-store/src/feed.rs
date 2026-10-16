@@ -351,6 +351,14 @@ impl Store {
         Ok(())
     }
 
+    /// Every connection that still holds credentials, for teardown.
+    pub fn connections_with_secrets(&self) -> Result<Vec<BankConnection>> {
+        let mut stmt = self
+            .conn
+            .prepare(&format!("SELECT {CONNECTION_COLS} FROM bank_connections WHERE secret_ref IS NOT NULL ORDER BY id"))?;
+        Ok(stmt.query_map([], connection_from_row)?.collect::<rusqlite::Result<_>>()?)
+    }
+
     /// Unlinks every account and marks the connection disconnected. Imported
     /// transactions and posted entries are kept.
     pub fn disconnect(&mut self, id: ConnectionId) -> Result<()> {

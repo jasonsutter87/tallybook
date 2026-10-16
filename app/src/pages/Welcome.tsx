@@ -1,7 +1,8 @@
-import { BookOpen, FolderOpen, Lock, Plus, Sparkles } from "lucide-react";
-import { useState } from "react";
+import { BookOpen, FolderOpen, Lock, MoreHorizontal, Plus, Sparkles } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { isTauri, useAction, useApi } from "../api";
 import { Field, Modal, useToast } from "../components/ui";
+import DeleteBookModal from "../flows/DeleteBookModal";
 import type { RecentBook } from "../types";
 
 function joinPath(dir: string, name: string) {
@@ -105,19 +106,8 @@ export default function Welcome() {
               <div className="divider" style={{ margin: "6px 0" }} />
               <div className="label">Recent</div>
               <div className="stack-sm">
-                {recent.data.map((r) => (
-                  <button
-                    key={r.path}
-                    className="list-row clickable"
-                    style={{ border: "1px solid var(--line)", borderRadius: 14, background: "var(--surface)", textAlign: "left", padding: "10px 14px" }}
-                    onClick={() => run(open.mutateAsync({ path: r.path }))}
-                  >
-                    <div className="avatar">{r.name.slice(0, 1).toUpperCase()}</div>
-                    <div className="grow">
-                      <div className="bold truncate">{r.name}</div>
-                      <div className="subtle tiny truncate">{r.path}</div>
-                    </div>
-                  </button>
+                {recent.data.slice(0, 3).map((r) => (
+                  <RecentRow key={r.path} book={r} onOpen={() => run(open.mutateAsync({ path: r.path }))} />
                 ))}
               </div>
             </>
@@ -145,6 +135,69 @@ export default function Welcome() {
           <input className="input" autoFocus value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && name.trim() && doCreate()} placeholder="e.g. Northwind Studio" />
         </Field>
       </Modal>
+    </div>
+  );
+}
+
+/** One recent book: click to open; the ⋯ menu removes it from the list or deletes it. */
+function RecentRow(props: { book: RecentBook; onOpen: () => void }) {
+  const toast = useToast();
+  const forget = useAction("book.forget");
+  const [menu, setMenu] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const wrap = useRef<HTMLDivElement>(null);
+  const r = props.book;
+
+  useEffect(() => {
+    if (!menu) return;
+    const close = (e: MouseEvent) => wrap.current && !wrap.current.contains(e.target as Node) && setMenu(false);
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [menu]);
+
+  const item = (label: string, onClick: () => void, danger = false) => (
+    <button
+      className="combo-option"
+      style={{ width: "100%", border: 0, background: "none", textAlign: "left", color: danger ? "var(--neg)" : undefined }}
+      onClick={() => {
+        setMenu(false);
+        onClick();
+      }}
+    >
+      {label}
+    </button>
+  );
+
+  return (
+    <div ref={wrap} style={{ position: "relative" }}>
+      <div className="list-row" style={{ border: "1px solid var(--line)", borderRadius: 14, background: "var(--surface)", padding: "6px 6px 6px 14px" }}>
+        <button className="row grow" style={{ border: 0, background: "none", textAlign: "left", cursor: "pointer", padding: "4px 0", gap: 14, minWidth: 0 }} onClick={props.onOpen}>
+          <div className="avatar">{r.name.slice(0, 1).toUpperCase()}</div>
+          <div className="grow" style={{ minWidth: 0 }}>
+            <div className="bold truncate">{r.name}</div>
+            <div className="subtle tiny truncate">{r.path}</div>
+          </div>
+        </button>
+        <button className="btn btn-ghost btn-icon" aria-label={`More for ${r.name}`} onClick={() => setMenu((m) => !m)}>
+          <MoreHorizontal size={18} />
+        </button>
+      </div>
+      {menu && (
+        <div className="combo-menu" style={{ left: "auto", right: 0, width: 220, minWidth: 0 }} role="menu">
+          {item("Remove from recents", () => forget.mutateAsync({ path: r.path }).catch((e) => toast.error(e)))}
+          {isTauri &&
+            item("Show in Finder", async () => {
+              try {
+                const { revealItemInDir } = await import("@tauri-apps/plugin-opener");
+                await revealItemInDir(r.path);
+              } catch (e) {
+                toast.error(e);
+              }
+            })}
+          {item("Delete book…", () => setDeleting(true), true)}
+        </div>
+      )}
+      <DeleteBookModal open={deleting} onClose={() => setDeleting(false)} path={r.path} name={r.name} />
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { Building2, CalendarRange, Check, DatabaseBackup, Download, FileText, Lock, LockOpen, Monitor, Moon, Palette, ShieldCheck, Sun } from "lucide-react";
+import { Building2, CalendarRange, Check, DatabaseBackup, Download, FileText, Lock, LockOpen, Monitor, Moon, Palette, ShieldCheck, Sun, Trash2 } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { useAction, useApi } from "../api";
 import { ConfirmModal, ErrorBanner, Field, Loading, PageHeader, useToast } from "../components/ui";
@@ -7,6 +7,7 @@ import type { BookStatus, ISODate, Settings as SettingsData } from "../types";
 import "./Settings.css";
 import { readTheme, saveTheme, type ThemeChoice } from "../theme";
 import { currentVersion, useUpdater } from "../updater";
+import DeleteBookModal from "../flows/DeleteBookModal";
 
 // ------------------------------------------------------------- page
 
@@ -19,6 +20,7 @@ const SECTIONS = [
   { id: "backup", label: "Backup", icon: <DatabaseBackup size={16} /> },
   { id: "updates", label: "Updates", icon: <Download size={16} /> },
   { id: "data", label: "About your data", icon: <ShieldCheck size={16} /> },
+  { id: "delete", label: "Delete book", icon: <Trash2 size={16} /> },
 ];
 
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
@@ -96,6 +98,7 @@ export default function Settings() {
           <BackupCard />
           <UpdatesCard />
           <DataCard />
+          <DeleteCard />
         </div>
       </div>
     </div>
@@ -584,6 +587,28 @@ function DataCard() {
           </li>
         </ul>
       </div>
+    </SettingsCard>
+  );
+}
+
+// ------------------------------------------------------------- delete
+
+function DeleteCard() {
+  const status = useApi<BookStatus>("book.status");
+  const [open, setOpen] = useState(false);
+  const path = status.data?.path;
+  const name = status.data?.company_name ?? "";
+  return (
+    <SettingsCard
+      id="delete"
+      icon={<Trash2 size={18} />}
+      title="Delete this book"
+      desc="Closes the book, disconnects its banks, removes their keys from your keychain, and moves the file to the Trash."
+    >
+      <button className="btn btn-danger" disabled={!path} onClick={() => setOpen(true)}>
+        <Trash2 size={16} /> Delete {name || "book"}…
+      </button>
+      {path && <DeleteBookModal open={open} onClose={() => setOpen(false)} path={path} name={name} />}
     </SettingsCard>
   );
 }
