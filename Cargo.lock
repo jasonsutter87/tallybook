@@ -4101,6 +4101,7 @@ dependencies = [
  "chrono",
  "rusqlite",
  "serde",
+ "serde_json",
  "tally-core",
  "tally-store",
  "thiserror 2.0.21",

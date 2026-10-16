@@ -72,6 +72,7 @@ pub fn seed(s: &mut Store, today: NaiveDate) -> Result<(), StoreError> {
     ];
     contact(s, ContactKind::Vendor, "Pearl District Properties", "leasing@pearlprops.com")?;
     let freelancer = contact(s, ContactKind::Vendor, "Maya Chen Illustration", "maya@mayachen.art")?;
+    s.set_contact_tax(freelancer, &ContactTax { is_1099: true, w9_on_file: true, legal_name: Some("Maya L. Chen".into()), tin_last4: Some("4821".into()) })?;
     contact(s, ContactKind::Vendor, "Figma", "billing@figma.com")?;
 
     // Rules a real user would have built up.
@@ -264,6 +265,33 @@ pub fn seed(s: &mut Store, today: NaiveDate) -> Result<(), StoreError> {
                 }
                 _ => {}
             }
+        }
+    }
+    // A tax profile and the estimated payments a careful owner would have made.
+    let profile = serde_json::json!({
+        "filing_status": "single",
+        "method": "safe_harbor",
+        "other_income": 0,
+        "w2_wages": 0,
+        "withholding": 0,
+        "last_year_tax": 24_600_00,
+        "last_year_agi": 118_000_00,
+        "projected_profit": null,
+        "home_office_sqft": 0,
+        "state_rate_bp": 900
+    });
+    s.set_pref("tax.profile", Some(&profile.to_string()))?;
+    let year = today.year();
+    for (q, due) in tally_core::tax::quarterly_due_dates(year).iter().enumerate() {
+        if *due < today && *due >= start {
+            s.record_tax_payment(&NewTaxPayment {
+                tax_year: year,
+                quarter: q as u8 + 1,
+                jurisdiction: Jurisdiction::Federal,
+                date: *due,
+                amount: Cents(6_150_00),
+                account_id: checking,
+            })?;
         }
     }
     Ok(())

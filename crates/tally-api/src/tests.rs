@@ -1,3 +1,4 @@
+use chrono::Datelike;
 use super::*;
 use serde_json::json;
 
@@ -102,4 +103,38 @@ async fn demo_book_is_consistent() {
     let inbox = app.call("inbox.list", Value::Null).await.unwrap();
     let unreviewed_dupes = inbox.as_array().unwrap().iter().filter(|i| i["suggestion"].is_null()).count();
     eprintln!("inbox {} items ({} without suggestion), cash {}, AR {}", inbox.as_array().unwrap().len(), unreviewed_dupes, dash["cash"], dash["receivable"]);
+}
+
+#[tokio::test]
+async fn tax_center_end_to_end() {
+    let (app, dir) = app("tax");
+    app.call("book.create_demo", json!({ "path": dir.join("demo.tallybook") })).await.unwrap();
+    let year = today().year();
+
+    let sc = app.call("tax.schedule_c", json!({ "year": year })).await.unwrap();
+    let report = &sc["report"];
+    assert!(report["schedule"]["line1_gross_receipts"].as_i64().unwrap() > 0);
+    assert!(report["unconfirmed"].as_i64().unwrap() > 0, "suggestions start unconfirmed");
+    app.call("tax.confirm_all", json!({ "year": year })).await.unwrap();
+    let sc = app.call("tax.schedule_c", json!({ "year": year })).await.unwrap();
+    assert_eq!(sc["report"]["unconfirmed"], 0);
+
+    let est = app.call("tax.estimate", json!({ "year": year })).await.unwrap();
+    assert_eq!(est["plan_method"], "safe_harbor");
+    assert_eq!(est["safe_harbor"], 2_460_000, "AGI under $150k: 100% of last year");
+    assert_eq!(est["quarters"].as_array().unwrap().len(), 4);
+    assert!(est["estimate"]["se"]["total"].as_i64().unwrap() > 0);
+
+    let r1099 = app.call("tax.1099", json!({ "year": year })).await.unwrap();
+    let maya = r1099["rows"].as_array().unwrap().iter().find(|r| r["name"] == "Maya Chen Illustration").expect("Maya listed");
+    assert!(maya["paid_reportable"].as_i64().unwrap() > 0, "{maya}");
+
+    let out = app.call("tax.export", json!({ "year": year })).await.unwrap();
+    let out = PathBuf::from(out.as_str().unwrap());
+    for f in ["README.txt", "Schedule C worksheet.csv", "Schedule C mapping.csv", "General ledger.csv", "1099 summary.csv", "Estimated tax payments.csv"] {
+        assert!(out.join(f).exists(), "{f}");
+    }
+    assert!(std::fs::read_to_string(out.join("README.txt")).unwrap().contains("not tax advice"));
+
+    assert_eq!(app.call("tax.estimate", json!({ "year": 2019 })).await.unwrap_err().code, "unsupported_year");
 }

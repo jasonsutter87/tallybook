@@ -11,6 +11,7 @@ mod dashboard;
 mod demo;
 pub mod secrets;
 mod sync;
+mod tax_api;
 
 use chrono::{Local, NaiveDate};
 use serde::de::DeserializeOwned;
@@ -177,6 +178,9 @@ struct Accept {
     /// Also create a rule so future transactions like this auto-categorize.
     #[serde(default)]
     remember: bool,
+    /// Who was paid (for 1099s) or who paid you.
+    #[serde(default)]
+    payee_id: Option<i64>,
 }
 
 #[derive(Deserialize)]
@@ -550,6 +554,9 @@ impl App {
                 self.with(|s| {
                     let t = s.bank_txn(p.id)?;
                     let entry = s.accept(p.id, p.account_id, p.memo)?;
+                    if p.payee_id.is_some() {
+                        s.set_entry_payee(entry, p.payee_id)?;
+                    }
                     if p.remember {
                         remember_rule(s, &t, p.account_id)?;
                     }
@@ -627,6 +634,7 @@ impl App {
 
             // ---------------------------------------------------- bank connections
             m if m.starts_with("bank.") => self.bank(m, p).await,
+            m if m.starts_with("tax.") => self.tax(m, p).await,
 
             // ---------------------------------------------------- reconciliation
             "reconcile.active" => {

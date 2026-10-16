@@ -76,9 +76,17 @@ pub struct Contact {
     pub archived: bool,
     /// Customers: unpaid invoices. Vendors: unpaid bills.
     pub open_balance: Cents,
+    /// Gets a 1099-NEC when paid over the threshold.
+    pub is_1099: bool,
+    pub w9_on_file: bool,
+    /// Name as on the W-9, if different from the display name.
+    pub legal_name: Option<String>,
+    pub tin_last4: Option<String>,
 }
 
 const CONTACT_COLS: &str = "c.id, c.kind, c.name, c.company, c.email, c.phone, c.address, c.notes, c.archived";
+/// Selected after the balance column.
+const CONTACT_TAX_COLS: &str = "c.is_1099, c.w9_on_file, c.legal_name, c.tin_last4";
 
 /// Open balance (invoices + bills) per contact.
 const CONTACT_BALANCE: &str = "
@@ -107,6 +115,10 @@ fn contact_from_row(r: &Row) -> rusqlite::Result<Contact> {
         notes: r.get(7)?,
         archived: r.get(8)?,
         open_balance: Cents(r.get(9)?),
+        is_1099: r.get(10)?,
+        w9_on_file: r.get(11)?,
+        legal_name: r.get(12)?,
+        tin_last4: r.get(13)?,
     })
 }
 
@@ -398,14 +410,14 @@ impl Store {
 
     pub fn contacts(&self) -> Result<Vec<Contact>> {
         let mut stmt = self.conn.prepare(&format!(
-            "SELECT {CONTACT_COLS}, {CONTACT_BALANCE} FROM contacts c ORDER BY c.archived, c.name COLLATE NOCASE"
+            "SELECT {CONTACT_COLS}, {CONTACT_BALANCE}, {CONTACT_TAX_COLS} FROM contacts c ORDER BY c.archived, c.name COLLATE NOCASE"
         ))?;
         Ok(stmt.query_map([], contact_from_row)?.collect::<rusqlite::Result<_>>()?)
     }
 
     pub fn contact(&self, id: ContactId) -> Result<Contact> {
         self.conn
-            .query_row(&format!("SELECT {CONTACT_COLS}, {CONTACT_BALANCE} FROM contacts c WHERE c.id = ?1"), [id], contact_from_row)
+            .query_row(&format!("SELECT {CONTACT_COLS}, {CONTACT_BALANCE}, {CONTACT_TAX_COLS} FROM contacts c WHERE c.id = ?1"), [id], contact_from_row)
             .optional()?
             .ok_or(StoreError::NotFound("contact", id))
     }
@@ -539,6 +551,7 @@ impl Store {
 
         let tx = self.conn.transaction()?;
         let entry_id = post_in(&tx, &entry, "invoice", None)?;
+        tx.execute("UPDATE journal_entries SET payee_id = ?1 WHERE id = ?2", params![detail.summary.customer_id, entry_id])?;
         tx.execute("UPDATE invoices SET status = 'open', entry_id = ?1 WHERE id = ?2", params![entry_id, id])?;
         tx.commit()?;
         Ok(entry_id)
@@ -692,6 +705,7 @@ impl Store {
 
         let tx = self.conn.transaction()?;
         let entry_id = post_in(&tx, &entry, "bill", None)?;
+        tx.execute("UPDATE journal_entries SET payee_id = ?1 WHERE id = ?2", params![b.vendor_id, entry_id])?;
         tx.execute(
             "INSERT INTO bills(vendor_id, number, issue_date, due_date, memo, total, entry_id) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
             params![b.vendor_id, b.number.trim(), b.issue_date, b.due_date, b.memo.trim(), total.0, entry_id],
@@ -807,6 +821,7 @@ impl Store {
 
         let tx = self.conn.transaction()?;
         let entry_id = post_in(&tx, &entry, "payment", None)?;
+        tx.execute("UPDATE journal_entries SET payee_id = ?1 WHERE id = ?2", params![p.contact_id, entry_id])?;
         tx.execute(
             "INSERT INTO payments(kind, contact_id, date, amount, account_id, method, reference, memo, entry_id)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",

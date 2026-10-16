@@ -17,13 +17,15 @@ use tally_core::{Account, AccountId, AccountSubtype, Cents, EntryError, EntryLin
 
 mod feed;
 mod sales;
+mod tax;
 pub use feed::*;
 pub use sales::*;
+pub use tax::*;
 
 pub type LineId = i64;
 pub type ReconciliationId = i64;
 
-const SCHEMA_VERSION: i64 = 3;
+const SCHEMA_VERSION: i64 = 4;
 
 #[derive(Debug, thiserror::Error)]
 pub enum StoreError {
@@ -100,6 +102,8 @@ pub struct Entry {
     pub source: String,
     pub reverses_id: Option<EntryId>,
     pub voided_by_id: Option<EntryId>,
+    /// Customer or vendor this entry was with, if known.
+    pub payee_id: Option<i64>,
     pub lines: Vec<PostedLine>,
 }
 
@@ -259,6 +263,12 @@ impl Store {
             let tx = self.conn.transaction()?;
             tx.execute_batch(include_str!("schema_v3.sql"))?;
             tx.pragma_update(None, "user_version", 3)?;
+            tx.commit()?;
+        }
+        if version < 4 {
+            let tx = self.conn.transaction()?;
+            tx.execute_batch(include_str!("schema_v4.sql"))?;
+            tx.pragma_update(None, "user_version", 4)?;
             tx.commit()?;
         }
         Ok(())
@@ -782,9 +792,9 @@ fn post_in(tx: &Transaction, entry: &NewEntry, source: &str, reverses: Option<En
 fn entry_in(conn: &Connection, id: EntryId) -> Result<Entry> {
     let head = conn
         .query_row(
-            "SELECT date, memo, source, reverses_id, voided_by_id FROM journal_entries WHERE id = ?1",
+            "SELECT date, memo, source, reverses_id, voided_by_id, payee_id FROM journal_entries WHERE id = ?1",
             [id],
-            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)),
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?)),
         )
         .optional()?
         .ok_or(StoreError::NotFound("entry", id))?;
@@ -804,8 +814,8 @@ fn entry_in(conn: &Connection, id: EntryId) -> Result<Entry> {
             })
         })?
         .collect::<rusqlite::Result<_>>()?;
-    let (date, memo, source, reverses_id, voided_by_id) = head;
-    Ok(Entry { id, date, memo, source, reverses_id, voided_by_id, lines })
+    let (date, memo, source, reverses_id, voided_by_id, payee_id) = head;
+    Ok(Entry { id, date, memo, source, reverses_id, voided_by_id, payee_id, lines })
 }
 
 fn reconciliation_in(conn: &Connection, id: ReconciliationId) -> Result<Reconciliation> {
