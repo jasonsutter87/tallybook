@@ -264,6 +264,16 @@ impl Store {
         Ok(())
     }
 
+    /// Writes a consistent, compacted copy of the whole book to `path`.
+    pub fn backup_to(&self, path: impl AsRef<Path>) -> Result<()> {
+        let path = path.as_ref();
+        if path.exists() {
+            return rule(format!("{} already exists", path.display()));
+        }
+        self.conn.execute("VACUUM INTO ?1", [path.to_string_lossy()])?;
+        Ok(())
+    }
+
     /// Raw SQL, for tests that prove the schema's triggers hold without the API.
     #[cfg(feature = "testing")]
     pub fn debug_execute(&self, sql: &str) -> rusqlite::Result<usize> {
@@ -819,4 +829,36 @@ fn reconciliation_in(conn: &Connection, id: ReconciliationId) -> Result<Reconcil
     )
     .optional()?
     .ok_or(StoreError::NotFound("reconciliation", id))
+}
+
+impl Store {
+    /// The open reconciliation session for an account, if any.
+    pub fn active_reconciliation(&self, account_id: AccountId) -> Result<Option<Reconciliation>> {
+        let id: Option<ReconciliationId> = self
+            .conn
+            .query_row(
+                "SELECT id FROM reconciliations WHERE account_id = ?1 AND status = 'in_progress'",
+                [account_id],
+                |r| r.get(0),
+            )
+            .optional()?;
+        id.map(|id| reconciliation_in(&self.conn, id)).transpose()
+    }
+
+    /// Completed statements for an account, newest first.
+    pub fn reconciliations(&self, account_id: AccountId) -> Result<Vec<Reconciliation>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id FROM reconciliations WHERE account_id = ?1 AND status = 'completed'
+             ORDER BY statement_date DESC, id DESC",
+        )?;
+        let ids: Vec<ReconciliationId> = stmt.query_map([account_id], |r| r.get(0))?.collect::<rusqlite::Result<_>>()?;
+        ids.into_iter().map(|id| reconciliation_in(&self.conn, id)).collect()
+    }
+
+    /// Every `pref.*` setting, without the prefix.
+    pub fn prefs(&self) -> Result<std::collections::BTreeMap<String, String>> {
+        let mut stmt = self.conn.prepare("SELECT substr(key, 6), value FROM settings WHERE key LIKE 'pref.%'")?;
+        let rows = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?.collect::<rusqlite::Result<_>>()?;
+        Ok(rows)
+    }
 }
