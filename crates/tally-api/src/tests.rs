@@ -208,3 +208,53 @@ async fn encryption_lifecycle_and_new_machine_recovery() {
     assert!(!tally_store::crypto::is_encrypted_file(&path).unwrap());
     assert_eq!(app.call("reports.trial_balance", Value::Null).await.unwrap(), before);
 }
+
+#[tokio::test]
+async fn cloud_copies_are_encrypted_pruned_and_pushed() {
+    use std::process::Command;
+    let (app, dir) = app("cloud");
+    app.call("book.create", json!({ "path": dir.join("Shop.tallybook"), "company_name": "Shop" })).await.unwrap();
+
+    let drive = dir.join("Google Drive");
+    std::fs::create_dir_all(&drive).unwrap();
+    app.call("cloud.set", json!({ "folder": drive, "keep": 2 })).await.unwrap();
+    // Plain books never leave the machine.
+    assert_eq!(app.call("cloud.backup_now", Value::Null).await.unwrap_err().code, "rule");
+
+    app.call("book.encrypt", Value::Null).await.unwrap();
+    for _ in 0..3 {
+        let r = app.call("cloud.backup_now", Value::Null).await.unwrap();
+        assert_eq!(r["folder"]["ok"], true, "{r}");
+        std::thread::sleep(std::time::Duration::from_millis(1100)); // distinct timestamps
+    }
+    let copies: Vec<_> = std::fs::read_dir(drive.join("Tallybook")).unwrap().filter_map(Result::ok).map(|e| e.path()).collect();
+    assert_eq!(copies.len(), 2, "only the newest `keep` copies remain");
+    assert!(copies.iter().all(|c| tally_store::crypto::is_encrypted_file(c).unwrap()));
+
+    // A git repo with a bare remote: commits and pushes.
+    let git = |args: &[&str], cwd: &std::path::Path| {
+        let ok = Command::new("git").args(args).current_dir(cwd).env("GIT_TERMINAL_PROMPT", "0").output().unwrap();
+        assert!(ok.status.success(), "git {args:?}: {}", String::from_utf8_lossy(&ok.stderr));
+    };
+    let remote = dir.join("remote.git");
+    let repo = dir.join("backups-repo");
+    std::fs::create_dir_all(&remote).unwrap();
+    git(&["init", "--bare", "-q"], &remote);
+    git(&["clone", "-q", remote.to_str().unwrap(), repo.to_str().unwrap()], &dir);
+    git(&["config", "user.email", "test@example.com"], &repo);
+    git(&["config", "user.name", "Test"], &repo);
+    assert_eq!(app.call("cloud.set", json!({ "git": dir.join("not-a-repo") })).await.unwrap_err().code, "rule");
+    app.call("cloud.set", json!({ "git": repo, "folder": null })).await.unwrap();
+    let r = app.call("cloud.backup_now", Value::Null).await.unwrap();
+    assert_eq!(r["git"]["ok"], true, "{r}");
+    assert!(r["git"]["detail"].as_str().unwrap().contains("Pushed"));
+    assert!(r["folder"].is_null(), "folder destination was cleared");
+    let log = Command::new("git").args(["log", "--oneline", "--all"]).current_dir(&remote).output().unwrap();
+    assert!(String::from_utf8_lossy(&log.stdout).contains("Tallybook backup"), "commit reached the remote");
+    assert!(tally_store::crypto::is_encrypted_file(&repo.join("Shop.tallybook")).unwrap());
+
+    let status = app.call("cloud.status", Value::Null).await.unwrap();
+    assert_eq!(status["encrypted"], true);
+    assert_eq!(status["git_has_remote"], true);
+    assert!(status["last"].is_string() && status["last_error"].is_null());
+}

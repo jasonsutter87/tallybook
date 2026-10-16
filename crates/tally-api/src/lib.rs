@@ -8,6 +8,7 @@
 //! Money crosses the boundary as integer cents; dates as `YYYY-MM-DD`.
 
 mod books;
+mod cloud;
 mod dashboard;
 mod demo;
 pub mod secrets;
@@ -649,6 +650,7 @@ impl App {
             // ---------------------------------------------------- bank connections
             m if m.starts_with("bank.") => self.bank(m, p).await,
             m if m.starts_with("tax.") => self.tax(m, p).await,
+            m if m.starts_with("cloud.") => self.cloud(m, p).await,
             "book.delete" | "book.unlock" | "book.encrypt" | "book.decrypt" | "book.recovery_key" | "book.delete_plain_backups" => {
                 self.books(method, p).await
             }
