@@ -55,6 +55,7 @@ impl From<StoreError> for ApiError {
             StoreError::Rule(m) => ApiError::new("rule", m),
             StoreError::Entry(e) => ApiError::new("rule", e.to_string()),
             StoreError::NotFound(..) => ApiError::new("not_found", e.to_string()),
+            StoreError::Locked => ApiError::new("locked", "this book is encrypted; enter its recovery key to open it"),
             StoreError::Sqlite(e) => ApiError::new("internal", format!("database error: {e}")),
         }
     }
@@ -76,9 +77,9 @@ pub fn today() -> NaiveDate {
     Local::now().date_naive()
 }
 
-struct OpenBook {
-    store: Store,
-    path: PathBuf,
+pub(crate) struct OpenBook {
+    pub(crate) store: Store,
+    pub(crate) path: PathBuf,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -86,6 +87,9 @@ struct RecentBook {
     path: PathBuf,
     name: String,
     last_opened: String,
+    /// Computed when listing, from the file header.
+    #[serde(default)]
+    encrypted: bool,
 }
 
 pub struct App {
@@ -312,6 +316,7 @@ struct BookStatus {
     open: bool,
     path: Option<PathBuf>,
     company_name: Option<String>,
+    encrypted: bool,
     today: NaiveDate,
 }
 
@@ -389,11 +394,11 @@ impl App {
             // ---------------------------------------------------- book
             "book.status" => {
                 let guard = self.lock();
-                let (path, name) = match guard.as_ref() {
-                    Some(b) => (Some(b.path.clone()), b.store.pref("company.name")?),
-                    None => (None, None),
+                let (path, name, encrypted) = match guard.as_ref() {
+                    Some(b) => (Some(b.path.clone()), b.store.pref("company.name")?, b.store.is_encrypted()),
+                    None => (None, None, false),
                 };
-                ok(BookStatus { open: guard.is_some(), path, company_name: name, today: today() })
+                ok(BookStatus { open: guard.is_some(), path, company_name: name, encrypted, today: today() })
             }
             "book.create" => {
                 let p: CreateBook = params(p)?;
@@ -644,7 +649,9 @@ impl App {
             // ---------------------------------------------------- bank connections
             m if m.starts_with("bank.") => self.bank(m, p).await,
             m if m.starts_with("tax.") => self.tax(m, p).await,
-            "book.delete" => self.books(method, p).await,
+            "book.delete" | "book.unlock" | "book.encrypt" | "book.decrypt" | "book.recovery_key" | "book.delete_plain_backups" => {
+                self.books(method, p).await
+            }
 
             // ---------------------------------------------------- reconciliation
             "reconcile.active" => {
@@ -796,33 +803,37 @@ impl App {
         if !path.exists() {
             return Err(ApiError::new("rule", format!("{} doesn't exist", path.display())));
         }
-        let store = Store::open(path)?;
+        let store = self.open_any(path)?;
         self.install(store, path)
     }
 
-    fn install(&self, store: Store, path: &Path) -> ApiResult<Value> {
+    pub(crate) fn install(&self, store: Store, path: &Path) -> ApiResult<Value> {
         let name = store.pref("company.name")?.unwrap_or_else(|| "My Business".into());
         let path = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
         *self.lock() = Some(OpenBook { store, path: path.clone() });
         let mut recent = self.recent();
         recent.retain(|r| r.path != path);
-        recent.insert(0, RecentBook { path: path.clone(), name: name.clone(), last_opened: Local::now().to_rfc3339() });
+        recent.insert(0, RecentBook { path: path.clone(), name: name.clone(), last_opened: Local::now().to_rfc3339(), encrypted: false });
         recent.truncate(10);
         self.save_recent(&recent);
         ok(json!({ "path": path, "company_name": name }))
     }
 
-    fn recent(&self) -> Vec<RecentBook> {
+    pub(crate) fn recent(&self) -> Vec<RecentBook> {
         std::fs::read(self.config_dir.join("recent.json"))
             .ok()
             .and_then(|b| serde_json::from_slice::<Vec<RecentBook>>(&b).ok())
             .unwrap_or_default()
             .into_iter()
             .filter(|r| r.path.exists())
+            .map(|mut r| {
+                r.encrypted = tally_store::crypto::is_encrypted_file(&r.path).unwrap_or(false);
+                r
+            })
             .collect()
     }
 
-    fn save_recent(&self, recent: &[RecentBook]) {
+    pub(crate) fn save_recent(&self, recent: &[RecentBook]) {
         // Best effort: losing the recent list is an inconvenience, not data loss.
         let _ = std::fs::create_dir_all(&self.config_dir);
         if let Ok(json) = serde_json::to_vec_pretty(recent) {
@@ -836,7 +847,12 @@ impl App {
         let dir = book.path.parent().unwrap_or(Path::new(".")).join("Backups");
         std::fs::create_dir_all(&dir).map_err(|e| ApiError::new("io", e.to_string()))?;
         let stem = book.path.file_stem().and_then(|s| s.to_str()).unwrap_or("book");
-        let dest = dir.join(format!("{stem} {}.tallybook", Local::now().format("%Y-%m-%d %H%M%S")));
+        let stamp = Local::now().format("%Y-%m-%d %H%M%S").to_string();
+        // Two backups in the same second get " (2)", " (3)"… rather than failing.
+        let dest = (1..)
+            .map(|n| dir.join(if n == 1 { format!("{stem} {stamp}.tallybook") } else { format!("{stem} {stamp} ({n}).tallybook") }))
+            .find(|p| !p.exists())
+            .expect("an unused name exists");
         book.store.backup_to(&dest)?;
         ok(dest)
     }

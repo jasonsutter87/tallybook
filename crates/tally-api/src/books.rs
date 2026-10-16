@@ -5,7 +5,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 use tally_feed::plaid;
-use tally_store::{Provider, Store};
+use tally_store::crypto::{self, BookKey};
+use tally_store::{Provider, Store, StoreError};
 
 #[derive(Deserialize)]
 struct DeleteBook {
@@ -14,6 +15,26 @@ struct DeleteBook {
     confirm_name: String,
     #[serde(default)]
     include_backups: bool,
+}
+
+#[derive(Deserialize)]
+struct Unlock {
+    path: PathBuf,
+    recovery_key: String,
+    /// Save the key in the keychain so this book opens without it next time.
+    #[serde(default = "yes")]
+    remember: bool,
+}
+
+fn yes() -> bool {
+    true
+}
+
+#[derive(Serialize)]
+struct Encrypted {
+    recovery_key: String,
+    /// Dated backups made before encryption, still readable as plain files.
+    plain_backups: usize,
 }
 
 #[derive(Serialize, Default)]
@@ -57,12 +78,112 @@ fn backup_files(path: &Path) -> Vec<PathBuf> {
         .unwrap_or_default()
 }
 
+/// `path` with a suffix appended (not replacing the extension).
+fn sibling(path: &Path, suffix: &str) -> PathBuf {
+    let mut s = path.as_os_str().to_owned();
+    s.push(suffix);
+    PathBuf::from(s)
+}
+
+fn hex(key: &BookKey) -> String {
+    key.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+fn unhex(s: &str) -> Option<BookKey> {
+    if s.len() != 64 {
+        return None;
+    }
+    let mut key = [0u8; 32];
+    for (i, k) in key.iter_mut().enumerate() {
+        *k = u8::from_str_radix(&s[i * 2..i * 2 + 2], 16).ok()?;
+    }
+    Some(key)
+}
+
 impl App {
+    // ------------------------------------------------------------ key registry
+    //
+    // Book keys live in the OS keychain as "book-key:<id>". The ids (not the
+    // keys) are listed in keys.json so we know what to try. Keys aren't tied
+    // to file paths: an encrypted book, its backups and its cloud copies all
+    // open on any machine that has the key.
+
+    fn key_ids(&self) -> Vec<String> {
+        std::fs::read(self.config_dir.join("keys.json")).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default()
+    }
+
+    fn known_keys(&self) -> Vec<BookKey> {
+        self.key_ids()
+            .iter()
+            .filter_map(|id| self.secrets.get(&format!("book-key:{id}")).ok().flatten())
+            .filter_map(|h| unhex(&h))
+            .collect()
+    }
+
+    fn remember_key(&self, key: &BookKey) -> ApiResult<()> {
+        if self.known_keys().contains(key) {
+            return Ok(());
+        }
+        let id = uuid::Uuid::new_v4().to_string();
+        self.secrets.set(&format!("book-key:{id}"), &hex(key)).map_err(|e| ApiError::new("keychain", e))?;
+        let mut ids = self.key_ids();
+        ids.push(id);
+        let _ = std::fs::create_dir_all(&self.config_dir);
+        std::fs::write(self.config_dir.join("keys.json"), serde_json::to_vec(&ids).unwrap_or_default())
+            .map_err(|e| ApiError::new("io", e.to_string()))
+    }
+
+    /// Opens any book: plain ones directly, encrypted ones with a known key.
+    pub(crate) fn open_any(&self, path: &Path) -> ApiResult<Store> {
+        match Store::open(path) {
+            Err(StoreError::Locked) => {
+                for key in self.known_keys() {
+                    if let Ok(store) = Store::open_encrypted(path, &key) {
+                        return Ok(store);
+                    }
+                }
+                Err(StoreError::Locked.into())
+            }
+            other => Ok(other?),
+        }
+    }
+
+    // ------------------------------------------------------------ methods
+
     pub(crate) async fn books(&self, method: &str, p: Value) -> ApiResult<Value> {
         match method {
             "book.delete" => {
                 let p: DeleteBook = params(p)?;
                 self.delete_book(p).await
+            }
+            "book.unlock" => {
+                let p: Unlock = params(p)?;
+                let key = crypto::parse_recovery_key(&p.recovery_key)?;
+                let store = Store::open_encrypted(&p.path, &key)?;
+                if p.remember {
+                    self.remember_key(&key)?;
+                }
+                self.install(store, &p.path)
+            }
+            "book.encrypt" => self.encrypt_open_book(),
+            "book.decrypt" => self.decrypt_open_book(),
+            "book.recovery_key" => {
+                let guard = self.lock();
+                let book = guard.as_ref().ok_or_else(|| ApiError::new("no_book", "no book is open"))?;
+                let key = book.store.key().ok_or_else(|| ApiError::new("rule", "this book isn't encrypted"))?;
+                ok(crypto::recovery_key(key))
+            }
+            "book.delete_plain_backups" => {
+                let path = self.lock().as_ref().map(|b| b.path.clone()).ok_or_else(|| ApiError::new("no_book", "no book is open"))?;
+                let mut removed = 0;
+                for f in backup_files(&path) {
+                    if !crypto::is_encrypted_file(&f).unwrap_or(true) {
+                        // Permanently: a plaintext copy in the Trash defeats the point.
+                        std::fs::remove_file(&f).map_err(|e| ApiError::new("io", e.to_string()))?;
+                        removed += 1;
+                    }
+                }
+                ok(removed)
             }
             _ => Err(ApiError::new("unknown_method", format!("no such method: {method}"))),
         }
@@ -86,9 +207,12 @@ impl App {
                 *guard = None;
             }
         }
-        let (name, connections) = {
-            let store = Store::open(&path)?;
-            (store.pref("company.name")?.unwrap_or_default(), store.connections_with_secrets()?)
+        let (name, connections) = match self.open_any(&path) {
+            Ok(store) => (store.pref("company.name")?.unwrap_or_default(), store.connections_with_secrets()?),
+            // Encrypted and no key on this machine: we can't read it, so confirm
+            // with the file name instead, and there are no keychain entries to clean.
+            Err(e) if e.code == "locked" => (path.file_stem().and_then(|s| s.to_str()).unwrap_or_default().to_string(), vec![]),
+            Err(e) => return Err(e),
         };
         if p.confirm_name.trim() != name.trim() {
             return Err(ApiError::new("rule", format!("type the business name exactly (\"{name}\") to confirm")));
@@ -130,6 +254,77 @@ impl App {
         recent.retain(|r| r.path != path);
         self.save_recent(&recent);
         ok(report)
+    }
+
+    /// Converts the open book to an encrypted one in place.
+    fn encrypt_open_book(&self) -> ApiResult<Value> {
+        let path = {
+            let guard = self.lock();
+            let book = guard.as_ref().ok_or_else(|| ApiError::new("no_book", "no book is open"))?;
+            if book.store.is_encrypted() {
+                return Err(ApiError::new("rule", "this book is already encrypted"));
+            }
+            book.path.clone()
+        };
+        let key = crypto::generate_key()?;
+        // Remember the key before anything changes, so a crash can't strand the book.
+        self.remember_key(&key)?;
+        self.convert(&path, |store, tmp| store.export_encrypted(tmp, &key), |tmp| Store::open_encrypted(tmp, &key))?;
+        let plain_backups = backup_files(&path).iter().filter(|f| !crypto::is_encrypted_file(f).unwrap_or(true)).count();
+        ok(Encrypted { recovery_key: crypto::recovery_key(&key), plain_backups })
+    }
+
+    fn decrypt_open_book(&self) -> ApiResult<Value> {
+        let path = {
+            let guard = self.lock();
+            let book = guard.as_ref().ok_or_else(|| ApiError::new("no_book", "no book is open"))?;
+            if !book.store.is_encrypted() {
+                return Err(ApiError::new("rule", "this book isn't encrypted"));
+            }
+            book.path.clone()
+        };
+        self.convert(&path, |store, tmp| store.export_plain(tmp), |tmp| Store::open(tmp))?;
+        ok(())
+    }
+
+    /// Writes a converted copy next to the book, verifies it holds the same
+    /// data, then swaps it in. The original is removed only after the new
+    /// file is in place and opens.
+    fn convert(
+        &self,
+        path: &Path,
+        export: impl FnOnce(&Store, &Path) -> Result<(), StoreError>,
+        reopen: impl Fn(&Path) -> Result<Store, StoreError>,
+    ) -> ApiResult<()> {
+        let tmp = sibling(path, ".converting");
+        let old = sibling(path, ".previous");
+        let _ = std::fs::remove_file(&tmp);
+        let mut guard = self.lock();
+        let book = guard.as_mut().ok_or_else(|| ApiError::new("no_book", "no book is open"))?;
+        let before = book.store.fingerprint()?;
+        export(&book.store, &tmp)?;
+        let after = reopen(&tmp)?.fingerprint()?;
+        if before != after {
+            let _ = std::fs::remove_file(&tmp);
+            return Err(ApiError::new("internal", "the converted copy didn't match; your book was left unchanged"));
+        }
+        // Close the original (checkpoints its WAL), then swap files.
+        *guard = None;
+        let io = |e: std::io::Error| ApiError::new("io", e.to_string());
+        std::fs::rename(path, &old).map_err(io)?;
+        if let Err(e) = std::fs::rename(&tmp, path) {
+            let _ = std::fs::rename(&old, path);
+            return Err(io(e));
+        }
+        for f in book_files(&old) {
+            let _ = std::fs::remove_file(f);
+        }
+        for suffix in ["-wal", "-shm"] {
+            let _ = std::fs::remove_file(sibling(path, suffix));
+        }
+        let store = reopen(path)?;
+        *guard = Some(crate::OpenBook { store, path: path.to_path_buf() });
+        Ok(())
     }
 
     fn plaid_client_opt(&self) -> Option<plaid::Client> {

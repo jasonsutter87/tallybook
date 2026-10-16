@@ -12,7 +12,7 @@ authors = ["Jason Sutter"]
 chrono = { version = "0.4", default-features = false, features = ["std", "clock", "serde"] }
 serde = { version = "1", features = ["derive"] }
 thiserror = "2"
-rusqlite = { version = "0.37", features = ["bundled", "chrono"] }
+rusqlite = { version = "0.37", features = ["bundled-sqlcipher-vendored-openssl", "chrono"] }
 
 # Money math must never silently wrap, even in release builds.
 [profile.release]

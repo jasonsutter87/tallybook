@@ -15,6 +15,7 @@ use tally_core::reconcile::ReconcileSummary;
 use tally_core::report::{self, BalanceSheet, Balances, ProfitAndLoss, TrialBalance};
 use tally_core::{Account, AccountId, AccountSubtype, Cents, EntryError, EntryLine, NewEntry};
 
+pub mod crypto;
 mod feed;
 mod sales;
 mod tax;
@@ -35,6 +36,9 @@ pub enum StoreError {
     Entry(#[from] EntryError),
     #[error("{0} {1} not found")]
     NotFound(&'static str, i64),
+    /// The book is encrypted and was opened without its key.
+    #[error("this book is encrypted")]
+    Locked,
     /// A bookkeeping rule was violated; the message is safe to show users.
     #[error("{0}")]
     Rule(String),
@@ -220,22 +224,30 @@ fn check_not_locked(conn: &Connection, date: NaiveDate) -> Result<()> {
 
 pub struct Store {
     conn: Connection,
+    /// Set for encrypted books; also encrypts every backup made from them.
+    key: Option<crypto::BookKey>,
 }
 
 impl Store {
+    /// Opens (or creates) an unencrypted book. Encrypted books need
+    /// [`Store::open_encrypted`].
     pub fn open(path: impl AsRef<Path>) -> Result<Store> {
+        let path = path.as_ref();
+        if crypto::is_encrypted_file(path).unwrap_or(false) {
+            return Err(StoreError::Locked);
+        }
         let conn = Connection::open(path)?;
         conn.query_row("PRAGMA journal_mode = WAL", [], |_| Ok(()))?;
-        Store::init(conn)
+        Store::init(conn, None)
     }
 
     pub fn open_in_memory() -> Result<Store> {
-        Store::init(Connection::open_in_memory()?)
+        Store::init(Connection::open_in_memory()?, None)
     }
 
-    fn init(conn: Connection) -> Result<Store> {
+    fn init(conn: Connection, key: Option<crypto::BookKey>) -> Result<Store> {
         conn.pragma_update(None, "foreign_keys", true)?;
-        let mut store = Store { conn };
+        let mut store = Store { conn, key };
         store.migrate()?;
         Ok(store)
     }
@@ -275,13 +287,19 @@ impl Store {
     }
 
     /// Writes a consistent, compacted copy of the whole book to `path`.
+    /// Copies of an encrypted book are encrypted with the same key.
     pub fn backup_to(&self, path: impl AsRef<Path>) -> Result<()> {
         let path = path.as_ref();
         if path.exists() {
             return rule(format!("{} already exists", path.display()));
         }
-        self.conn.execute("VACUUM INTO ?1", [path.to_string_lossy()])?;
-        Ok(())
+        match &self.key {
+            Some(key) => self.export_encrypted(path, key),
+            None => {
+                self.conn.execute("VACUUM INTO ?1", [path.to_string_lossy()])?;
+                Ok(())
+            }
+        }
     }
 
     /// Raw SQL, for tests that prove the schema's triggers hold without the API.
