@@ -54,7 +54,7 @@ export default function Welcome() {
 
   return (
     <div style={{ minHeight: "100%", display: "grid", placeItems: "center", padding: 32 }}>
-      <div style={{ width: "100%", maxWidth: 940, display: "grid", gridTemplateColumns: "1.05fr 1fr", gap: 28, alignItems: "stretch" }}>
+      <div style={{ width: "100%", maxWidth: 940, display: "grid", gridTemplateColumns: "minmax(0, 1.05fr) minmax(0, 1fr)", gap: 28, alignItems: "stretch" }}>
         <div className="hero" style={{ padding: "40px 40px 36px", display: "flex", flexDirection: "column" }}>
           <div className="row" style={{ gap: 12 }}>
             <div className="brand-mark" style={{ background: "rgba(255,255,255,.16)", width: 40, height: 40, fontSize: 18 }}>

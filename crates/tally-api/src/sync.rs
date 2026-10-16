@@ -126,7 +126,7 @@ impl App {
             .secrets
             .get(PLAID_CREDS)
             .map_err(|e| ApiError::new("keychain", e))?
-            .ok_or_else(|| ApiError::new("plaid_not_configured", "add your Plaid keys in Settings → Bank connections first"))?;
+            .ok_or_else(|| ApiError::new("plaid_not_configured", "add your Plaid keys first: Bank connections → Connect a bank → Plaid"))?;
         let creds: plaid::Credentials = serde_json::from_str(&raw).map_err(|e| ApiError::new("keychain", e.to_string()))?;
         Ok(plaid::Client::new(creds))
     }

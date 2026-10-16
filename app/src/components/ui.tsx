@@ -458,6 +458,8 @@ export function AccountSelect(props: {
   kinds?: AccountKind[];
   subtypes?: AccountSubtype[];
   exclude?: number[];
+  /** Groups to list first, e.g. ["expense"] for money going out. */
+  prefer?: AccountKind[];
   placeholder?: string;
   autoFocus?: boolean;
 }) {
@@ -470,12 +472,13 @@ export function AccountSelect(props: {
         (!props.subtypes || props.subtypes.includes(a.subtype)) &&
         !props.exclude?.includes(a.id),
     );
-    return KIND_ORDER.flatMap((k) =>
+    const order = props.prefer ? [...props.prefer, ...KIND_ORDER.filter((k) => !props.prefer!.includes(k))] : KIND_ORDER;
+    return order.flatMap((k) =>
       accounts
         .filter((a) => a.kind === k)
         .map((a) => ({ value: a.id, label: a.name, group: KIND_LABEL[k], keywords: a.code ?? "" })),
     );
-  }, [data, props.kinds, props.subtypes, props.exclude]);
+  }, [data, props.kinds, props.subtypes, props.exclude, props.prefer]);
   return <Combobox options={options} value={props.value} onChange={props.onChange} placeholder={props.placeholder ?? "Choose a category"} autoFocus={props.autoFocus} />;
 }
 

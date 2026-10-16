@@ -8,7 +8,7 @@ import { call, queryClient, useAction, useApi } from "../api";
 import { AccountSelect, Card, EmptyState, ErrorBanner, Loading, MoneyInput, Spinner, Tabs, useAccountNames, useToast } from "../components/ui";
 import ImportModal from "../flows/ImportModal";
 import { date, money, plural, shortDate } from "../format";
-import type { Account, BankTxn, Cents, InboxItem, Split, Suggestion, SyncReport } from "../types";
+import type { Account, AccountKind, BankTxn, Cents, InboxItem, Split, Suggestion, SyncReport } from "../types";
 import "./Review.css";
 
 type Tab = "review" | "reviewed";
@@ -416,6 +416,8 @@ function RowEditor({ item, onDone }: { item: InboxItem; onDone: (id: number, tex
 
   const label = item.merchant || item.description;
   const inflow = item.amount > 0;
+  // Money in usually comes from income; money out usually goes to an expense.
+  const preferKinds: AccountKind[] = inflow ? ["income", "equity", "liability"] : ["expense", "liability"];
   const effectiveMode: Mode = mode === "match" && matches.length === 0 && !candidates.isLoading ? "categorize" : mode;
 
   const run = async (fn: () => Promise<unknown>, text: string) => {
@@ -493,7 +495,7 @@ function RowEditor({ item, onDone }: { item: InboxItem; onDone: (id: number, tex
           <div className="rv-editor-grid">
             <div className="field" onKeyDownCapture={onComboKeyCapture} onKeyDown={onComboKey}>
               <span className="label">{inflow ? "Where did this come from?" : "Where did this go?"}</span>
-              <AccountSelect value={accountId} onChange={setAccountId} exclude={excludeSelf} autoFocus={suggested == null} />
+              <AccountSelect value={accountId} onChange={setAccountId} exclude={excludeSelf} prefer={preferKinds} autoFocus={suggested == null} />
             </div>
             <label className="field">
               <span className="label">Memo (optional)</span>
@@ -538,7 +540,7 @@ function RowEditor({ item, onDone }: { item: InboxItem; onDone: (id: number, tex
           </div>
           {splits.map((s) => (
             <div key={s.key} className="rv-split-row">
-              <AccountSelect value={s.account_id} onChange={(v) => setSplit(s.key, { account_id: v })} exclude={excludeSelf} />
+              <AccountSelect value={s.account_id} onChange={(v) => setSplit(s.key, { account_id: v })} exclude={excludeSelf} prefer={preferKinds} />
               <MoneyInput value={s.amount} onChange={(v) => setSplit(s.key, { amount: v })} />
               <input className="input" placeholder="Memo" value={s.memo} onChange={(e) => setSplit(s.key, { memo: e.target.value })} />
               <button
