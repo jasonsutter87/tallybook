@@ -135,6 +135,13 @@ You only need to do this once.
   `Documents/Tallybook` unless you choose somewhere else.
 - **Backups.** **Settings → Back up now** saves a complete copy next to your
   book. Copying the file works too.
+- **Encryption.** One click locks the whole book file with a random 256-bit
+  key. It opens normally on your computer (the key lives in your keychain),
+  and you keep a **recovery key** for anywhere else. Without the key, the
+  file is unreadable.
+- **Encrypted cloud copies.** Send encrypted copies to Google Drive, iCloud
+  Drive, Dropbox, OneDrive or Nextcloud (any synced folder), or push them to a
+  Git repository. Only encrypted books can leave your computer.
 - **Bank logins stay secret.** Bank access is stored in your computer's
   keychain, never in the book file. Your bank password is only ever typed
   into your bank's (or Plaid's) own page.

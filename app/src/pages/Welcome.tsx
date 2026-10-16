@@ -1,8 +1,9 @@
 import { BookOpen, FolderOpen, Lock, MoreHorizontal, Plus, Sparkles } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { isTauri, useAction, useApi } from "../api";
+import { ApiError, isTauri, useAction, useApi } from "../api";
 import { Field, Modal, useToast } from "../components/ui";
 import DeleteBookModal from "../flows/DeleteBookModal";
+import UnlockBookModal from "../flows/UnlockBookModal";
 import type { RecentBook } from "../types";
 
 function joinPath(dir: string, name: string) {
@@ -33,6 +34,16 @@ export default function Welcome() {
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
 
+  const [locked, setLocked] = useState<string | null>(null);
+  /** Opens a book, asking for its recovery key if it's encrypted and unknown here. */
+  const openBook = async (path: string) => {
+    try {
+      await open.mutateAsync({ path });
+    } catch (e) {
+      if (e instanceof ApiError && e.code === "locked") setLocked(path);
+      else toast.error(e);
+    }
+  };
   const run = async (p: Promise<unknown>) => {
     try {
       await p;
@@ -94,7 +105,7 @@ export default function Welcome() {
           <button className="btn btn-primary btn-lg btn-block" onClick={() => setCreating(true)}>
             <Plus size={18} /> Create a new book
           </button>
-          <button className="btn btn-secondary btn-lg btn-block" onClick={async () => { const p = await pickOpenPath(); if (p) await run(open.mutateAsync({ path: p })); }}>
+          <button className="btn btn-secondary btn-lg btn-block" onClick={async () => { const p = await pickOpenPath(); if (p) await openBook(p); }}>
             <FolderOpen size={18} /> Open a book
           </button>
           <button className="btn btn-ghost btn-block" disabled={createDemo.isPending} onClick={doDemo}>
@@ -107,7 +118,7 @@ export default function Welcome() {
               <div className="label">Recent</div>
               <div className="stack-sm">
                 {recent.data.slice(0, 3).map((r) => (
-                  <RecentRow key={r.path} book={r} onOpen={() => run(open.mutateAsync({ path: r.path }))} />
+                  <RecentRow key={r.path} book={r} onOpen={() => openBook(r.path)} />
                 ))}
               </div>
             </>
@@ -115,6 +126,7 @@ export default function Welcome() {
         </div>
       </div>
 
+      <UnlockBookModal path={locked} onClose={() => setLocked(null)} />
       <Modal
         open={creating}
         onClose={() => setCreating(false)}
@@ -174,7 +186,10 @@ function RecentRow(props: { book: RecentBook; onOpen: () => void }) {
         <button className="row grow" style={{ border: 0, background: "none", textAlign: "left", cursor: "pointer", padding: "4px 0", gap: 14, minWidth: 0 }} onClick={props.onOpen}>
           <div className="avatar">{r.name.slice(0, 1).toUpperCase()}</div>
           <div className="grow" style={{ minWidth: 0 }}>
-            <div className="bold truncate">{r.name}</div>
+            <div className="row" style={{ gap: 6, minWidth: 0 }}>
+              <span className="bold truncate">{r.name}</span>
+              {r.encrypted && <Lock size={13} className="subtle" aria-label="Encrypted" style={{ flexShrink: 0 }} />}
+            </div>
             <div className="subtle tiny truncate">{r.path}</div>
           </div>
         </button>

@@ -1,9 +1,9 @@
-import { Building2, CalendarRange, Check, DatabaseBackup, Download, FileText, Lock, LockOpen, Monitor, Moon, Palette, ShieldCheck, Sun, Trash2 } from "lucide-react";
+import { Building2, CalendarRange, Check, Cloud, Copy, GitBranch, KeyRound, ShieldOff, DatabaseBackup, Download, FileText, Lock, LockOpen, Monitor, Moon, Palette, ShieldCheck, Sun, Trash2 } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
-import { useAction, useApi } from "../api";
-import { ConfirmModal, ErrorBanner, Field, Loading, PageHeader, useToast } from "../components/ui";
+import { call, isTauri, useAction, useApi } from "../api";
+import { ConfirmModal, ErrorBanner, Field, Loading, Modal, PageHeader, useToast } from "../components/ui";
 import { date } from "../format";
-import type { BookStatus, ISODate, Settings as SettingsData } from "../types";
+import type { BookStatus, CloudBackupReport, CloudStatus, EncryptResult, ISODate, Settings as SettingsData } from "../types";
 import "./Settings.css";
 import { readTheme, saveTheme, type ThemeChoice } from "../theme";
 import { currentVersion, useUpdater } from "../updater";
@@ -17,6 +17,8 @@ const SECTIONS = [
   { id: "fiscal", label: "Fiscal year", icon: <CalendarRange size={16} /> },
   { id: "lock", label: "Close the books", icon: <Lock size={16} /> },
   { id: "appearance", label: "Appearance", icon: <Palette size={16} /> },
+  { id: "security", label: "Encryption", icon: <ShieldCheck size={16} /> },
+  { id: "cloud", label: "Cloud copies", icon: <Cloud size={16} /> },
   { id: "backup", label: "Backup", icon: <DatabaseBackup size={16} /> },
   { id: "updates", label: "Updates", icon: <Download size={16} /> },
   { id: "data", label: "About your data", icon: <ShieldCheck size={16} /> },
@@ -95,6 +97,8 @@ export default function Settings() {
           <FiscalCard current={data.fiscal_year_start_month} />
           <LockCard lockDate={data.lock_date} />
           <AppearanceCard />
+          <SecurityCard />
+          <CloudCard />
           <BackupCard />
           <UpdatesCard />
           <DataCard />
@@ -609,6 +613,371 @@ function DeleteCard() {
         <Trash2 size={16} /> Delete {name || "book"}…
       </button>
       {path && <DeleteBookModal open={open} onClose={() => setOpen(false)} path={path} name={name} />}
+    </SettingsCard>
+  );
+}
+
+// ------------------------------------------------------------- encryption
+
+/** Shows a recovery key with copy, and a "saved it" acknowledgement. */
+function RecoveryKeyView(props: { recoveryKey: string }) {
+  const toast = useToast();
+  return (
+    <div className="stack-sm">
+      <div
+        style={{
+          fontFamily: "var(--mono)",
+          fontSize: 15,
+          lineHeight: 1.7,
+          letterSpacing: ".04em",
+          padding: "14px 16px",
+          borderRadius: 12,
+          background: "var(--surface-2)",
+          border: "1px dashed var(--line-strong)",
+          wordBreak: "break-all",
+          userSelect: "all",
+        }}
+      >
+        {props.recoveryKey}
+      </div>
+      <button
+        className="btn btn-secondary btn-sm"
+        style={{ alignSelf: "flex-start" }}
+        onClick={async () => {
+          try {
+            await navigator.clipboard.writeText(props.recoveryKey);
+            toast({ text: "Recovery key copied. Paste it into your password manager." });
+          } catch (e) {
+            toast.error(e);
+          }
+        }}
+      >
+        <Copy size={14} /> Copy
+      </button>
+    </div>
+  );
+}
+
+function SecurityCard() {
+  const toast = useToast();
+  const status = useApi<BookStatus>("book.status");
+  const encrypt = useAction<EncryptResult>("book.encrypt");
+  const decrypt = useAction("book.decrypt");
+  const dropPlain = useAction<number>("book.delete_plain_backups");
+  const [confirming, setConfirming] = useState(false);
+  const [result, setResult] = useState<EncryptResult | null>(null);
+  const [saved, setSaved] = useState(false);
+  const [shown, setShown] = useState<string | null>(null);
+  const [turningOff, setTurningOff] = useState(false);
+  const encrypted = !!status.data?.encrypted;
+
+  return (
+    <SettingsCard
+      id="security"
+      icon={<ShieldCheck size={18} />}
+      title="Encryption"
+      desc="Lock the whole book file with a random 256-bit key. Without the key the file is unreadable, whether it's on a lost laptop, in a backup, or in the cloud."
+    >
+      {encrypted ? (
+        <div className="stack">
+          <div className="banner" style={{ background: "var(--pos-soft)", color: "var(--pos)" }}>
+            <ShieldCheck size={18} /> This book is encrypted. It opens automatically on this computer because its key is in your keychain.
+          </div>
+          <div className="row" style={{ gap: 10, flexWrap: "wrap" }}>
+            <button
+              className="btn btn-secondary"
+              onClick={async () => {
+                try {
+                  setShown(await call<string>("book.recovery_key"));
+                } catch (e) {
+                  toast.error(e);
+                }
+              }}
+            >
+              <KeyRound size={16} /> Show recovery key
+            </button>
+            <button className="btn btn-ghost" onClick={() => setTurningOff(true)}>
+              <ShieldOff size={16} /> Turn off encryption
+            </button>
+          </div>
+          {shown && (
+            <div className="stack-sm">
+              <div className="label">Recovery key</div>
+              <RecoveryKeyView recoveryKey={shown} />
+              <button className="btn btn-ghost btn-sm" style={{ alignSelf: "flex-start" }} onClick={() => setShown(null)}>
+                Hide
+              </button>
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="stack">
+          <ul className="muted" style={{ margin: 0, paddingLeft: 20, lineHeight: 1.7 }}>
+            <li>Day to day nothing changes: the key is kept in your system keychain.</li>
+            <li>You get a <b>recovery key</b> to open the book on another computer or restore a cloud copy. Keep it somewhere safe, like a password manager.</li>
+            <li>Backups and cloud copies made from now on are encrypted too.</li>
+          </ul>
+          <button className="btn btn-primary" style={{ alignSelf: "flex-start" }} onClick={() => setConfirming(true)}>
+            <ShieldCheck size={16} /> Encrypt this book
+          </button>
+        </div>
+      )}
+
+      <Modal
+        open={confirming}
+        onClose={() => {
+          if (!result || saved) {
+            setConfirming(false);
+            setResult(null);
+            setSaved(false);
+          }
+        }}
+        title={result ? "Save your recovery key" : "Encrypt this book?"}
+        footer={
+          result ? (
+            <button
+              className="btn btn-primary"
+              disabled={!saved}
+              onClick={() => {
+                setConfirming(false);
+                setResult(null);
+                setSaved(false);
+              }}
+            >
+              Done
+            </button>
+          ) : (
+            <>
+              <button className="btn btn-secondary" onClick={() => setConfirming(false)}>
+                Cancel
+              </button>
+              <button
+                className="btn btn-primary"
+                disabled={encrypt.isPending}
+                onClick={async () => {
+                  try {
+                    setResult(await encrypt.mutateAsync(null));
+                  } catch (e) {
+                    toast.error(e);
+                  }
+                }}
+              >
+                {encrypt.isPending ? "Encrypting…" : "Encrypt"}
+              </button>
+            </>
+          )
+        }
+      >
+        {result ? (
+          <div className="stack">
+            <div className="muted">
+              This is the <b>only</b> way to open this book on another computer, or to restore it if this computer's keychain is lost. Tallybook can't recover it for you.
+            </div>
+            <RecoveryKeyView recoveryKey={result.recovery_key} />
+            {result.plain_backups > 0 && (
+              <div className="banner warn" style={{ alignItems: "flex-start" }}>
+                <span style={{ fontWeight: 500 }}>
+                  {result.plain_backups === 1 ? "1 backup" : `${result.plain_backups} backups`} from before encryption can still be read by anyone with the file.{" "}
+                  <button
+                    className="btn btn-secondary btn-sm"
+                    style={{ marginTop: 8 }}
+                    onClick={async () => {
+                      try {
+                        const n = await dropPlain.mutateAsync(null);
+                        setResult({ ...result, plain_backups: 0 });
+                        toast({ text: `Deleted ${n} unencrypted ${n === 1 ? "backup" : "backups"}` });
+                      } catch (e) {
+                        toast.error(e);
+                      }
+                    }}
+                  >
+                    Delete them permanently
+                  </button>
+                </span>
+              </div>
+            )}
+            <label className="row" style={{ gap: 10, cursor: "pointer", fontWeight: 600 }}>
+              <input type="checkbox" className="checkbox" checked={saved} onChange={(e) => setSaved(e.target.checked)} />
+              I've saved my recovery key somewhere safe
+            </label>
+          </div>
+        ) : (
+          <div className="muted">
+            Tallybook will make an encrypted copy, check that it matches your book exactly, and then replace the original. It takes a moment. You'll see your recovery key next.
+          </div>
+        )}
+      </Modal>
+
+      <ConfirmModal
+        open={turningOff}
+        onClose={() => setTurningOff(false)}
+        title="Turn off encryption?"
+        body="The book file will be stored unencrypted again. Existing encrypted backups and cloud copies stay encrypted and still need the recovery key."
+        confirmLabel="Turn off encryption"
+        danger
+        onConfirm={async () => {
+          try {
+            await decrypt.mutateAsync(null);
+            toast({ text: "Encryption turned off" });
+          } catch (e) {
+            toast.error(e);
+          }
+        }}
+      />
+    </SettingsCard>
+  );
+}
+
+// ------------------------------------------------------------- cloud copies
+
+async function pickFolder(): Promise<string | null> {
+  if (!isTauri) return null;
+  const { open } = await import("@tauri-apps/plugin-dialog");
+  const r = await open({ directory: true, multiple: false });
+  return typeof r === "string" ? r : null;
+}
+
+function CloudCard() {
+  const toast = useToast();
+  const status = useApi<CloudStatus>("cloud.status");
+  const set = useAction("cloud.set");
+  const backup = useAction<CloudBackupReport>("cloud.backup_now");
+  const [typedFolder, setTypedFolder] = useState("");
+  const [typedRepo, setTypedRepo] = useState("");
+  const s = status.data;
+
+  const save = async (patch: Record<string, unknown>) => {
+    try {
+      await set.mutateAsync(patch);
+    } catch (e) {
+      toast.error(e);
+    }
+  };
+
+  const destination = (kind: "folder" | "git", value: string | null) => {
+    const isGit = kind === "git";
+    const typed = isGit ? typedRepo : typedFolder;
+    const setTyped = isGit ? setTypedRepo : setTypedFolder;
+    return (
+      <div className="stack-sm">
+        <div className="label row" style={{ gap: 6 }}>
+          {isGit ? <GitBranch size={14} /> : <Cloud size={14} />}
+          {isGit ? "Git repository" : "Synced folder"}
+        </div>
+        {value ? (
+          <div className="row" style={{ gap: 8 }}>
+            <div className="path-box grow" style={{ margin: 0 }}>
+              {value}
+            </div>
+            <button className="btn btn-ghost btn-sm" onClick={() => save({ [kind]: null })}>
+              Remove
+            </button>
+          </div>
+        ) : (
+          <>
+            {!isGit && !!s?.suggestions.length && (
+              <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+                {s.suggestions.map((g) => (
+                  <button key={g.path} className="btn btn-secondary btn-sm" onClick={() => save({ folder: g.path })}>
+                    <Cloud size={13} /> {g.label}
+                  </button>
+                ))}
+              </div>
+            )}
+            <div className="row" style={{ gap: 8 }}>
+              {isTauri ? (
+                <button
+                  className="btn btn-secondary btn-sm"
+                  onClick={async () => {
+                    const p = await pickFolder();
+                    if (p) await save({ [kind]: p });
+                  }}
+                >
+                  Choose {isGit ? "repository" : "folder"}…
+                </button>
+              ) : (
+                <>
+                  <input className="input grow" placeholder={isGit ? "/path/to/cloned/repo" : "/path/to/synced/folder"} value={typed} onChange={(e) => setTyped(e.target.value)} />
+                  <button className="btn btn-secondary btn-sm" disabled={!typed.trim()} onClick={() => save({ [kind]: typed.trim() })}>
+                    Use
+                  </button>
+                </>
+              )}
+            </div>
+            <div className="hint">
+              {isGit
+                ? "A repository you've already cloned (ideally private). Tallybook commits the encrypted book and pushes with your own git login."
+                : "Pick your Google Drive, iCloud Drive, Dropbox or OneDrive folder. Their desktop apps upload what Tallybook saves there."}
+            </div>
+          </>
+        )}
+        {isGit && value && !s?.git_has_remote && <div className="hint">This repository has no remote yet, so copies are committed locally only.</div>}
+      </div>
+    );
+  };
+
+  return (
+    <SettingsCard
+      id="cloud"
+      icon={<Cloud size={18} />}
+      title="Cloud copies"
+      desc="Keep encrypted copies off this computer. Only encrypted books can be copied, so nothing readable ever leaves your machine."
+    >
+      {!s ? (
+        <Loading />
+      ) : !s.encrypted ? (
+        <div className="banner warn">
+          <ShieldCheck size={18} /> Turn on encryption above first. Cloud copies are always encrypted.
+        </div>
+      ) : (
+        <div className="stack" style={{ gap: 20 }}>
+          {destination("folder", s.folder)}
+          {destination("git", s.git)}
+          <div className="divider" style={{ margin: 0 }} />
+          <div className="row" style={{ gap: 16, flexWrap: "wrap" }}>
+            <label className="switch">
+              <input type="checkbox" checked={s.auto} onChange={(e) => save({ auto: e.target.checked })} />
+              Copy automatically once a day
+            </label>
+            <label className="row small muted" style={{ gap: 8 }}>
+              Keep the last
+              <select className="select" style={{ width: 80, height: 32 }} value={s.keep} onChange={(e) => save({ keep: Number(e.target.value) })}>
+                {[3, 5, 10, 20, 50].map((n) => (
+                  <option key={n} value={n}>
+                    {n}
+                  </option>
+                ))}
+              </select>
+              copies in the folder
+            </label>
+          </div>
+          <div className="row" style={{ gap: 12, flexWrap: "wrap" }}>
+            <button
+              className="btn btn-primary"
+              disabled={backup.isPending || (!s.folder && !s.git)}
+              onClick={async () => {
+                try {
+                  const r = await backup.mutateAsync(null);
+                  for (const [label, d] of [["Folder", r.folder], ["Git", r.git]] as const) {
+                    if (!d) continue;
+                    if (d.ok) toast({ text: `${label}: copied${d.detail ? `. ${d.detail}` : ""}` });
+                    else toast.error(`${label}: ${d.detail}`);
+                  }
+                } catch (e) {
+                  toast.error(e);
+                }
+              }}
+            >
+              <Cloud size={16} /> {backup.isPending ? "Copying…" : "Copy now"}
+            </button>
+            <span className="muted small">
+              {s.last ? `Last copy ${new Date(s.last).toLocaleString()}` : "No copies yet"}
+              {s.last_error && <span className="neg"> · {s.last_error}</span>}
+            </span>
+          </div>
+          <div className="hint">To restore: open the copy in Tallybook (Welcome → Open a book) and enter your recovery key.</div>
+        </div>
+      )}
     </SettingsCard>
   );
 }

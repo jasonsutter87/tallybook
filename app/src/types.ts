@@ -506,6 +506,7 @@ export interface BookStatus {
   open: boolean;
   path: string | null;
   company_name: string | null;
+  encrypted: boolean;
   today: ISODate;
 }
 
@@ -513,6 +514,32 @@ export interface RecentBook {
   path: string;
   name: string;
   last_opened: string;
+  encrypted: boolean;
+}
+
+export interface EncryptResult {
+  /** Shown once: TB1-XXXXX-… */
+  recovery_key: string;
+  /** Backups made before encrypting, still readable. */
+  plain_backups: number;
+}
+
+export interface CloudStatus {
+  encrypted: boolean;
+  folder: string | null;
+  git: string | null;
+  git_has_remote: boolean;
+  auto: boolean;
+  keep: number;
+  last: string | null;
+  last_error: string | null;
+  due: boolean;
+  suggestions: { label: string; path: string }[];
+}
+
+export interface CloudBackupReport {
+  folder: { ok: boolean; path: string | null; detail: string | null } | null;
+  git: { ok: boolean; path: string | null; detail: string | null } | null;
 }
 
 export interface Settings {

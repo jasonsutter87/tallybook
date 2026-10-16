@@ -3,6 +3,7 @@ import { Route, Routes } from "react-router-dom";
 import { useApi } from "./api";
 import Sidebar from "./components/Sidebar";
 import UpdateBanner from "./components/UpdateBanner";
+import AutoCloudCopy from "./components/AutoCloudCopy";
 import { Loading } from "./components/ui";
 import Dashboard from "./pages/Dashboard";
 import Welcome from "./pages/Welcome";
@@ -60,6 +61,7 @@ export default function App() {
         </Suspense>
       </main>
       <UpdateBanner />
+      <AutoCloudCopy key={status.data.path ?? ""} />
     </div>
   );
 }

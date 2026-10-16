@@ -113,6 +113,9 @@ fn suggestions() -> Vec<Suggestion> {
                 add("Dropbox".into(), p);
             } else if name.starts_with("Box") {
                 add("Box".into(), p);
+            } else if !name.starts_with('.') {
+                // Any other File Provider (Nextcloud, pCloud, Proton Drive…): "Nextcloud-host-user" → "Nextcloud".
+                add(name.split('-').next().unwrap_or(&name).to_string(), p);
             }
         }
     }
