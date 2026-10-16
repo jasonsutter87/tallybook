@@ -105,6 +105,13 @@ struct OpeningSuggestion {
     bank_balance: Cents,
 }
 
+/// What a provider returned, keyed by the provider's account id.
+struct Fetched {
+    batches: HashMap<String, FeedBatch>,
+    balances: HashMap<String, Option<Cents>>,
+    cursor: String,
+}
+
 fn plaid_err(e: plaid::PlaidError) -> ApiError {
     ApiError::new("bank", e.to_string())
 }
@@ -300,7 +307,7 @@ impl App {
         let secret = self.secret(&conn)?;
 
         // Fetch outside the lock.
-        let fetched: Result<(HashMap<String, FeedBatch>, HashMap<String, Option<Cents>>, String), (ConnectionStatus, String)> = match conn.provider {
+        let fetched: Result<Fetched, (ConnectionStatus, String)> = match conn.provider {
             Provider::Plaid => {
                 let client = self.plaid_client()?;
                 match client.sync(&secret, &conn.cursor).await {
@@ -324,7 +331,7 @@ impl App {
                             .await
                             .map(|accts| accts.into_iter().map(|a| (a.external_id, a.current_balance)).collect())
                             .unwrap_or_default();
-                        Ok((per, balances, result.next_cursor))
+                        Ok(Fetched { batches: per, balances, cursor: result.next_cursor })
                     }
                 }
             }
@@ -342,7 +349,7 @@ impl App {
                             balances.insert(a.account.external_id.clone(), a.account.current_balance);
                             per.insert(a.account.external_id, FeedBatch { added: a.transactions, ..Default::default() });
                         }
-                        Ok((per, balances, String::new()))
+                        Ok(Fetched { batches: per, balances, cursor: String::new() })
                     }
                 }
             }
@@ -358,7 +365,7 @@ impl App {
                 report.ok = false;
                 report.error = Some(message);
             }
-            Ok((mut per, balances, cursor)) => {
+            Ok(Fetched { batches: mut per, balances, cursor }) => {
                 for l in &links {
                     if let Some(batch) = per.remove(&l.external_account_id) {
                         let r = s.import_feed(l.ledger_account_id, &batch)?;

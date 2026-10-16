@@ -1,3 +1,7 @@
+// Amounts are written as dollars_cents (e.g. 3_200_00), hence the grouping.
+#![allow(clippy::inconsistent_digit_grouping)]
+
+
 //! "Try it with sample data": a small design studio with six months of
 //! believable history, open invoices, bills, and a bank-feed inbox to review.
 
