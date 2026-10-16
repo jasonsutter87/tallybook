@@ -1,0 +1,19 @@
+[workspace]
+resolver = "2"
+members = ["crates/tally-core", "crates/tally-store"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "AGPL-3.0-or-later"
+authors = ["Jason Sutter"]
+
+[workspace.dependencies]
+chrono = { version = "0.4", default-features = false, features = ["std", "clock", "serde"] }
+serde = { version = "1", features = ["derive"] }
+thiserror = "2"
+rusqlite = { version = "0.37", features = ["bundled", "chrono"] }
+
+# Money math must never silently wrap, even in release builds.
+[profile.release]
+overflow-checks = true

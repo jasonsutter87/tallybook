@@ -1,0 +1,21 @@
+[package]
+name = "tally-store"
+description = "SQLite persistence for Tallybook books."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+tally-core = { path = "../tally-core" }
+chrono.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+rusqlite.workspace = true
+
+[features]
+# Exposes raw SQL access for integration tests only.
+testing = []
+
+[dev-dependencies]
+tally-store = { path = ".", features = ["testing"] }
