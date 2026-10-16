@@ -197,7 +197,7 @@ function InProgress({ account, rec }: { account: Account; rec: Reconciliation })
     setPending((p) => ({ ...p, ...Object.fromEntries(changed.map((l) => [l.line_id, checked])) }));
     if (changed.length > 1) setBusy(true);
     try {
-      for (const l of changed) await call("reconcile.toggle", { id: rec.id, line_id: l.line_id, checked });
+      await call("reconcile.toggle_many", { id: rec.id, line_ids: changed.map((l) => l.line_id), checked });
     } catch (e) {
       toast.error(e);
     } finally {

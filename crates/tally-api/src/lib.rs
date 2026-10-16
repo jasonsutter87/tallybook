@@ -237,6 +237,13 @@ struct Toggle {
 }
 
 #[derive(Deserialize)]
+struct ToggleMany {
+    id: ReconciliationId,
+    line_ids: Vec<LineId>,
+    checked: bool,
+}
+
+#[derive(Deserialize)]
 struct AccountOnly {
     account_id: AccountId,
 }
@@ -284,6 +291,13 @@ struct AccountView {
     balance: Cents,
     link: Option<BankLink>,
     reconcilable: bool,
+}
+
+#[derive(Serialize)]
+struct ReviewedView {
+    #[serde(flatten)]
+    txn: BankTxn,
+    categories: Vec<AccountId>,
 }
 
 #[derive(Serialize)]
@@ -507,7 +521,21 @@ impl App {
             }
             "inbox.reviewed" => {
                 let p: MaybeAccount = params(p)?;
-                self.with(|s| s.reviewed(p.account_id, 200))
+                self.with(|s| {
+                    s.reviewed(p.account_id, 200)?
+                        .into_iter()
+                        .map(|txn| {
+                            // Where a posted transaction was filed: every line but the bank's own.
+                            let categories = match (txn.status, txn.entry_id) {
+                                (BankTxnStatus::Posted, Some(entry)) => {
+                                    s.entry(entry)?.lines.iter().filter(|l| Some(l.id) != txn.line_id).map(|l| l.account_id).collect()
+                                }
+                                _ => vec![],
+                            };
+                            Ok(ReviewedView { txn, categories })
+                        })
+                        .collect::<Result<Vec<_>, StoreError>>()
+                })
             }
             "inbox.count" => self.with(|s| s.inbox_count()),
             "inbox.candidates" => {
@@ -620,6 +648,10 @@ impl App {
             "reconcile.toggle" => {
                 let p: Toggle = params(p)?;
                 self.with(|s| s.set_cleared(p.id, p.line_id, p.checked))
+            }
+            "reconcile.toggle_many" => {
+                let p: ToggleMany = params(p)?;
+                self.with(|s| p.line_ids.iter().try_for_each(|line| s.set_cleared(p.id, *line, p.checked)))
             }
             "reconcile.summary" => {
                 let p: Id = params(p)?;

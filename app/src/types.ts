@@ -205,6 +205,11 @@ export interface BankTxn {
   rule_id: number | null;
 }
 
+export interface ReviewedTxn extends BankTxn {
+  /** Accounts a posted transaction was filed to (more than one for a split). */
+  categories: number[];
+}
+
 export interface InboxItem extends BankTxn {
   suggestion: Suggestion | null;
 }

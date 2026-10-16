@@ -8,7 +8,7 @@ import { call, queryClient, useAction, useApi } from "../api";
 import { AccountSelect, Card, EmptyState, ErrorBanner, Loading, MoneyInput, Spinner, Tabs, useAccountNames, useToast } from "../components/ui";
 import ImportModal from "../flows/ImportModal";
 import { date, money, plural, shortDate } from "../format";
-import type { Account, AccountKind, BankTxn, Cents, InboxItem, Split, Suggestion, SyncReport } from "../types";
+import type { Account, AccountKind, ReviewedTxn, Cents, InboxItem, Split, Suggestion, SyncReport } from "../types";
 import "./Review.css";
 
 type Tab = "review" | "reviewed";
@@ -80,8 +80,8 @@ export default function Review() {
 
   const inbox = useApi<InboxItem[]>("inbox.list");
   const accounts = useApi<Account[]>("accounts.list");
-  const allReviewed = useApi<BankTxn[]>("inbox.reviewed", { account_id: null });
-  const reviewed = useApi<BankTxn[]>("inbox.reviewed", { account_id: accountFilter }, { enabled: tab === "reviewed" });
+  const allReviewed = useApi<ReviewedTxn[]>("inbox.reviewed", { account_id: null });
+  const reviewed = useApi<ReviewedTxn[]>("inbox.reviewed", { account_id: accountFilter }, { enabled: tab === "reviewed" });
 
   const sync = useAction<SyncReport[]>("bank.sync");
   const acceptSuggested = useAction<{ accepted: number; skipped: number }, { ids: number[] }>("inbox.accept_suggested");
@@ -320,7 +320,7 @@ export default function Review() {
 
 // ------------------------------------------------------------- reviewed tab
 
-function ReviewedList(props: { rows: BankTxn[] | undefined; loading: boolean; error: Error | null; showAccount: boolean }) {
+function ReviewedList(props: { rows: ReviewedTxn[] | undefined; loading: boolean; error: Error | null; showAccount: boolean }) {
   const name = useAccountNames();
   const toast = useToast();
   const [busy, setBusy] = useState<number | null>(null);
@@ -336,7 +336,9 @@ function ReviewedList(props: { rows: BankTxn[] | undefined; loading: boolean; er
   return (
     <Card pad={false}>
       {rows.map((t) => {
-        const [label, cls] = REVIEWED_PILL[t.status] ?? [t.status, ""];
+        const [baseLabel, cls] = REVIEWED_PILL[t.status] ?? [t.status, ""];
+        const label =
+          t.categories.length === 1 ? `→ ${name(t.categories[0])}` : t.categories.length > 1 ? `Split · ${t.categories.length} categories` : baseLabel;
         return (
           <div key={t.id} className="rv-row reviewed">
             <DateTile iso={t.date} />

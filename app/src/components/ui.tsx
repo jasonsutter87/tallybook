@@ -366,6 +366,8 @@ export function Combobox(props: {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
+  // True once the user has moved through the menu with the arrow keys.
+  const [navigated, setNavigated] = useState(false);
   const wrap = useRef<HTMLDivElement>(null);
   const selected = props.options.find((o) => o.value === props.value);
 
@@ -387,6 +389,7 @@ export function Combobox(props: {
     props.onChange(o.value);
     setOpen(false);
     setQuery("");
+    setNavigated(false);
   };
 
   let lastGroup: string | undefined;
@@ -398,7 +401,10 @@ export function Combobox(props: {
         autoFocus={props.autoFocus}
         placeholder={selected ? selected.label : (props.placeholder ?? "Choose…")}
         value={open ? query : (selected?.label ?? "")}
-        onFocus={() => setOpen(true)}
+        onFocus={() => {
+          setOpen(true);
+          setNavigated(false);
+        }}
         onChange={(e) => {
           setQuery(e.target.value);
           setOpen(true);
@@ -407,10 +413,15 @@ export function Combobox(props: {
           if (e.key === "ArrowDown") {
             e.preventDefault();
             setOpen(true);
+            setNavigated(true);
             setActive((a) => Math.min(a + 1, filtered.length - 1));
           } else if (e.key === "ArrowUp") {
             e.preventDefault();
+            setNavigated(true);
             setActive((a) => Math.max(a - 1, 0));
+          } else if (e.key === "Enter" && open && props.value != null && !query.trim() && !navigated) {
+            // Untouched menu over an existing choice: keep it, let Enter bubble (e.g. to submit).
+            setOpen(false);
           } else if (e.key === "Enter" && open && filtered[active]) {
             e.preventDefault();
             pick(filtered[active]);
