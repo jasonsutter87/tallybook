@@ -12,6 +12,7 @@ import {
   FileText,
   Lock,
   MoreHorizontal,
+  Notebook,
   Pencil,
   Plus,
   Search,
@@ -35,6 +36,7 @@ import {
   useToast,
 } from "../components/ui";
 import JournalEntryModal from "../flows/JournalEntryModal";
+import LogMoneyModal from "../flows/LogMoneyModal";
 import { SUBTYPE_LABEL, date, money, plural, shortDate, todayISO } from "../format";
 import type { Account, Cleared, Connection, Contact, Entry, RegisterRow } from "../types";
 import "./accounts.css";
@@ -102,6 +104,7 @@ export default function Register() {
   const [to, setTo] = useState("");
   const [limit, setLimit] = useState(PAGE);
   const [recording, setRecording] = useState(false);
+  const [logging, setLogging] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [entryId, setEntryId] = useState<number | null>(null);
   const [menu, setMenu] = useState(false);
@@ -141,6 +144,8 @@ export default function Register() {
       </div>
     );
 
+  // Cash, bank and card accounts get the plain-words form; the journal entry stays in the menu.
+  const moneyAccount = ["bank", "credit_card", "other_current_asset"].includes(account.subtype);
   const cols = columnsFor(account);
   const showCleared = account.kind === "asset" || account.kind === "liability";
   const link = account.link;
@@ -181,7 +186,7 @@ export default function Register() {
               </Link>
             )}
             {!account.archived && (
-              <button className="btn btn-primary" onClick={() => setRecording(true)}>
+              <button className="btn btn-primary" onClick={() => (moneyAccount ? setLogging(true) : setRecording(true))}>
                 <Plus size={16} /> Record transaction
               </button>
             )}
@@ -200,6 +205,17 @@ export default function Register() {
                   >
                     <Pencil size={15} /> Rename
                   </button>
+                  {moneyAccount && !account.archived && (
+                    <button
+                      role="menuitem"
+                      onClick={() => {
+                        setMenu(false);
+                        setRecording(true);
+                      }}
+                    >
+                      <Notebook size={15} /> Journal entry…
+                    </button>
+                  )}
                   <button role="menuitem" className={account.archived ? "" : "danger"} onClick={toggleArchive} disabled={archive.isPending}>
                     {account.archived ? <ArchiveRestore size={15} /> : <Archive size={15} />}
                     {account.archived ? "Unarchive" : "Archive"}
@@ -347,6 +363,7 @@ export default function Register() {
       </div>
 
       <JournalEntryModal open={recording} onClose={() => setRecording(false)} defaultAccountId={id} />
+      <LogMoneyModal open={logging} onClose={() => setLogging(false)} scope={account.scope} accountId={account.id} />
       <RenameModal open={renaming} onClose={() => setRenaming(false)} account={account} />
       <EntryModal entryId={entryId} onClose={() => setEntryId(null)} onOpenEntry={setEntryId} onNavigate={navigate} />
     </div>

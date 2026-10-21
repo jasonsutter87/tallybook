@@ -1,5 +1,6 @@
 import {
   AlertCircle,
+  Banknote,
   ArrowDownLeft,
   ArrowUpRight,
   CalendarClock,
@@ -13,9 +14,11 @@ import {
   Upload,
 } from "lucide-react";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAction, useApi } from "../api";
 import { BigMoney, Card, EmptyState, ErrorBanner, Loading, Money, useToast } from "../components/ui";
+import LogMoneyModal from "../flows/LogMoneyModal";
 import { money, moneyCompact, monthLabel, plural } from "../format";
 import type { Dashboard as DashboardData, SyncReport } from "../types";
 
@@ -41,6 +44,7 @@ export default function Dashboard() {
   const { data, error, isLoading } = useApi<DashboardData>("dashboard");
   const status = useApi<{ company_name: string | null }>("book.status");
   const sync = useAction<SyncReport[]>("bank.sync");
+  const [logging, setLogging] = useState(false);
 
   if (isLoading) return <Loading />;
   if (error || !data) return <div className="page"><ErrorBanner error={error} /></div>;
@@ -74,6 +78,9 @@ export default function Dashboard() {
               <RefreshCw size={16} className={sync.isPending ? "spin" : ""} /> {sync.isPending ? "Syncing…" : "Sync banks"}
             </button>
           )}
+          <button className="btn btn-secondary" onClick={() => setLogging(true)}>
+            <Banknote size={16} /> Log cash
+          </button>
           <Link to="/invoices/new" className="btn btn-primary">
             <Plus size={16} /> New invoice
           </Link>
@@ -259,6 +266,7 @@ export default function Dashboard() {
           <QuickAction to="/reports" icon={<ArrowUpRight size={18} />} label="See reports" />
         </div>
       </div>
+      <LogMoneyModal open={logging} onClose={() => setLogging(false)} scope="business" />
     </div>
   );
 }

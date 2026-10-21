@@ -210,6 +210,9 @@ struct PostEntry {
     /// Who the money was for (household books).
     #[serde(default)]
     person_id: Option<PersonId>,
+    /// Who was paid, or who paid (business books; feeds 1099s).
+    #[serde(default)]
+    payee_id: Option<i64>,
 }
 
 #[derive(Deserialize)]
@@ -678,6 +681,9 @@ impl App {
                     let id = s.post_entry(&NewEntry { date: p.date, memo: p.memo, lines: p.lines })?;
                     if p.person_id.is_some() {
                         s.set_entry_person(id, p.person_id)?;
+                    }
+                    if p.payee_id.is_some() {
+                        s.set_entry_payee(id, p.payee_id)?;
                     }
                     Ok(id)
                 })

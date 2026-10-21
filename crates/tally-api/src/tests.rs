@@ -304,3 +304,24 @@ async fn household_books_through_the_dispatcher() {
     let home_dash = app.call("dashboard", json!({ "scope": "household" })).await.unwrap();
     assert_eq!(home_dash["cash"], 350000);
 }
+
+#[tokio::test]
+async fn cash_from_the_till_with_a_payee() {
+    let (app, dir) = app("till");
+    app.call("book.create", json!({ "path": dir.join("t.tallybook"), "company_name": "Shop" })).await.unwrap();
+    let till = app.call("accounts.create", json!({ "name": "Cash till", "subtype": "bank", "opening_balance": 20000, "opening_date": "2026-01-01" })).await.unwrap();
+    let id = |code: &str, accounts: &Value| accounts.as_array().unwrap().iter().find(|a| a["code"] == code).unwrap()["id"].clone();
+    let accounts = app.call("accounts.list", Value::Null).await.unwrap();
+    let (sales, contractors) = (id("4000", &accounts), id("6150", &accounts));
+    let pat = app.call("contacts.create", json!({ "kind": "vendor", "name": "Pat the painter" })).await.unwrap();
+
+    // A cash sale into the till, then cash out of it to a contractor.
+    app.call("entries.post", json!({ "date": "2026-03-07", "memo": "Market sales", "lines": [
+        { "account_id": till, "amount": 45000 }, { "account_id": sales, "amount": -45000 } ] })).await.unwrap();
+    let paid = app.call("entries.post", json!({ "date": "2026-03-08", "memo": "Touch-up", "payee_id": pat, "lines": [
+        { "account_id": contractors, "amount": 30000 }, { "account_id": till, "amount": -30000 } ] })).await.unwrap();
+
+    assert_eq!(app.call("entries.get", json!({ "id": paid })).await.unwrap()["payee_id"], pat);
+    let till_now = app.call("accounts.list", Value::Null).await.unwrap().as_array().unwrap().iter().find(|a| a["id"] == till).unwrap()["balance"].clone();
+    assert_eq!(till_now, 35000);
+}

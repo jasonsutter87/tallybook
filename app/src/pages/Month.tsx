@@ -214,7 +214,7 @@ export default function Month() {
         </div>
       </div>
 
-      <LogMoneyModal open={logging} onClose={() => setLogging(false)} />
+      <LogMoneyModal open={logging} onClose={() => setLogging(false)} scope="household" />
       <PlanModal open={planning} onClose={() => setPlanning(false)} month={data} />
       <PeopleModal open={peopleOpen} onClose={() => setPeopleOpen(false)} />
     </div>
