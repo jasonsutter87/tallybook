@@ -453,3 +453,150 @@ fn repeat_payments_are_suggested_as_bills() {
     b.s.create_recurring_bill(&NewRecurringBill { match_text: Some(s[0].match_text.clone()), ..bill("Verizon", phones, 160_88, 11) }).unwrap();
     assert!(b.s.bill_suggestions(d(10, 5)).unwrap().is_empty(), "already a bill");
 }
+
+// ---------------------------------------------------------------- goals & insights
+
+use tally_core::insights::Band;
+use tally_store::{NewGoal, Tone};
+
+fn savings(b: &Both) -> AccountId {
+    b.s.create_account(&NewAccount::new("OnPoint Savings", AccountSubtype::Bank).scope(Scope::Household)).unwrap()
+}
+
+#[test]
+fn goals_fill_from_tagged_transfers_and_say_when_theyre_done() {
+    let mut b = both();
+    let savings = savings(&b);
+    let hawaii = b
+        .s
+        .create_goal(&NewGoal { name: "Hawaii".into(), target: Cents(1000_00), target_date: Some(d(12, 1)), account_id: savings, starting: Cents(100_00), note: String::new() })
+        .unwrap();
+    assert!(!b.s.contribute_to_goal(hawaii, b.home_checking, Cents(400_00), d(3, 5)).unwrap().finished);
+    // An untagged transfer to the same savings account isn't counted...
+    let other = post(&mut b.s, d(4, 5), "to savings", savings, b.home_checking, 50_00);
+    let g = b.s.goals(d(4, 10)).unwrap().remove(0);
+    assert_eq!((g.saved, g.contributions), (Cents(500_00), 1));
+    assert_eq!(g.projection.monthly_rate, Cents(400_00), "one month of contributions; the starting $100 isn't a pace");
+    // ...until it's tagged.
+    b.s.set_entry_goal(other, Some(hawaii)).unwrap();
+    assert_eq!(b.s.goals(d(4, 10)).unwrap()[0].saved, Cents(550_00));
+
+    let done = b.s.contribute_to_goal(hawaii, b.home_checking, Cents(450_00), d(5, 5)).unwrap();
+    assert!(done.finished, "this one reached the target");
+    assert!(b.s.goals(d(5, 10)).unwrap()[0].achieved_at.is_some());
+    // Taking money back out un-finishes it.
+    b.s.contribute_to_goal(hawaii, b.home_checking, Cents(-100_00), d(5, 6)).unwrap();
+    assert!(b.s.goals(d(5, 10)).unwrap()[0].achieved_at.is_none());
+
+    // Goals keep their money somewhere real and household.
+    let biz = NewGoal { name: "x".into(), target: Cents(1), target_date: None, account_id: b.biz_checking, starting: Cents::ZERO, note: String::new() };
+    assert!(b.s.create_goal(&biz).is_err());
+    let dining = code(&b.s, "H6210");
+    let lunch = post(&mut b.s, d(5, 7), "lunch", dining, b.home_checking, 9_00);
+    assert!(b.s.set_entry_goal(lunch, Some(hawaii)).is_err(), "lunch never touched the savings account");
+}
+
+#[test]
+fn alerts_at_eighty_percent_over_and_for_unpaid_bills() {
+    let mut b = both();
+    let groceries = code(&b.s, "H6200");
+    let dining = code(&b.s, "H6210");
+    b.s.set_budget_line("2026-03", &ceiling(BudgetTarget::Account(groceries), 1000_00)).unwrap();
+    b.s.set_budget_line("2026-03", &ceiling(BudgetTarget::Account(dining), 100_00)).unwrap();
+    spend(&mut b.s, d(3, 2), "H6200", b.home_checking, 850_00, None);
+    spend(&mut b.s, d(3, 3), "H6210", b.home_checking, 120_00, None);
+    b.s.create_recurring_bill(&bill("Verizon", code(&b.s, "H6130"), 160_00, 11)).unwrap();
+
+    let alerts = b.s.alerts("2026-03", d(3, 25)).unwrap();
+    let titles: Vec<&str> = alerts.iter().map(|a| a.title.as_str()).collect();
+    assert_eq!(alerts[0].tone, Tone::Alarm);
+    assert!(titles.contains(&"Dining Out is over budget"), "{titles:?}");
+    assert!(titles.contains(&"You've used 85% of your Groceries budget"), "{titles:?}");
+    assert!(titles.contains(&"Verizon looks unpaid"), "{titles:?}");
+}
+
+#[test]
+fn opportunity_gaps_split_spending_by_how_far_it_bends() {
+    let mut b = both();
+    for m in 1..=3 {
+        spend(&mut b.s, d(m, 5), "H6210", b.home_checking, 300_00, None);
+    }
+    spend(&mut b.s, d(4, 1), "H6000", b.home_checking, 1495_00, None);
+    spend(&mut b.s, d(4, 3), "H6200", b.home_checking, 600_00, None);
+    spend(&mut b.s, d(4, 5), "H6210", b.home_checking, 500_00, None);
+    let child = code(&b.s, "H4100");
+    post(&mut b.s, d(4, 1), "support", b.home_checking, child, 2000_00);
+
+    let o = b.s.opportunities("2026-04").unwrap();
+    assert_eq!((o.income, o.spending, o.gap), (Cents(2000_00), Cents(2595_00), Cents(-595_00)));
+    let tier = |f| o.tiers.iter().find(|t| t.flex == f).unwrap();
+    assert_eq!(tier(Some(Flex::Fixed)).spending, Cents(1495_00));
+    assert_eq!(tier(Some(Flex::Lifestyle)).spending, Cents(500_00));
+    assert_eq!(tier(Some(Flex::Lifestyle)).usual, Cents(300_00));
+    assert_eq!(o.lifestyle_fifth, Cents(100_00));
+    assert_eq!(o.categories[0].name, "Groceries");
+    assert!(o.categories.iter().all(|c| c.name != "Rent or Mortgage"), "fixed costs aren't opportunities");
+}
+
+#[test]
+fn the_score_rewards_living_within_income_and_paying_bills() {
+    let mut b = both();
+    let support = code(&b.s, "H4100");
+    for m in 1..=6 {
+        post(&mut b.s, d(m, 1), "support", b.home_checking, support, 4000_00);
+        spend(&mut b.s, d(m, 3), "H6200", b.home_checking, 3000_00, None);
+    }
+    let good = b.s.budget_score("2026-06", d(6, 30)).unwrap();
+    assert!(good.score >= 670, "{good:?}");
+    assert!(matches!(good.band, Band::Good | Band::VeryGood | Band::Excellent));
+
+    b.s.create_recurring_bill(&bill("Rent", code(&b.s, "H6000"), 1495_00, 1)).unwrap();
+    let missed = b.s.budget_score("2026-06", d(6, 30)).unwrap();
+    assert!(missed.score < good.score, "an unpaid bill costs points");
+    assert_eq!(missed.factors.iter().find(|f| f.key == "bills").unwrap().summary, "0 of 1 due so far are paid");
+}
+
+#[test]
+fn wins_are_true_and_specific() {
+    let mut b = both();
+    let savings = savings(&b);
+    let dining = code(&b.s, "H6210");
+    let support = code(&b.s, "H4100");
+    b.s.set_budget_line("2026-02", &ceiling(BudgetTarget::Account(dining), 200_00)).unwrap();
+    for m in 1..=2 {
+        post(&mut b.s, d(m, 1), "support", b.home_checking, support, 3000_00);
+    }
+    spend(&mut b.s, d(1, 5), "H6210", b.home_checking, 400_00, None);
+    spend(&mut b.s, d(2, 5), "H6210", b.home_checking, 150_00, None);
+    let hawaii = b.s.create_goal(&NewGoal { name: "Hawaii".into(), target: Cents(100_00), target_date: None, account_id: savings, starting: Cents::ZERO, note: String::new() }).unwrap();
+    b.s.contribute_to_goal(hawaii, b.home_checking, Cents(100_00), d(3, 2)).unwrap();
+    let side = code(&b.s, "H4200");
+    post(&mut b.s, d(3, 4), "Etsy", b.home_checking, side, 250_00);
+
+    let wins = b.s.wins("2026-03", d(3, 10)).unwrap();
+    let titles: Vec<&str> = wins.iter().map(|w| w.title.as_str()).collect();
+    assert!(titles.contains(&"$50 under on Dining Out"), "{titles:?}");
+    assert!(titles.contains(&"February ended $2,850 ahead"), "{titles:?}");
+    assert!(titles.contains(&"$100 set aside this month"), "{titles:?}");
+    assert!(titles.contains(&"New income: Side Income"), "{titles:?}");
+    assert!(titles.iter().any(|t| t.starts_with("You reached Hawaii")), "{titles:?}");
+}
+
+#[test]
+fn usual_spending_ignores_months_before_the_book_began() {
+    let mut b = both();
+    spend(&mut b.s, d(3, 5), "H6210", b.home_checking, 300_00, None);
+    spend(&mut b.s, d(4, 5), "H6210", b.home_checking, 100_00, None);
+    let o = b.s.opportunities("2026-04").unwrap();
+    assert_eq!(o.categories[0].usual, Cents(300_00), "March is the only month before April with any spending");
+}
+
+#[test]
+fn the_score_paces_like_the_month_does() {
+    let mut b = both();
+    b.s.set_available("2026-03", Some(Cents(3200_00))).unwrap();
+    spend(&mut b.s, d(3, 1), "H6000", b.home_checking, 1495_00, None);
+    let s = b.s.budget_score("2026-03", d(3, 5)).unwrap();
+    let pace = s.factors.iter().find(|f| f.key == "pace").unwrap();
+    assert_eq!(pace.summary, "on pace for $1,495 of $3,200", "rent on the 1st isn't projected");
+}

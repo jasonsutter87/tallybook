@@ -11,6 +11,7 @@ import {
   Receipt,
   Scale,
   Settings,
+  Target,
   Users,
   Wand2,
 } from "lucide-react";
@@ -19,7 +20,10 @@ import { useAction, useApi } from "../api";
 import { useSides } from "../book";
 
 const MONTH: NavItem = { to: "/month", label: "This month", icon: CalendarDays };
-const HOUSEHOLD: NavItem[] = [{ to: "/due", label: "Bills & due dates", icon: CalendarClock }];
+const HOUSEHOLD: NavItem[] = [
+  { to: "/due", label: "Bills & due dates", icon: CalendarClock },
+  { to: "/goals", label: "Goals", icon: Target },
+];
 
 const MAIN: NavItem[] = [
   { to: "/", label: "Home", icon: Home, end: true },

@@ -248,6 +248,26 @@ struct UpdateBill {
 }
 
 #[derive(Deserialize)]
+struct UpdateGoal {
+    id: GoalId,
+    goal: NewGoal,
+}
+
+#[derive(Deserialize)]
+struct Contribute {
+    id: GoalId,
+    from: AccountId,
+    amount: Cents,
+    date: Option<NaiveDate>,
+}
+
+#[derive(Deserialize)]
+struct SetGoal {
+    id: tally_core::journal::EntryId,
+    goal_id: Option<GoalId>,
+}
+
+#[derive(Deserialize)]
 struct SetActive {
     id: i64,
     active: bool,
@@ -714,6 +734,38 @@ impl App {
                 self.with(|s| s.mark_due_date(p.bill_id, p.due_date, p.status, p.entry_id))
             }
             "recurring.suggestions" => self.with(|s| s.bill_suggestions(today())),
+
+            "goals.list" => self.with(|s| s.goals(today())),
+            "goals.create" => {
+                let p: NewGoal = params(p)?;
+                self.with(|s| s.create_goal(&p))
+            }
+            "goals.update" => {
+                let p: UpdateGoal = params(p)?;
+                self.with(|s| s.update_goal(p.id, &p.goal))
+            }
+            "goals.archive" => {
+                let p: Archive = params(p)?;
+                self.with(|s| s.set_goal_archived(p.id, p.archived))
+            }
+            "goals.contribute" => {
+                let p: Contribute = params(p)?;
+                self.with(|s| s.contribute_to_goal(p.id, p.from, p.amount, p.date.unwrap_or_else(today)))
+            }
+            "entries.set_goal" => {
+                let p: SetGoal = params(p)?;
+                self.with(|s| s.set_entry_goal(p.id, p.goal_id))
+            }
+            "household.alerts" | "household.opportunities" | "household.score" | "household.wins" => {
+                let p: MonthParam = params(p)?;
+                let month = p.month.unwrap_or_else(|| month_of(today()));
+                match method {
+                    "household.alerts" => self.with(|s| s.alerts(&month, today())),
+                    "household.opportunities" => self.with(|s| s.opportunities(&month)),
+                    "household.score" => self.with(|s| s.budget_score(&month, today())),
+                    _ => self.with(|s| s.wins(&month, today())),
+                }
+            }
             "budget.set_available" => {
                 let p: SetAvailable = params(p)?;
                 self.with(|s| s.set_available(&p.month, p.amount))

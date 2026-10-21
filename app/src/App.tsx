@@ -27,6 +27,7 @@ const Rules = lazy(() => import("./pages/Rules"));
 const Taxes = lazy(() => import("./pages/Taxes"));
 const Month = lazy(() => import("./pages/Month"));
 const DueDates = lazy(() => import("./pages/DueDates"));
+const Goals = lazy(() => import("./pages/Goals"));
 
 export default function App() {
   const status = useApi<BookStatus>("book.status");
@@ -44,6 +45,7 @@ export default function App() {
             <Route path="/month" element={<Month />} />
             <Route path="/month/:month" element={<Month />} />
             <Route path="/due" element={<DueDates />} />
+            <Route path="/goals" element={<Goals />} />
             <Route path="/review" element={<Review />} />
             <Route path="/banking" element={<Banking />} />
             <Route path="/accounts" element={<Accounts />} />

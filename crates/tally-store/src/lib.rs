@@ -18,11 +18,13 @@ use tally_core::{Account, AccountId, AccountSubtype, Cents, EntryError, EntryLin
 mod budget;
 pub mod crypto;
 mod feed;
+mod insights;
 mod recurring;
 mod sales;
 mod tax;
 pub use budget::*;
 pub use feed::*;
+pub use insights::*;
 pub use recurring::*;
 pub use sales::*;
 pub use tax::*;
@@ -30,7 +32,7 @@ pub use tax::*;
 pub type LineId = i64;
 pub type ReconciliationId = i64;
 
-const SCHEMA_VERSION: i64 = 7;
+const SCHEMA_VERSION: i64 = 8;
 
 #[derive(Debug, thiserror::Error)]
 pub enum StoreError {
@@ -326,6 +328,12 @@ impl Store {
             let tx = self.conn.transaction()?;
             tx.execute_batch(include_str!("schema_v7.sql"))?;
             tx.pragma_update(None, "user_version", 7)?;
+            tx.commit()?;
+        }
+        if version < 8 {
+            let tx = self.conn.transaction()?;
+            tx.execute_batch(include_str!("schema_v8.sql"))?;
+            tx.pragma_update(None, "user_version", 8)?;
             tx.commit()?;
         }
         Ok(())

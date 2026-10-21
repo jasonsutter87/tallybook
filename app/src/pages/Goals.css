@@ -1,0 +1,44 @@
+.goal-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+}
+
+.goal-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.goal-card.done {
+  border-color: var(--pos);
+}
+
+.goal-name {
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.goal-amount {
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+
+.goal-amount .subtle {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.goal-progress {
+  height: 10px;
+}
+
+.goal-card.done .goal-progress > div {
+  background: var(--pos);
+}
+
+.warn-ink {
+  color: var(--warn);
+}

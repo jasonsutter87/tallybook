@@ -6,6 +6,7 @@ import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useApi } from "../api";
 import { DueList, groupDue } from "../components/DueList";
+import { Alerts, OpportunityCard, ScoreCard, WinsCard } from "../components/insights";
 import { Meter, SENTIMENT_TONE, meterCaption, monthName, shiftMonth, thisMonth, zoneLabel } from "../components/household";
 import { BigMoney, Card, EmptyState, ErrorBanner, Loading, Money, PageHeader } from "../components/ui";
 import LogMoneyModal from "../flows/LogMoneyModal";
@@ -85,6 +86,7 @@ export default function Month() {
       />
 
       <div className="stack" style={{ gap: 20 }}>
+        {data.is_current && <Alerts month={month} />}
         <div className="hero month-hero">
           <div className="month-hero-main">
             <div className="hero-label">{left != null ? "Left to work with" : net >= 0 ? "More in than out" : "More out than in"}</div>
@@ -202,6 +204,13 @@ export default function Month() {
               </div>
             )}
           </Card>
+        </div>
+        <div className="month-grid">
+          <div className="stack" style={{ gap: 16 }}>
+            <WinsCard month={month} />
+            <OpportunityCard month={month} />
+          </div>
+          <ScoreCard month={month} />
         </div>
       </div>
 

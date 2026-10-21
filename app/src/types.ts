@@ -882,3 +882,67 @@ export interface BillSuggestion {
   months_seen: number;
   paid_from_id: number | null;
 }
+
+// ------------------------------------------------------------- goals & insights
+
+export interface NewGoal {
+  name: string;
+  target: Cents;
+  target_date: ISODate | null;
+  account_id: number;
+  starting: Cents;
+  note: string;
+}
+
+export interface Goal extends NewGoal {
+  id: number;
+  achieved_at: string | null;
+  archived: boolean;
+  saved: Cents;
+  contributions: number;
+  remaining: Cents;
+  permille: number;
+  monthly_rate: Cents;
+  projected: ISODate | null;
+  months_remaining: number | null;
+  on_track: boolean | null;
+  required_monthly: Cents | null;
+}
+
+export interface HouseholdAlert {
+  tone: "info" | "caution" | "alarm";
+  title: string;
+  body: string;
+  target: BudgetTarget | null;
+  bill_id: number | null;
+}
+
+export interface FlexTier {
+  flex: Flex | null;
+  spending: Cents;
+  usual: Cents;
+}
+
+export interface Opportunities {
+  month: string;
+  income: Cents;
+  spending: Cents;
+  gap: Cents;
+  tiers: FlexTier[];
+  categories: { account_id: number; name: string; flex: Flex | null; spending: Cents; usual: Cents }[];
+  lifestyle_fifth: Cents;
+}
+
+export type ScoreBand = "poor" | "fair" | "good" | "very_good" | "excellent";
+
+export interface BudgetScore {
+  score: number;
+  band: ScoreBand;
+  factors: { key: string; label: string; weight: number; fraction: number; points: number; summary: string }[];
+}
+
+export interface Win {
+  kind: string;
+  title: string;
+  body: string;
+}
