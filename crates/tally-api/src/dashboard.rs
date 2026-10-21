@@ -2,7 +2,7 @@
 
 use chrono::{Datelike, Months, NaiveDate};
 use serde::Serialize;
-use tally_core::{AccountId, AccountKind, AccountSubtype, Cents};
+use tally_core::{AccountId, AccountKind, AccountSubtype, Cents, Scope};
 use tally_store::{DocStatus, Result, Store};
 
 #[derive(Debug, Serialize)]
@@ -70,14 +70,15 @@ fn month_end(d: NaiveDate) -> NaiveDate {
     month_start(d) + Months::new(1) - chrono::Days::new(1)
 }
 
-fn period(store: &Store, from: NaiveDate, to: NaiveDate) -> Result<Period> {
-    let p = store.profit_and_loss(from, to)?;
+fn period(store: &Store, from: NaiveDate, to: NaiveDate, scope: Scope) -> Result<Period> {
+    let p = store.profit_and_loss_in(from, to, Some(scope))?;
     let expenses = p.total_cost_of_goods_sold + p.total_expenses;
     Ok(Period { income: p.total_income, expenses, net: p.net_income })
 }
 
-pub fn build(store: &Store, today: NaiveDate) -> Result<Dashboard> {
-    let accounts = store.accounts()?;
+/// Home for one side of the book.
+pub fn build(store: &Store, today: NaiveDate, scope: Scope) -> Result<Dashboard> {
+    let accounts = store.accounts_in(Some(scope))?;
     let balances = store.balances(None, today)?;
     let natural = |a: &tally_core::Account| a.kind().natural(balances.get(&a.id).copied().unwrap_or_default());
     let sum_of = |pred: &dyn Fn(AccountSubtype) -> bool| -> Cents {
@@ -103,7 +104,7 @@ pub fn build(store: &Store, today: NaiveDate) -> Result<Dashboard> {
     let mut cashflow = Vec::new();
     for back in (0..6).rev() {
         let start = this_start - Months::new(back);
-        let p = period(store, start, month_end(start))?;
+        let p = period(store, start, month_end(start), scope)?;
         cashflow.push(MonthFlow { month: start.format("%Y-%m").to_string(), income: p.income, expenses: p.expenses });
     }
 
@@ -134,8 +135,8 @@ pub fn build(store: &Store, today: NaiveDate) -> Result<Dashboard> {
         receivable: sum_of(&|t| t == AccountSubtype::AccountsReceivable),
         payable: sum_of(&|t| t == AccountSubtype::AccountsPayable),
         accounts: money,
-        this_month: period(store, this_start, today)?,
-        last_month: period(store, last_start, this_start - chrono::Days::new(1))?,
+        this_month: period(store, this_start, today, scope)?,
+        last_month: period(store, last_start, this_start - chrono::Days::new(1), scope)?,
         cashflow,
         top_expenses: top,
         inbox_count: store.inbox_count()?,

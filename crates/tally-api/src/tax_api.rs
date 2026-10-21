@@ -330,7 +330,10 @@ impl App {
         let dir: PathBuf = book.path.parent().unwrap_or(std::path::Path::new(".")).join(format!("Tax {year}"));
         std::fs::create_dir_all(&dir).map_err(|e| ApiError::new("io", e.to_string()))?;
         let s = &book.store;
-        let names: std::collections::HashMap<i64, String> = s.accounts()?.into_iter().map(|a| (a.id, a.name)).collect();
+        // Business side only: the household's spending is nobody's tax business, and
+        // since each side balances on its own the business lines still balance.
+        let names: std::collections::HashMap<i64, String> =
+            s.accounts_in(Some(tally_core::Scope::Business))?.into_iter().map(|a| (a.id, a.name)).collect();
         let (from, to) = year_range(year);
         let write = |name: &str, body: String| std::fs::write(dir.join(name), body).map_err(|e| ApiError::new("io", e.to_string()));
 
@@ -376,7 +379,7 @@ impl App {
         // General ledger for the year.
         let mut out = String::from("entry,date,memo,account,debit,credit,line_memo\n");
         for e in s.entries(from, to)? {
-            for l in &e.lines {
+            for l in e.lines.iter().filter(|l| names.contains_key(&l.account_id)) {
                 let (dr, cr) = if l.amount.0 > 0 { (dollars(l.amount), String::new()) } else { (String::new(), dollars(-l.amount)) };
                 let _ = writeln!(
                     out,
@@ -418,7 +421,7 @@ impl App {
         }
         write("Estimated tax payments.csv", out)?;
 
-        let pnl = s.profit_and_loss(from, to)?;
+        let pnl = s.profit_and_loss_in(from, to, Some(tally_core::Scope::Business))?;
         let readme = format!(
             "Tallybook tax package · {year}\n\n{DISCLAIMER}\n\nFiles\n- Schedule C worksheet.csv: line-by-line figures (meals already limited to 50%).\n\
              - Schedule C mapping.csv: which account feeds which line, and whether you confirmed it.\n\

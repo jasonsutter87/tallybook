@@ -4,9 +4,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAction, useApi } from "../api";
-import { ErrorBanner, Field, Modal, MoneyInput, useToast } from "../components/ui";
-import { SUBTYPE_LABEL, todayISO } from "../format";
-import type { AccountKind, AccountSubtype, Cents, SubtypeInfo } from "../types";
+import { SCOPE_LABEL, useSides } from "../book";
+import { ErrorBanner, Field, Modal, MoneyInput, Tabs, useToast } from "../components/ui";
+import { FLEX_LABEL, SUBTYPE_LABEL, todayISO } from "../format";
+import type { AccountKind, AccountSubtype, Cents, Flex, Scope, SubtypeInfo } from "../types";
 import "../pages/accounts.css";
 
 export const SUBTYPE_HELP: Record<AccountSubtype, string> = {
@@ -35,6 +36,15 @@ const GROUP_LABEL: Record<AccountKind, string> = {
   expense: "Expenses",
 };
 
+/** A household has no customers, vendors on account, or inventory. */
+const BUSINESS_ONLY: AccountSubtype[] = ["accounts_receivable", "accounts_payable", "cost_of_goods_sold", "retained_earnings"];
+
+const FLEX_HELP: Record<Flex, string> = {
+  fixed: "Stays the same each month, and is hard to change: rent, a car payment.",
+  usage: "Comes every month but moves with how much you use: power, gas, groceries.",
+  lifestyle: "Comes down to choices: eating out, shopping, fun.",
+};
+
 /** Subtypes where an opening balance makes sense. AR/AP come from invoices/bills. */
 const OPENING_OK: AccountSubtype[] = [
   "bank",
@@ -50,7 +60,10 @@ export default function AddAccountModal(props: {
   onClose: () => void;
   defaultSubtype?: AccountSubtype;
   onCreated?: (id: number) => void;
+  /** Which side of the book; the book's main side when not given. */
+  scope?: Scope;
 }) {
+  const sides = useSides();
   const toast = useToast();
   const navigate = useNavigate();
   const subtypes = useApi<SubtypeInfo[]>("accounts.subtypes");
@@ -61,9 +74,13 @@ export default function AddAccountModal(props: {
   const [code, setCode] = useState("");
   const [opening, setOpening] = useState<Cents | null>(null);
   const [openingDate, setOpeningDate] = useState(todayISO());
+  const [scope, setScope] = useState<Scope>(props.scope ?? sides.main);
+  const [flex, setFlex] = useState<Flex | "">("");
 
   useEffect(() => {
     if (props.open) {
+      setScope(props.scope ?? sides.main);
+      setFlex("");
       setName("");
       setSubtype(props.defaultSubtype ?? "bank");
       setCode("");
@@ -72,13 +89,23 @@ export default function AddAccountModal(props: {
       create.reset();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [props.open, props.defaultSubtype]);
+  }, [props.open, props.defaultSubtype, props.scope]);
 
   const groups = useMemo(() => {
     const list = subtypes.data ?? [];
     const kinds: AccountKind[] = ["asset", "liability", "equity", "income", "expense"];
-    return kinds.map((k) => ({ kind: k, items: list.filter((s) => s.kind === k && s.value !== "retained_earnings") }));
-  }, [subtypes.data]);
+    const hidden: AccountSubtype[] = scope === "household" ? BUSINESS_ONLY : ["retained_earnings"];
+    return kinds.map((k) => ({
+      kind: k,
+      label: scope === "household" && k === "expense" ? "Spending" : GROUP_LABEL[k],
+      items: list.filter((s) => s.kind === k && !hidden.includes(s.value)),
+    }));
+  }, [subtypes.data, scope]);
+  const spending = scope === "household" && (subtype === "expense" || subtype === "other_expense");
+
+  useEffect(() => {
+    if (scope === "household" && BUSINESS_ONLY.includes(subtype)) setSubtype("bank");
+  }, [scope, subtype]);
 
   const showOpening = OPENING_OK.includes(subtype);
   const owed = subtype === "credit_card" || subtype === "other_current_liability" || subtype === "long_term_liability";
@@ -90,6 +117,8 @@ export default function AddAccountModal(props: {
         code: code.trim() || null,
         name: name.trim(),
         subtype,
+        scope,
+        flex: spending && flex ? flex : null,
         opening_balance: showOpening && opening ? opening : null,
         opening_date: showOpening && opening ? openingDate : null,
       });
@@ -127,15 +156,30 @@ export default function AddAccountModal(props: {
         }}
       >
         <ErrorBanner error={create.error} />
+        {sides.both && (
+          <Field label="Which side of the book?">
+            <Tabs<Scope>
+              value={scope}
+              onChange={setScope}
+              tabs={sides.sides.map((s) => ({ value: s, label: SCOPE_LABEL[s] }))}
+            />
+          </Field>
+        )}
         <Field label="Name">
-          <input className="input" autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Chase Business Checking" />
+          <input
+            className="input"
+            autoFocus
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder={scope === "household" ? "e.g. Golden 1 Checking" : "e.g. Chase Business Checking"}
+          />
         </Field>
         <Field label="What kind of account is it?">
           <select className="select" value={subtype} onChange={(e) => setSubtype(e.target.value as AccountSubtype)}>
             {groups.map(
               (g) =>
                 g.items.length > 0 && (
-                  <optgroup key={g.kind} label={GROUP_LABEL[g.kind]}>
+                  <optgroup key={g.kind} label={g.label}>
                     {g.items.map((s) => (
                       <option key={s.value} value={s.value}>
                         {SUBTYPE_LABEL[s.value]}
@@ -152,6 +196,18 @@ export default function AddAccountModal(props: {
             — {SUBTYPE_HELP[subtype]}
           </div>
         </Field>
+        {spending && (
+          <Field label="How much can it bend?" hint={flex ? FLEX_HELP[flex] : "Used to point out where there's room to save."}>
+            <select className="select" value={flex} onChange={(e) => setFlex(e.target.value as Flex | "")}>
+              <option value="">Not sure</option>
+              {(Object.keys(FLEX_LABEL) as Flex[]).map((f) => (
+                <option key={f} value={f}>
+                  {FLEX_LABEL[f]}
+                </option>
+              ))}
+            </select>
+          </Field>
+        )}
         <Field label="Account number (optional)" hint="A short code to sort your chart, like 1020. Leave blank if you don't use codes.">
           <input className="input" value={code} onChange={(e) => setCode(e.target.value)} placeholder="e.g. 1020" style={{ maxWidth: 160 }} />
         </Field>

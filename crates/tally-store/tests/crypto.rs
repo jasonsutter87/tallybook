@@ -19,7 +19,7 @@ fn plain_book(path: &std::path::Path) -> Store {
     let mut s = Store::open(path).unwrap();
     s.seed_default_chart().unwrap();
     s.set_pref("company.name", Some("Secret Sauce LLC")).unwrap();
-    let bank = s.create_account(&NewAccount { code: Some("1000".into()), name: "Checking".into(), subtype: AccountSubtype::Bank, parent_id: None }).unwrap();
+    let bank = s.create_account(&NewAccount::new("Checking", AccountSubtype::Bank).code("1000")).unwrap();
     let sales = s.account_by_code("4000").unwrap().unwrap().id;
     s.post_entry(&NewEntry::new(NaiveDate::from_ymd_opt(2026, 3, 1).unwrap(), "Payment from Very Confidential Client").line(EntryLine::debit(bank, Cents(12_345_67))).line(EntryLine::credit(sales, Cents(12_345_67)))).unwrap();
     s

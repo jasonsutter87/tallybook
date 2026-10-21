@@ -4,11 +4,12 @@ import { ArrowDownLeft, Building2, ChevronRight, CreditCard, Landmark, Notebook,
 import { useMemo, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { useApi } from "../api";
-import { BigMoney, EmptyState, ErrorBanner, Loading, Money, PageHeader } from "../components/ui";
+import { SCOPE_LABEL, useSides } from "../book";
+import { BigMoney, EmptyState, ErrorBanner, Loading, Money, PageHeader, Tabs } from "../components/ui";
 import AddAccountModal from "../flows/AddAccountModal";
 import JournalEntryModal from "../flows/JournalEntryModal";
-import { SUBTYPE_LABEL, plural } from "../format";
-import type { Account } from "../types";
+import { FLEX_LABEL, SUBTYPE_LABEL, plural } from "../format";
+import type { Account, Scope } from "../types";
 import "./accounts.css";
 
 interface Section {
@@ -42,15 +43,18 @@ export default function Accounts() {
   const [showArchived, setShowArchived] = useState(false);
   const [adding, setAdding] = useState(false);
   const [journal, setJournal] = useState(false);
+  const { both, household, main } = useSides();
+  const [side, setSide] = useState<Scope>(household ? "household" : main);
+  const inSide = useMemo(() => (data ?? []).filter((a) => a.scope === side), [data, side]);
 
   const totals = useMemo(() => {
-    const live = (data ?? []).filter((a) => !a.archived);
+    const live = inSide.filter((a) => !a.archived);
     const sum = (f: (a: Account) => boolean) => live.filter(f).reduce((s, a) => s + a.balance, 0);
     const cash = sum((a) => a.subtype === "bank");
     const assets = sum((a) => a.kind === "asset");
     const owed = sum((a) => a.kind === "liability");
-    return { cash, owed, net: assets - owed, archived: (data ?? []).filter((a) => a.archived).length };
-  }, [data]);
+    return { cash, owed, net: assets - owed, archived: inSide.filter((a) => a.archived).length };
+  }, [inSide]);
 
   if (isLoading) return <Loading />;
   if (error || !data)
@@ -60,7 +64,7 @@ export default function Accounts() {
       </div>
     );
 
-  const visible = data.filter((a) => showArchived || !a.archived);
+  const visible = inSide.filter((a) => showArchived || !a.archived);
 
   return (
     <div className="page">
@@ -80,9 +84,19 @@ export default function Accounts() {
       />
 
       <div className="stack" style={{ gap: 20 }}>
+        {both && (
+          <Tabs<Scope>
+            value={side}
+            onChange={setSide}
+            tabs={[
+              { value: "household", label: SCOPE_LABEL.household },
+              { value: "business", label: SCOPE_LABEL.business },
+            ]}
+          />
+        )}
         <div className="grid-3">
           <Summary icon={<Wallet size={18} />} tone="" label="Cash & bank" cents={totals.cash} foot="Across your bank accounts" />
-          <Summary icon={<CreditCard size={18} />} tone="warn" label="Cards & loans" cents={totals.owed} foot="What the business owes" />
+          <Summary icon={<CreditCard size={18} />} tone="warn" label="Cards & loans" cents={totals.owed} foot={side === "household" ? "What you owe" : "What the business owes"} />
           <Summary icon={<Scale size={18} />} tone="violet" label="Net worth" cents={totals.net} foot="What you own minus what you owe" signed />
         </div>
 
@@ -97,6 +111,7 @@ export default function Accounts() {
 
         {SECTIONS.map((s) => {
           const accounts = visible.filter(s.match).sort(sortAccounts);
+          const title = side === "household" && s.key === "expense" ? "Spending" : side === "household" && s.key === "equity" ? "Starting balances" : s.title;
           if (accounts.length === 0 && s.key !== "bank") return null;
           const total = accounts.filter((a) => !a.archived).reduce((n, a) => n + a.balance, 0);
           return (
@@ -104,7 +119,7 @@ export default function Accounts() {
               <div className="acct-section-head">
                 <div className="acct-section-title">
                   <span className={`icon-bubble ${s.tone}`}>{s.icon}</span>
-                  {s.title}
+                  {title}
                   <span className="subtle small" style={{ fontWeight: 600 }}>
                     {plural(accounts.length, "account")}
                   </span>
@@ -142,7 +157,7 @@ export default function Accounts() {
                         {a.link && <span className="pill pill-brand">Bank feed{a.link.mask ? ` ···${a.link.mask}` : ""}</span>}
                         {a.archived && <span className="pill">Archived</span>}
                       </div>
-                      <div className="subtle small">{SUBTYPE_LABEL[a.subtype]}</div>
+                      <div className="subtle small">{a.flex ? FLEX_LABEL[a.flex] : SUBTYPE_LABEL[a.subtype]}</div>
                     </div>
                     <Money cents={a.balance} tone="neg-only" className="acct-balance" />
                     <ChevronRight size={16} className="acct-chevron" />
@@ -154,7 +169,7 @@ export default function Accounts() {
         })}
       </div>
 
-      <AddAccountModal open={adding} onClose={() => setAdding(false)} />
+      <AddAccountModal open={adding} onClose={() => setAdding(false)} scope={side} />
       <JournalEntryModal open={journal} onClose={() => setJournal(false)} />
     </div>
   );

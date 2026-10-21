@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use tally_core::journal::EntryId;
 use tally_core::tax::{self, ScheduleC, ScheduleCLine};
-use tally_core::{AccountId, AccountKind, AccountSubtype, Cents, EntryLine, NewEntry};
+use tally_core::{AccountId, AccountKind, AccountSubtype, Cents, EntryLine, NewEntry, Scope};
 
 pub type TaxPaymentId = i64;
 
@@ -122,6 +122,9 @@ impl Store {
         if account.kind().is_balance_sheet() {
             return rule("only income and expense accounts go on Schedule C");
         }
+        if account.scope == Scope::Household {
+            return rule("household categories don't go on Schedule C");
+        }
         match line {
             Some(l) => self.conn.execute(
                 "INSERT INTO account_tax_lines(account_id, line) VALUES (?1, ?2)
@@ -151,7 +154,7 @@ impl Store {
         let balances = self.balances(Some(from), to)?;
         let confirmed = self.confirmed_lines()?;
         let mut rows = Vec::new();
-        for a in self.accounts()? {
+        for a in self.accounts_in(Some(Scope::Business))? {
             if a.kind().is_balance_sheet() {
                 continue;
             }

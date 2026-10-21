@@ -33,6 +33,12 @@ export interface BankLink {
   start_date: ISODate;
 }
 
+/** Which side of the book an account belongs to. Each side balances on its own. */
+export type Scope = "business" | "household";
+
+/** How far a household spending category can bend. */
+export type Flex = "fixed" | "usage" | "lifestyle";
+
 export interface Account {
   id: number;
   code: string | null;
@@ -40,6 +46,8 @@ export interface Account {
   subtype: AccountSubtype;
   parent_id: number | null;
   archived: boolean;
+  scope: Scope;
+  flex: Flex | null;
   kind: AccountKind;
   /** Natural sign: what you have (assets), owe (liabilities), earned/spent. */
   balance: Cents;
@@ -508,6 +516,8 @@ export interface BookStatus {
   company_name: string | null;
   encrypted: boolean;
   today: ISODate;
+  /** Sides this book keeps, business first. */
+  sides: Scope[];
 }
 
 export interface RecentBook {

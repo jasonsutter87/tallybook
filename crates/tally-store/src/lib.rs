@@ -9,11 +9,11 @@ use rusqlite::types::Type;
 use rusqlite::{Connection, OptionalExtension, Row, Transaction, params};
 use serde::Serialize;
 use std::path::Path;
-use tally_core::chart::DEFAULT_CHART;
+use tally_core::chart::{self, codes};
 use tally_core::journal::EntryId;
 use tally_core::reconcile::ReconcileSummary;
 use tally_core::report::{self, BalanceSheet, Balances, ProfitAndLoss, TrialBalance};
-use tally_core::{Account, AccountId, AccountSubtype, Cents, EntryError, EntryLine, NewEntry};
+use tally_core::{Account, AccountId, AccountSubtype, Cents, EntryError, EntryLine, Flex, NewEntry, Scope};
 
 pub mod crypto;
 mod feed;
@@ -26,7 +26,7 @@ pub use tax::*;
 pub type LineId = i64;
 pub type ReconciliationId = i64;
 
-const SCHEMA_VERSION: i64 = 4;
+const SCHEMA_VERSION: i64 = 5;
 
 #[derive(Debug, thiserror::Error)]
 pub enum StoreError {
@@ -58,6 +58,25 @@ pub struct NewAccount {
     pub name: String,
     pub subtype: AccountSubtype,
     pub parent_id: Option<AccountId>,
+    pub scope: Scope,
+    pub flex: Option<Flex>,
+}
+
+impl NewAccount {
+    /// A business account with no code or parent.
+    pub fn new(name: impl Into<String>, subtype: AccountSubtype) -> NewAccount {
+        NewAccount { code: None, name: name.into(), subtype, parent_id: None, scope: Scope::Business, flex: None }
+    }
+
+    pub fn code(mut self, code: impl Into<String>) -> NewAccount {
+        self.code = Some(code.into());
+        self
+    }
+
+    pub fn scope(mut self, scope: Scope) -> NewAccount {
+        self.scope = scope;
+        self
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -163,7 +182,7 @@ fn conversion_err(col: usize, e: impl std::error::Error + Send + Sync + 'static)
 #[error("bad stored value: {0:?}")]
 struct BadValue(String);
 
-const ACCOUNT_COLS: &str = "id, code, name, subtype, parent_id, archived";
+const ACCOUNT_COLS: &str = "id, code, name, subtype, parent_id, archived, scope, flex";
 
 fn account_from_row(row: &Row) -> rusqlite::Result<Account> {
     let subtype: String = row.get(3)?;
@@ -174,6 +193,8 @@ fn account_from_row(row: &Row) -> rusqlite::Result<Account> {
         subtype: subtype.parse().map_err(|e| conversion_err(3, e))?,
         parent_id: row.get(4)?,
         archived: row.get(5)?,
+        scope: row.get::<_, String>(6)?.parse().map_err(|e| conversion_err(6, e))?,
+        flex: row.get::<_, Option<String>>(7)?.map(|f| f.parse()).transpose().map_err(|e| conversion_err(7, e))?,
     })
 }
 
@@ -283,6 +304,12 @@ impl Store {
             tx.pragma_update(None, "user_version", 4)?;
             tx.commit()?;
         }
+        if version < 5 {
+            let tx = self.conn.transaction()?;
+            tx.execute_batch(include_str!("schema_v5.sql"))?;
+            tx.pragma_update(None, "user_version", 5)?;
+            tx.commit()?;
+        }
         Ok(())
     }
 
@@ -351,6 +378,15 @@ impl Store {
             if parent.kind() != new.subtype.kind() {
                 return rule(format!("a sub-account must have the same type as its parent ({})", parent.name));
             }
+            if parent.scope != new.scope {
+                return rule(format!("a sub-account must be on the same side of the book as its parent ({})", parent.name));
+            }
+        }
+        if !self.sides()?.contains(&new.scope) {
+            return rule(format!("this book has no {} side yet; add one in Settings", new.scope.as_str()));
+        }
+        if new.flex.is_some() && !(new.scope == Scope::Household && new.subtype.kind() == tally_core::AccountKind::Expense) {
+            return rule("only household spending categories have a flexibility");
         }
         if let Some(code) = code
             && self.account_by_code(code)?.is_some()
@@ -358,23 +394,72 @@ impl Store {
             return rule(format!("account code {code} is already in use"));
         }
         self.conn.execute(
-            "INSERT INTO accounts(code, name, subtype, parent_id) VALUES (?1, ?2, ?3, ?4)",
-            params![code, name, new.subtype.as_str(), new.parent_id],
+            "INSERT INTO accounts(code, name, subtype, parent_id, scope, flex) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![code, name, new.subtype.as_str(), new.parent_id, new.scope.as_str(), new.flex.map(Flex::as_str)],
         )?;
         Ok(self.conn.last_insert_rowid())
     }
 
-    /// Adds the starter chart, skipping codes that already exist.
+    /// Adds the business starter chart, skipping codes that already exist.
     pub fn seed_default_chart(&mut self) -> Result<()> {
+        self.add_side(Scope::Business)
+    }
+
+    /// The sides this book keeps, business first. Books from before
+    /// household support are business-only.
+    pub fn sides(&self) -> Result<Vec<Scope>> {
+        let Some(raw) = setting(&self.conn, "book.sides")? else {
+            return Ok(vec![Scope::Business]);
+        };
+        let mut sides = raw
+            .split(',')
+            .map(|s| s.parse::<Scope>().map_err(|_| StoreError::Rule(format!("corrupt book.sides setting: {raw:?}"))))
+            .collect::<Result<Vec<_>>>()?;
+        sides.sort_by_key(|s| *s as u8);
+        sides.dedup();
+        Ok(sides)
+    }
+
+    /// Starts keeping one side of the book: seeds its starter chart (skipping
+    /// codes that already exist) and records the side. A brand-new book that
+    /// gets only a household side becomes household-only.
+    pub fn add_side(&mut self, scope: Scope) -> Result<()> {
+        let fresh = setting(&self.conn, "book.sides")?.is_none()
+            && self.conn.query_row("SELECT COUNT(*) FROM accounts", [], |r| r.get::<_, i64>(0))? == 0;
+        let mut sides = if fresh { vec![] } else { self.sides()? };
+        if !sides.contains(&scope) {
+            sides.push(scope);
+        }
+        sides.sort_by_key(|s| *s as u8);
         let tx = self.conn.transaction()?;
-        for t in DEFAULT_CHART {
+        for t in chart::chart_for(scope) {
             tx.execute(
-                "INSERT INTO accounts(code, name, subtype) VALUES (?1, ?2, ?3)
+                "INSERT INTO accounts(code, name, subtype, scope, flex) VALUES (?1, ?2, ?3, ?4, ?5)
                  ON CONFLICT(code) DO NOTHING",
-                params![t.code, t.name, t.subtype.as_str()],
+                params![t.code, t.name, t.subtype.as_str(), scope.as_str(), t.flex.map(Flex::as_str)],
             )?;
         }
+        let joined = sides.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(",");
+        set_setting(&tx, "book.sides", Some(&joined))?;
         tx.commit()?;
+        Ok(())
+    }
+
+    /// Accounts on one side of the book, or all of them.
+    pub fn accounts_in(&self, scope: Option<Scope>) -> Result<Vec<Account>> {
+        let mut all = self.accounts()?;
+        if let Some(scope) = scope {
+            all.retain(|a| a.scope == scope);
+        }
+        Ok(all)
+    }
+
+    pub fn set_flex(&self, id: AccountId, flex: Option<Flex>) -> Result<()> {
+        let account = self.account(id)?;
+        if flex.is_some() && !(account.scope == Scope::Household && account.kind() == tally_core::AccountKind::Expense) {
+            return rule("only household spending categories have a flexibility");
+        }
+        self.conn.execute("UPDATE accounts SET flex = ?1 WHERE id = ?2", params![flex.map(Flex::as_str), id])?;
         Ok(())
     }
 
@@ -553,11 +638,20 @@ impl Store {
     }
 
     pub fn trial_balance(&self, as_of: NaiveDate) -> Result<TrialBalance> {
-        Ok(report::trial_balance(&self.accounts()?, &self.balances(None, as_of)?))
+        self.trial_balance_in(as_of, None)
+    }
+
+    /// Each side of the book balances on its own, so a one-side trial balance does too.
+    pub fn trial_balance_in(&self, as_of: NaiveDate, scope: Option<Scope>) -> Result<TrialBalance> {
+        Ok(report::trial_balance(&self.accounts_in(scope)?, &self.balances(None, as_of)?))
     }
 
     pub fn profit_and_loss(&self, from: NaiveDate, to: NaiveDate) -> Result<ProfitAndLoss> {
-        Ok(report::profit_and_loss(&self.accounts()?, &self.balances(Some(from), to)?))
+        self.profit_and_loss_in(from, to, None)
+    }
+
+    pub fn profit_and_loss_in(&self, from: NaiveDate, to: NaiveDate, scope: Option<Scope>) -> Result<ProfitAndLoss> {
+        Ok(report::profit_and_loss(&self.accounts_in(scope)?, &self.balances(Some(from), to)?))
     }
 
     pub fn fiscal_year_start(&self, date: NaiveDate) -> Result<NaiveDate> {
@@ -567,12 +661,16 @@ impl Store {
     }
 
     pub fn balance_sheet(&self, as_of: NaiveDate) -> Result<BalanceSheet> {
+        self.balance_sheet_in(as_of, None)
+    }
+
+    pub fn balance_sheet_in(&self, as_of: NaiveDate, scope: Option<Scope>) -> Result<BalanceSheet> {
         let fy_start = self.fiscal_year_start(as_of)?;
         let before = match fy_start.pred_opt() {
             Some(day_before) => self.balances(None, day_before)?,
             None => Balances::new(),
         };
-        Ok(report::balance_sheet(&self.accounts()?, &self.balances(None, as_of)?, &before))
+        Ok(report::balance_sheet(&self.accounts_in(scope)?, &self.balances(None, as_of)?, &before))
     }
 
     // ------------------------------------------------------------ reconciliation
@@ -782,18 +880,24 @@ impl Store {
 fn post_in(tx: &Transaction, entry: &NewEntry, source: &str, reverses: Option<EntryId>) -> Result<EntryId> {
     entry.validate()?;
     check_not_locked(tx, entry.date)?;
+    let mut business = Cents::ZERO;
     for line in &entry.lines {
-        let archived: Option<(String, bool)> = tx
-            .query_row("SELECT name, archived FROM accounts WHERE id = ?1", [line.account_id], |r| {
-                Ok((r.get(0)?, r.get(1)?))
+        let found: Option<(String, bool, String)> = tx
+            .query_row("SELECT name, archived, scope FROM accounts WHERE id = ?1", [line.account_id], |r| {
+                Ok((r.get(0)?, r.get(1)?, r.get(2)?))
             })
             .optional()?;
-        match archived {
+        match found {
             None => return Err(StoreError::NotFound("account", line.account_id)),
-            Some((name, true)) => return rule(format!("{name} is archived")),
-            Some(_) => {}
+            Some((name, true, _)) => return rule(format!("{name} is archived")),
+            Some((_, false, scope)) => {
+                if scope == Scope::Business.as_str() {
+                    business = business.checked_add(line.amount).ok_or(EntryError::Overflow)?;
+                }
+            }
         }
     }
+    let bridge = bridge_lines(tx, business)?;
     tx.execute(
         "INSERT INTO journal_entries(date, memo, source, reverses_id) VALUES (?1, ?2, ?3, ?4)",
         params![entry.date, entry.memo.trim(), source, reverses],
@@ -801,10 +905,46 @@ fn post_in(tx: &Transaction, entry: &NewEntry, source: &str, reverses: Option<En
     let id = tx.last_insert_rowid();
     let mut insert =
         tx.prepare_cached("INSERT INTO journal_lines(entry_id, account_id, amount, memo) VALUES (?1, ?2, ?3, ?4)")?;
-    for line in &entry.lines {
+    for line in entry.lines.iter().chain(&bridge) {
         insert.execute(params![id, line.account_id, line.amount.0, line.memo])?;
     }
     Ok(id)
+}
+
+/// Lines that make an entry balance within each side of the book.
+///
+/// `business` is the sum of the entry's business lines. Since the whole entry
+/// sums to zero, the household lines sum to its negation. A business side
+/// that is credit-heavy paid for something at home: an owner's draw, which
+/// the household sees as money from the business. Debit-heavy is the reverse,
+/// an owner's contribution.
+fn bridge_lines(tx: &Transaction, business: Cents) -> Result<Vec<EntryLine>> {
+    if business.is_zero() {
+        return Ok(vec![]);
+    }
+    let find = |code: &str| -> Result<AccountId> {
+        let found: Option<(AccountId, bool)> = tx
+            .query_row("SELECT id, archived FROM accounts WHERE code = ?1", [code], |r| Ok((r.get(0)?, r.get(1)?)))
+            .optional()?;
+        match found {
+            Some((id, false)) => Ok(id),
+            _ => rule(format!(
+                "this mixes business and household money, but account {code} is missing or archived, so the owner's draw can't be recorded"
+            )),
+        }
+    };
+    let amount = business.abs();
+    Ok(if business.0 < 0 {
+        vec![
+            EntryLine::debit(find(codes::OWNERS_DRAW)?, amount).with_memo("Owner's draw"),
+            EntryLine::credit(find(codes::FROM_THE_BUSINESS)?, amount).with_memo("Owner's draw"),
+        ]
+    } else {
+        vec![
+            EntryLine::credit(find(codes::OWNERS_EQUITY)?, amount).with_memo("Owner's contribution"),
+            EntryLine::debit(find(codes::INTO_THE_BUSINESS)?, amount).with_memo("Owner's contribution"),
+        ]
+    })
 }
 
 fn entry_in(conn: &Connection, id: EntryId) -> Result<Entry> {

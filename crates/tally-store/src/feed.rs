@@ -781,9 +781,10 @@ impl Store {
     /// Posts an opening balance (natural sign) against Opening Balance Equity.
     pub fn post_opening_balance(&mut self, account_id: AccountId, date: NaiveDate, balance: Cents) -> Result<EntryId> {
         let account = self.account(account_id)?;
+        let code = tally_core::chart::opening_balance_code(account.scope);
         let equity = self
-            .account_by_code(tally_core::chart::codes::OPENING_BALANCE_EQUITY)?
-            .ok_or_else(|| StoreError::Rule("the Opening Balance Equity account (3050) is missing".into()))?;
+            .account_by_code(code)?
+            .ok_or_else(|| StoreError::Rule(format!("the opening balance account ({code}) is missing")))?;
         let raw = account.kind().raw(balance);
         if raw.is_zero() {
             return rule("opening balance is zero; nothing to post");

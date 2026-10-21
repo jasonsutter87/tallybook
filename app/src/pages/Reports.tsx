@@ -3,9 +3,10 @@ import { ArrowDownLeft, ArrowUpRight, BookOpenCheck, ChevronRight, Clock, Hourgl
 import type { ReactNode } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useApi } from "../api";
+import { SCOPE_LABEL, useSides, type BookSides } from "../book";
 import { Card, EmptyState, ErrorBanner, Loading, Money, PageHeader } from "../components/ui";
 import { date, iso, money, todayISO } from "../format";
-import type { AgingBuckets, AgingReport, BalanceSheet, Cents, ISODate, ProfitAndLoss, ReportLine, Settings, TrialBalance } from "../types";
+import type { AgingBuckets, AgingReport, BalanceSheet, Cents, ISODate, ProfitAndLoss, ReportLine, Scope, Settings, TrialBalance } from "../types";
 import "./Reports.css";
 
 // ------------------------------------------------------------- catalog
@@ -19,13 +20,26 @@ interface ReportDef {
   icon: ReactNode;
   tone: string;
   range: boolean;
+  /** Business-only reports (customers and vendors on account). */
+  business?: boolean;
+}
+
+/** Household books ask the same questions in household words. */
+const HOUSEHOLD_WORDS: Record<string, { title: string; question: string }> = {
+  pnl: { title: "Income & spending", question: "What came in and where it went, for a period." },
+  "balance-sheet": { title: "Net worth", question: "What you have and what you owe, on a given day." },
+};
+
+function words(def: ReportDef, scope: Scope | undefined, sides: BookSides) {
+  const household = scope === "household" || (!scope && !sides.business);
+  return household ? (HOUSEHOLD_WORDS[def.slug] ?? def) : def;
 }
 
 const REPORTS: ReportDef[] = [
   { slug: "pnl", title: "Profit & loss", question: "Did you make money? Income minus expenses for a period.", icon: <TrendingUp size={20} />, tone: "pos", range: true },
   { slug: "balance-sheet", title: "Balance sheet", question: "What you own and what you owe, on a given day.", icon: <Scale size={20} />, tone: "", range: false },
-  { slug: "ar-aging", title: "Who owes you", question: "Unpaid customer invoices, grouped by how late they are (A/R aging).", icon: <ArrowDownLeft size={20} />, tone: "violet", range: false },
-  { slug: "ap-aging", title: "Who you owe", question: "Unpaid bills to vendors, grouped by how late they are (A/P aging).", icon: <ArrowUpRight size={20} />, tone: "warn", range: false },
+  { slug: "ar-aging", title: "Who owes you", question: "Unpaid customer invoices, grouped by how late they are (A/R aging).", icon: <ArrowDownLeft size={20} />, tone: "violet", range: false, business: true },
+  { slug: "ap-aging", title: "Who you owe", question: "Unpaid bills to vendors, grouped by how late they are (A/P aging).", icon: <ArrowUpRight size={20} />, tone: "warn", range: false, business: true },
   { slug: "trial-balance", title: "Trial balance", question: "Every account's debit or credit balance — for your accountant.", icon: <BookOpenCheck size={20} />, tone: "", range: false },
 ];
 
@@ -37,22 +51,30 @@ export default function Reports() {
 }
 
 function Gallery() {
+  const sides = useSides();
+  const reports = REPORTS.filter((r) => sides.business || !r.business);
   return (
     <div className="page">
-      <PageHeader title="Reports" subtitle="Clear answers about your business. Every number links back to the transactions behind it." />
+      <PageHeader
+        title="Reports"
+        subtitle={`Clear answers about your ${sides.business ? "business" : "money"}. Every number links back to the transactions behind it.`}
+      />
       <div className="report-gallery">
-        {REPORTS.map((r) => (
+        {reports.map((r) => {
+          const w = words(r, sides.business ? undefined : "household", sides);
+          return (
           <Link key={r.slug} to={`/reports/${r.slug}`} className="card report-card">
             <span className={`icon-bubble ${r.tone}`}>{r.icon}</span>
             <div className="grow">
-              <div className="report-card-title">{r.title}</div>
+              <div className="report-card-title">{w.title}</div>
               <div className="muted small" style={{ marginTop: 3 }}>
-                {r.question}
+                {w.question}
               </div>
             </div>
             <ChevronRight size={18} className="report-card-go" />
           </Link>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
@@ -117,6 +139,10 @@ function ReportView({ def }: { def: ReportDef }) {
   const from = search.get("from") ?? defFrom;
   const to = search.get("to") ?? defTo;
   const asOf = search.get("as_of") ?? today;
+  const sides = useSides();
+  // A two-sided book reports one side at a time; aging reports are business-only.
+  const scope: Scope | undefined = sides.both ? (def.business ? "business" : ((search.get("side") as Scope | null) ?? sides.main)) : undefined;
+  const w = words(def, scope, sides);
 
   const set = (patch: Record<string, string>) => {
     const next = new URLSearchParams(search);
@@ -142,8 +168,8 @@ function ReportView({ def }: { def: ReportDef }) {
     <div className="page report-page">
       <PageHeader
         back={{ to: "/reports", label: "Reports" }}
-        title={def.title}
-        subtitle={def.question}
+        title={w.title}
+        subtitle={w.question}
         actions={
           <button className="btn btn-secondary" onClick={() => window.print()}>
             <Printer size={16} /> Print / PDF
@@ -153,13 +179,22 @@ function ReportView({ def }: { def: ReportDef }) {
 
       <div className="print-only print-head">
         {company && <div className="company">{company}</div>}
-        <div className="title">{def.title}</div>
+        <div className="title">{scope ? `${w.title} · ${SCOPE_LABEL[scope]}` : w.title}</div>
         <div className="meta">
           {period} · Generated {generated}
         </div>
       </div>
 
       <div className="card report-toolbar no-print">
+        {sides.both && !def.business && (
+          <div className="tabs" role="tablist">
+            {sides.sides.map((s) => (
+              <button key={s} role="tab" className={`tab ${scope === s ? "active" : ""}`} onClick={() => set({ side: s })}>
+                {SCOPE_LABEL[s]}
+              </button>
+            ))}
+          </div>
+        )}
         {def.range ? (
           <>
             <div className="tabs" role="tablist" style={{ flexWrap: "wrap" }}>
@@ -202,9 +237,9 @@ function ReportView({ def }: { def: ReportDef }) {
         )}
       </div>
 
-      {def.slug === "pnl" && <PnL from={from} to={to} />}
-      {def.slug === "balance-sheet" && <BalanceSheetReport asOf={asOf} />}
-      {def.slug === "trial-balance" && <TrialBalanceReport asOf={asOf} />}
+      {def.slug === "pnl" && <PnL from={from} to={to} scope={scope} />}
+      {def.slug === "balance-sheet" && <BalanceSheetReport asOf={asOf} scope={scope} />}
+      {def.slug === "trial-balance" && <TrialBalanceReport asOf={asOf} scope={scope} />}
       {def.slug === "ar-aging" && <Aging asOf={asOf} kind="ar" />}
       {def.slug === "ap-aging" && <Aging asOf={asOf} kind="ap" />}
     </div>
@@ -292,8 +327,8 @@ function Total(props: { label: ReactNode; cents: Cents; kind?: "total" | "subtot
 
 // ------------------------------------------------------------- P&L
 
-function PnL({ from, to }: { from: ISODate; to: ISODate }) {
-  const { data, error, isLoading } = useReport<ProfitAndLoss>("reports.pnl", { from, to });
+function PnL({ from, to, scope }: { from: ISODate; to: ISODate; scope?: Scope }) {
+  const { data, error, isLoading } = useReport<ProfitAndLoss>("reports.pnl", { from, to, scope });
   if (isLoading) return <Loading />;
   if (error || !data) return <ErrorBanner error={error} />;
 
@@ -387,8 +422,8 @@ function PnL({ from, to }: { from: ISODate; to: ISODate }) {
 
 // ------------------------------------------------------------- balance sheet
 
-function BalanceSheetReport({ asOf }: { asOf: ISODate }) {
-  const { data, error, isLoading } = useReport<BalanceSheet>("reports.balance_sheet", { as_of: asOf });
+function BalanceSheetReport({ asOf, scope }: { asOf: ISODate; scope?: Scope }) {
+  const { data, error, isLoading } = useReport<BalanceSheet>("reports.balance_sheet", { as_of: asOf, scope });
   if (isLoading) return <Loading />;
   if (error || !data) return <ErrorBanner error={error} />;
 
@@ -453,9 +488,9 @@ function BalanceSheetReport({ asOf }: { asOf: ISODate }) {
 
 // ------------------------------------------------------------- trial balance
 
-function TrialBalanceReport({ asOf }: { asOf: ISODate }) {
+function TrialBalanceReport({ asOf, scope }: { asOf: ISODate; scope?: Scope }) {
   const navigate = useNavigate();
-  const { data, error, isLoading } = useReport<TrialBalance>("reports.trial_balance", { as_of: asOf });
+  const { data, error, isLoading } = useReport<TrialBalance>("reports.trial_balance", { as_of: asOf, scope });
   if (isLoading) return <Loading />;
   if (error || !data) return <ErrorBanner error={error} />;
   const balanced = data.total_debits === data.total_credits;

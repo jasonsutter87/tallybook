@@ -20,6 +20,6 @@ pub mod report;
 pub mod rules;
 pub mod tax;
 
-pub use account::{Account, AccountId, AccountKind, AccountSubtype};
+pub use account::{Account, AccountId, AccountKind, AccountSubtype, Flex, Scope};
 pub use journal::{EntryError, EntryLine, NewEntry};
 pub use money::Cents;

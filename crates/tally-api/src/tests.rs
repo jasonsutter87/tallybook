@@ -261,3 +261,46 @@ async fn cloud_copies_are_encrypted_pruned_and_pushed() {
     assert_eq!(status["git_has_remote"], true);
     assert!(status["last"].is_string() && status["last_error"].is_null());
 }
+
+#[tokio::test]
+async fn household_books_through_the_dispatcher() {
+    let (app, dir) = app("household");
+    app.call("book.create", json!({ "path": dir.join("h.tallybook"), "company_name": "The Rivera household", "sides": ["household"] }))
+        .await
+        .unwrap();
+    assert_eq!(app.call("book.status", Value::Null).await.unwrap()["sides"], json!(["household"]));
+
+    // New accounts default to the book's only side.
+    let checking = app.call("accounts.create", json!({ "name": "Checking", "subtype": "bank", "opening_balance": 200000, "opening_date": "2026-01-01" })).await.unwrap();
+    let accounts = app.call("accounts.list", Value::Null).await.unwrap();
+    let mine = accounts.as_array().unwrap().iter().find(|a| a["id"] == checking).unwrap();
+    assert_eq!(mine["scope"], "household");
+    assert_eq!(mine["balance"], 200000);
+    let groceries = accounts.as_array().unwrap().iter().find(|a| a["name"] == "Groceries").unwrap();
+    assert_eq!(groceries["flex"], "usage");
+
+    // Business accounts need a business side first.
+    let err = app.call("accounts.create", json!({ "name": "Biz", "subtype": "bank", "scope": "business" })).await.unwrap_err();
+    assert_eq!(err.code, "rule");
+    app.call("book.add_side", json!({ "scope": "business" })).await.unwrap();
+    assert_eq!(app.call("book.status", Value::Null).await.unwrap()["sides"], json!(["business", "household"]));
+    let biz = app.call("accounts.create", json!({ "name": "Biz", "subtype": "bank", "scope": "business" })).await.unwrap();
+
+    // Paying yourself shows up as household income, and not as business spending.
+    app.call(
+        "entries.post",
+        json!({ "date": "2026-02-01", "memo": "Pay myself", "lines": [
+            { "account_id": checking, "amount": 150000 }, { "account_id": biz, "amount": -150000 }
+        ] }),
+    )
+    .await
+    .unwrap();
+    let home = app.call("reports.pnl", json!({ "from": "2026-01-01", "to": "2026-12-31", "scope": "household" })).await.unwrap();
+    assert_eq!(home["total_income"], 150000);
+    let business = app.call("reports.pnl", json!({ "from": "2026-01-01", "to": "2026-12-31", "scope": "business" })).await.unwrap();
+    assert_eq!(business["net_income"], 0);
+    let sheet = app.call("reports.balance_sheet", json!({ "as_of": "2026-12-31", "scope": "household" })).await.unwrap();
+    assert_eq!(sheet["total_assets"], 350000);
+    let home_dash = app.call("dashboard", json!({ "scope": "household" })).await.unwrap();
+    assert_eq!(home_dash["cash"], 350000);
+}

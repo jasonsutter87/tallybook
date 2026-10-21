@@ -14,22 +14,25 @@ import {
 } from "lucide-react";
 import { NavLink } from "react-router-dom";
 import { useAction, useApi } from "../api";
+import { useSides } from "../book";
 
-const MAIN = [
+const HOUSEHOLD: NavItem[] = [];
+
+const MAIN: NavItem[] = [
   { to: "/", label: "Home", icon: Home, end: true },
   { to: "/review", label: "Review", icon: Inbox, badge: true },
   { to: "/accounts", label: "Accounts", icon: Landmark },
 ];
 
-const MONEY = [
+type NavItem = { to: string; label: string; icon: typeof Home; end?: boolean; badge?: boolean };
+
+const MONEY: NavItem[] = [
   { to: "/invoices", label: "Invoices", icon: FileText },
   { to: "/bills", label: "Bills", icon: Receipt },
   { to: "/contacts", label: "Customers & vendors", icon: Users },
 ];
 
-const INSIGHT = [
-  { to: "/reports", label: "Reports", icon: BarChart3 },
-  { to: "/taxes", label: "Taxes", icon: Scale },
+const SETUP: NavItem[] = [
   { to: "/banking", label: "Bank connections", icon: Building2 },
   { to: "/rules", label: "Rules", icon: Wand2 },
   { to: "/settings", label: "Settings", icon: Settings },
@@ -38,7 +41,13 @@ const INSIGHT = [
 export default function Sidebar({ companyName }: { companyName: string }) {
   const inbox = useApi<number>("inbox.count", undefined, { refetchInterval: 30_000 });
   const close = useAction("book.close");
-  const item = (n: { to: string; label: string; icon: typeof Home; end?: boolean; badge?: boolean }) => (
+  const { business, household } = useSides();
+  const insight: NavItem[] = [
+    { to: "/reports", label: "Reports", icon: BarChart3 },
+    ...(business ? [{ to: "/taxes", label: "Taxes", icon: Scale }] : []),
+    ...SETUP,
+  ];
+  const item = (n: NavItem) => (
     <NavLink key={n.to} to={n.to} end={n.end} className={({ isActive }) => `nav-item ${isActive ? "active" : ""}`}>
       <n.icon size={18} strokeWidth={2.2} />
       {n.label}
@@ -55,10 +64,20 @@ export default function Sidebar({ companyName }: { companyName: string }) {
         </div>
       </div>
       {MAIN.map(item)}
-      <div className="nav-section">Money in & out</div>
-      {MONEY.map(item)}
+      {household && (
+        <>
+          <div className="nav-section">Household</div>
+          {HOUSEHOLD.map(item)}
+        </>
+      )}
+      {business && (
+        <>
+          <div className="nav-section">{household ? "Business" : "Money in & out"}</div>
+          {MONEY.map(item)}
+        </>
+      )}
       <div className="nav-section">Insights & setup</div>
-      {INSIGHT.map(item)}
+      {insight.map(item)}
       <div className="sidebar-foot">
         <button className="nav-item" style={{ border: 0, background: "none", width: "100%", cursor: "pointer" }} onClick={() => close.mutate(undefined)}>
           <LogOut size={18} strokeWidth={2.2} />

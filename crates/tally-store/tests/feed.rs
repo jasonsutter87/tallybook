@@ -39,7 +39,7 @@ fn book() -> Book {
     let mut s = Store::open_in_memory().unwrap();
     s.seed_default_chart().unwrap();
     let checking = s
-        .create_account(&NewAccount { code: Some("1000".into()), name: "Checking".into(), subtype: AccountSubtype::Bank, parent_id: None })
+        .create_account(&NewAccount::new("Checking", AccountSubtype::Bank).code("1000"))
         .unwrap();
     let id = |s: &Store, c: &str| s.account_by_code(c).unwrap().unwrap().id;
     Book { meals: id(&s, "6250"), software: id(&s, "6500"), sales: id(&s, "4000"), s, checking }

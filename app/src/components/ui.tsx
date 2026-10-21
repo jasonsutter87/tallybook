@@ -16,8 +16,9 @@ import {
 import { Link } from "react-router-dom";
 import { ArrowLeft } from "lucide-react";
 import { useApi, type ApiError } from "../api";
-import { KIND_LABEL, KIND_ORDER, centsToInput, money, moneyParts, parseMoney } from "../format";
-import type { Account, AccountKind, AccountSubtype, Cents, Contact, ContactKind, DocStatus } from "../types";
+import { useSides } from "../book";
+import { KIND_ORDER, centsToInput, kindLabel, money, moneyParts, parseMoney } from "../format";
+import type { Account, AccountKind, AccountSubtype, Cents, Contact, ContactKind, DocStatus, Scope } from "../types";
 
 // ------------------------------------------------------------- layout
 
@@ -473,23 +474,32 @@ export function AccountSelect(props: {
   prefer?: AccountKind[];
   placeholder?: string;
   autoFocus?: boolean;
+  /** Only one side of the book. */
+  scope?: Scope;
 }) {
   const { data } = useApi<Account[]>("accounts.list");
+  const { both, sides } = useSides();
   const options = useMemo<ComboOption[]>(() => {
     const accounts = (data ?? []).filter(
       (a) =>
         !a.archived &&
+        (!props.scope || a.scope === props.scope) &&
         (!props.kinds || props.kinds.includes(a.kind)) &&
         (!props.subtypes || props.subtypes.includes(a.subtype)) &&
         !props.exclude?.includes(a.id),
     );
     const order = props.prefer ? [...props.prefer, ...KIND_ORDER.filter((k) => !props.prefer!.includes(k))] : KIND_ORDER;
-    return order.flatMap((k) =>
-      accounts
-        .filter((a) => a.kind === k)
-        .map((a) => ({ value: a.id, label: a.name, group: KIND_LABEL[k], keywords: a.code ?? "" })),
+    // In a two-sided book, household groups come first: that's where most
+    // everyday money goes, and the business groups follow, labeled as such.
+    const scopes: Scope[] = both ? [...sides].reverse() : [sides[0]];
+    return scopes.flatMap((scope) =>
+      order.flatMap((k) =>
+        accounts
+          .filter((a) => a.kind === k && (!both || a.scope === scope))
+          .map((a) => ({ value: a.id, label: a.name, group: kindLabel(k, a.scope, both), keywords: `${a.code ?? ""} ${a.scope}` })),
+      ),
     );
-  }, [data, props.kinds, props.subtypes, props.exclude, props.prefer]);
+  }, [data, props.kinds, props.subtypes, props.exclude, props.prefer, props.scope, both, sides]);
   return <Combobox options={options} value={props.value} onChange={props.onChange} placeholder={props.placeholder ?? "Choose a category"} autoFocus={props.autoFocus} />;
 }
 

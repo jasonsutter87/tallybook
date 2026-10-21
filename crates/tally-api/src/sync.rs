@@ -48,6 +48,9 @@ struct SimplefinReconnect {
 struct NewLedgerAccount {
     name: String,
     subtype: AccountSubtype,
+    /// Defaults to the book's main side.
+    #[serde(default)]
+    scope: Option<tally_core::Scope>,
 }
 
 #[derive(Deserialize)]
@@ -260,7 +263,13 @@ impl App {
                 self.with_api(|s| {
                     let account_id = match (p.account_id, p.new_account) {
                         (Some(id), _) => id,
-                        (None, Some(n)) => s.create_account(&NewAccount { code: None, name: n.name, subtype: n.subtype, parent_id: None })?,
+                        (None, Some(n)) => {
+                            let scope = match n.scope {
+                                Some(scope) => scope,
+                                None => crate::main_side(s)?,
+                            };
+                            s.create_account(&NewAccount { code: None, name: n.name, subtype: n.subtype, parent_id: None, scope, flex: None })?
+                        }
                         (None, None) => return Err(ApiError::new("bad_params", "choose an account or create a new one")),
                     };
                     let link = s.link_account(p.connection_id, &p.external_account_id, account_id, &p.name, p.mask.as_deref(), p.start_date)?;

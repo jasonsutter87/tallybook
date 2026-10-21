@@ -28,10 +28,10 @@ fn book() -> Book {
     let mut s = Store::open_in_memory().unwrap();
     s.seed_default_chart().unwrap();
     let checking = s
-        .create_account(&NewAccount { code: Some("1000".into()), name: "Checking".into(), subtype: AccountSubtype::Bank, parent_id: None })
+        .create_account(&NewAccount::new("Checking", AccountSubtype::Bank).code("1000"))
         .unwrap();
     let card = s
-        .create_account(&NewAccount { code: Some("2000".into()), name: "Amex".into(), subtype: AccountSubtype::CreditCard, parent_id: None })
+        .create_account(&NewAccount::new("Amex", AccountSubtype::CreditCard).code("2000"))
         .unwrap();
     let contact = |s: &Store, kind, name: &str| {
         s.create_contact(&NewContact { kind, name: name.into(), company: None, email: None, phone: None, address: None, notes: None }).unwrap()

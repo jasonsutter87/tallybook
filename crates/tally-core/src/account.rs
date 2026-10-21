@@ -132,7 +132,7 @@ impl fmt::Display for AccountSubtype {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-#[error("unknown account subtype: {0:?}")]
+#[error("unknown value: {0:?}")]
 pub struct UnknownSubtype(pub String);
 
 impl FromStr for AccountSubtype {
@@ -145,6 +145,67 @@ impl FromStr for AccountSubtype {
     }
 }
 
+/// Which side of a book an account belongs to. A book can keep a business,
+/// a household, or both; each side balances on its own, and money that
+/// crosses between them is an owner's draw or contribution.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Scope {
+    #[default]
+    Business,
+    Household,
+}
+
+impl Scope {
+    pub const ALL: [Scope; 2] = [Scope::Business, Scope::Household];
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Scope::Business => "business",
+            Scope::Household => "household",
+        }
+    }
+}
+
+impl FromStr for Scope {
+    type Err = UnknownSubtype;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Scope::ALL.into_iter().find(|t| t.as_str() == s).ok_or_else(|| UnknownSubtype(s.to_string()))
+    }
+}
+
+/// How much a household spending category can bend: the "opportunity" in an
+/// opportunity gap. Rent barely moves; dining out moves with a decision.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Flex {
+    /// Stable and predictable: rent, a car payment, insurance.
+    Fixed,
+    /// Recurring but moves with use: electricity, gas, groceries.
+    Usage,
+    /// Comes down to choices: shopping, dining out, entertainment.
+    Lifestyle,
+}
+
+impl Flex {
+    pub const ALL: [Flex; 3] = [Flex::Fixed, Flex::Usage, Flex::Lifestyle];
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Flex::Fixed => "fixed",
+            Flex::Usage => "usage",
+            Flex::Lifestyle => "lifestyle",
+        }
+    }
+}
+
+impl FromStr for Flex {
+    type Err = UnknownSubtype;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Flex::ALL.into_iter().find(|t| t.as_str() == s).ok_or_else(|| UnknownSubtype(s.to_string()))
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Account {
     pub id: AccountId,
@@ -153,6 +214,11 @@ pub struct Account {
     pub subtype: AccountSubtype,
     pub parent_id: Option<AccountId>,
     pub archived: bool,
+    #[serde(default)]
+    pub scope: Scope,
+    /// Household spending categories only.
+    #[serde(default)]
+    pub flex: Option<Flex>,
 }
 
 impl Account {

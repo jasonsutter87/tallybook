@@ -203,7 +203,7 @@ mod tests {
     use super::*;
 
     fn acct(id: AccountId, code: &str, subtype: AccountSubtype) -> Account {
-        Account { id, code: Some(code.into()), name: code.into(), subtype, parent_id: None, archived: false }
+        Account { id, code: Some(code.into()), name: code.into(), subtype, parent_id: None, archived: false, scope: Default::default(), flex: None }
     }
 
     fn chart() -> Vec<Account> {

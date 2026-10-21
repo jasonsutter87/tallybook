@@ -20,22 +20,11 @@ import {
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { call, openExternal, queryClient, useAction, useApi } from "../api";
+import { SCOPE_LABEL, useSides } from "../book";
 import { Card, ConfirmModal, EmptyState, ErrorBanner, Field, Loading, Modal, MoneyInput, Spinner, useToast } from "../components/ui";
 import ImportModal from "../flows/ImportModal";
 import { date, iso, money, plural } from "../format";
-import type {
-  Account,
-  AccountSubtype,
-  BankLink,
-  Connection,
-  FeedAccount,
-  FeedAccountKind,
-  HostedLink,
-  OpeningSuggestion,
-  PlaidConfig,
-  PollResult,
-  SyncReport,
-} from "../types";
+import type { Account, AccountSubtype, BankLink, Connection, FeedAccount, FeedAccountKind, HostedLink, OpeningSuggestion, PlaidConfig, PollResult, SyncReport, Scope } from "../types";
 import "./Banking.css";
 
 // ------------------------------------------------------------- helpers
@@ -871,6 +860,7 @@ interface LinkChoice {
   target: "new" | "skip" | number;
   name: string;
   subtype: AccountSubtype;
+  scope: Scope;
   start_date: string;
 }
 
@@ -887,11 +877,13 @@ function LinkStepModal(props: { target: LinkTarget; accounts: Account[]; onClose
   const toast = useToast();
   const navigate = useNavigate();
   const { target } = props;
+  const sides = useSides();
   const [choices, setChoices] = useState<LinkChoice[]>(() =>
     target.accounts.map((a) => ({
       target: "new",
       name: a.name,
       subtype: KIND_SUBTYPE[a.kind],
+      scope: sides.main,
       start_date: defaultStartDate(),
     })),
   );
@@ -932,7 +924,7 @@ function LinkStepModal(props: { target: LinkTarget; accounts: Account[]; onClose
           name: fa.name,
           mask: fa.mask,
           account_id: typeof c.target === "number" ? c.target : null,
-          new_account: c.target === "new" ? { name: c.name.trim(), subtype: c.subtype } : null,
+          new_account: c.target === "new" ? { name: c.name.trim(), subtype: c.subtype, scope: c.scope } : null,
           start_date: c.start_date,
         });
         if (c.target === "new") created.push({ id: r.account_id, name: c.name.trim() });
@@ -1106,8 +1098,19 @@ function LinkStepModal(props: { target: LinkTarget; accounts: Account[]; onClose
                   </Field>
                 )}
                 {c.target === "new" && (
-                  <Field label="New account name" className="span-2">
+                  <Field label="New account name" className={sides.both ? undefined : "span-2"}>
                     <input className="input" value={c.name} onChange={(e) => set(i, { name: e.target.value })} />
+                  </Field>
+                )}
+                {c.target === "new" && sides.both && (
+                  <Field label="Whose account is it?">
+                    <select className="select" value={c.scope} onChange={(e) => set(i, { scope: e.target.value as Scope })}>
+                      {sides.sides.map((s) => (
+                        <option key={s} value={s}>
+                          {SCOPE_LABEL[s]}
+                        </option>
+                      ))}
+                    </select>
                   </Field>
                 )}
               </div>

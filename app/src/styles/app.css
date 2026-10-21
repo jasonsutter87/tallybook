@@ -1239,3 +1239,35 @@ kbd {
 .stat-foot.neg {
   color: var(--neg);
 }
+
+/* ------------------------------------------------------------- choice cards */
+
+.choice {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+}
+
+.choice:hover {
+  background: var(--surface-hover);
+}
+
+.choice.active {
+  border-color: var(--brand);
+  background: var(--brand-soft);
+  color: var(--brand-soft-ink);
+}
+
+.choice > svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+}

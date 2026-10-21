@@ -1,10 +1,21 @@
-import { BookOpen, FolderOpen, Lock, MoreHorizontal, Plus, Sparkles } from "lucide-react";
+import { BookOpen, Briefcase, FolderOpen, Home, Lock, MoreHorizontal, Plus, Sparkles } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { ApiError, isTauri, useAction, useApi } from "../api";
 import { Field, Modal, useToast } from "../components/ui";
 import DeleteBookModal from "../flows/DeleteBookModal";
 import UnlockBookModal from "../flows/UnlockBookModal";
-import type { RecentBook } from "../types";
+import type { RecentBook, Scope } from "../types";
+
+const KINDS: { sides: Scope[]; label: string; body: string; icon: typeof Home }[] = [
+  { sides: ["business"], label: "A business", body: "Invoices, bills, reports and tax prep.", icon: Briefcase },
+  { sides: ["household"], label: "A household", body: "A monthly budget, bills coming up, and goals.", icon: Home },
+  {
+    sides: ["business", "household"],
+    label: "Both, in one book",
+    body: "For the self-employed. Each side keeps its own numbers; money you pay yourself moves between them.",
+    icon: Sparkles,
+  },
+];
 
 function joinPath(dir: string, name: string) {
   const safe = name.replace(/[\\/:*?"<>|]/g, "").trim() || "My Business";
@@ -33,6 +44,8 @@ export default function Welcome() {
   const open = useAction("book.open");
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
+  const [kind, setKind] = useState(0);
+  const household = KINDS[kind].sides[0] === "household";
 
   const [locked, setLocked] = useState<string | null>(null);
   /** Opens a book, asking for its recovery key if it's encrypted and unknown here. */
@@ -55,7 +68,7 @@ export default function Welcome() {
   const doCreate = async () => {
     if (!dir.data) return;
     const path = await pickSavePath(joinPath(dir.data, name));
-    if (path) await run(create.mutateAsync({ path, company_name: name.trim() }));
+    if (path) await run(create.mutateAsync({ path, company_name: name.trim(), sides: KINDS[kind].sides }));
   };
 
   const doDemo = async () => {
@@ -99,7 +112,7 @@ export default function Welcome() {
           <div>
             <h2 style={{ fontSize: 22, letterSpacing: "-.03em" }}>Get started</h2>
             <p className="muted" style={{ marginTop: 4 }}>
-              Create a book for your business, or open one you already have.
+              Create a book for your business or your household, or open one you already have.
             </p>
           </div>
           <button className="btn btn-primary btn-lg btn-block" onClick={() => setCreating(true)}>
@@ -130,8 +143,8 @@ export default function Welcome() {
       <Modal
         open={creating}
         onClose={() => setCreating(false)}
-        title="Name your business"
-        subtitle="This appears on your invoices and reports. You can change it later."
+        title="Create a book"
+        subtitle="You can add the other side later in Settings."
         footer={
           <>
             <button className="btn btn-secondary" onClick={() => setCreating(false)}>
@@ -143,8 +156,37 @@ export default function Welcome() {
           </>
         }
       >
-        <Field label="Business name" hint={dir.data ? `Saved to ${joinPath(dir.data, name || "…")}` : undefined}>
-          <input className="input" autoFocus value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && name.trim() && doCreate()} placeholder="e.g. Northwind Studio" />
+        <div className="stack-sm" role="radiogroup" aria-label="What this book keeps" style={{ marginBottom: 16 }}>
+          {KINDS.map((k, i) => (
+            <button
+              key={k.label}
+              role="radio"
+              aria-checked={kind === i}
+              className={`choice ${kind === i ? "active" : ""}`}
+              onClick={() => setKind(i)}
+            >
+              <k.icon size={18} />
+              <span className="grow">
+                <span className="bold">{k.label}</span>
+                <span className="muted small" style={{ display: "block" }}>
+                  {k.body}
+                </span>
+              </span>
+            </button>
+          ))}
+        </div>
+        <Field
+          label={household ? "Household name" : "Business name"}
+          hint={dir.data ? `Saved to ${joinPath(dir.data, name || "…")}` : household ? "Shown at the top of your book." : "This appears on your invoices and reports."}
+        >
+          <input
+            className="input"
+            autoFocus
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && name.trim() && doCreate()}
+            placeholder={household ? "e.g. The Rivera household" : "e.g. Northwind Studio"}
+          />
         </Field>
       </Modal>
     </div>

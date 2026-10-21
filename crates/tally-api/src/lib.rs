@@ -22,7 +22,7 @@ use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard};
 use tally_core::rules::RuleId;
-use tally_core::{AccountId, AccountSubtype, Cents, EntryLine, NewEntry};
+use tally_core::{AccountId, AccountSubtype, Cents, EntryLine, Flex, NewEntry, Scope};
 use tally_feed::{csv_import, ofx};
 use tally_store::*;
 // The glob above brings in the store's one-arg `Result`; keep std's.
@@ -127,14 +127,42 @@ struct Range {
 }
 
 #[derive(Deserialize)]
+struct ScopedRange {
+    from: NaiveDate,
+    to: NaiveDate,
+    /// One side of the book; all of it when absent.
+    scope: Option<Scope>,
+}
+
+#[derive(Deserialize)]
 struct AsOf {
     as_of: Option<NaiveDate>,
+    scope: Option<Scope>,
+}
+
+#[derive(Deserialize)]
+struct MaybeScope {
+    scope: Option<Scope>,
 }
 
 #[derive(Deserialize)]
 struct CreateBook {
     path: PathBuf,
     company_name: String,
+    /// Which sides to keep; business only when absent.
+    #[serde(default)]
+    sides: Option<Vec<Scope>>,
+}
+
+#[derive(Deserialize)]
+struct AddSide {
+    scope: Scope,
+}
+
+#[derive(Deserialize)]
+struct SetFlex {
+    id: AccountId,
+    flex: Option<Flex>,
 }
 
 #[derive(Deserialize)]
@@ -148,6 +176,9 @@ struct CreateAccount {
     name: String,
     subtype: AccountSubtype,
     parent_id: Option<AccountId>,
+    /// Defaults to the book's main side.
+    scope: Option<Scope>,
+    flex: Option<Flex>,
     opening_balance: Option<Cents>,
     opening_date: Option<NaiveDate>,
 }
@@ -319,6 +350,8 @@ struct BookStatus {
     company_name: Option<String>,
     encrypted: bool,
     today: NaiveDate,
+    /// Sides this book keeps; empty when no book is open.
+    sides: Vec<Scope>,
 }
 
 #[derive(Serialize)]
@@ -395,19 +428,19 @@ impl App {
             // ---------------------------------------------------- book
             "book.status" => {
                 let guard = self.lock();
-                let (path, name, encrypted) = match guard.as_ref() {
-                    Some(b) => (Some(b.path.clone()), b.store.pref("company.name")?, b.store.is_encrypted()),
-                    None => (None, None, false),
+                let (path, name, encrypted, sides) = match guard.as_ref() {
+                    Some(b) => (Some(b.path.clone()), b.store.pref("company.name")?, b.store.is_encrypted(), b.store.sides()?),
+                    None => (None, None, false, vec![]),
                 };
-                ok(BookStatus { open: guard.is_some(), path, company_name: name, encrypted, today: today() })
+                ok(BookStatus { open: guard.is_some(), path, company_name: name, encrypted, today: today(), sides })
             }
             "book.create" => {
                 let p: CreateBook = params(p)?;
-                self.create_book(&p.path, &p.company_name)
+                self.create_book(&p.path, &p.company_name, &p.sides.unwrap_or_else(|| vec![Scope::Business]))
             }
             "book.create_demo" => {
                 let p: OpenPath = params(p)?;
-                self.create_book(&p.path, "Northwind Studio")?;
+                self.create_book(&p.path, "Northwind Studio", &[Scope::Business])?;
                 self.with(|s| demo::seed(s, today()))?;
                 self.call_status()
             }
@@ -428,6 +461,10 @@ impl App {
                 ok(())
             }
             "book.default_dir" => ok(default_dir()),
+            "book.add_side" => {
+                let p: AddSide = params(p)?;
+                self.with(|s| s.add_side(p.scope))
+            }
             "book.backup" => self.backup(),
 
             // ---------------------------------------------------- settings
@@ -451,18 +488,27 @@ impl App {
             }
 
             // ---------------------------------------------------- dashboard & reports
-            "dashboard" => self.with(|s| dashboard::build(s, today())),
+            "dashboard" => {
+                let p: MaybeScope = params(p)?;
+                self.with(|s| {
+                    let scope = match p.scope {
+                        Some(scope) => scope,
+                        None => main_side(s)?,
+                    };
+                    dashboard::build(s, today(), scope)
+                })
+            }
             "reports.pnl" => {
-                let p: Range = params(p)?;
-                self.with(|s| s.profit_and_loss(p.from, p.to))
+                let p: ScopedRange = params(p)?;
+                self.with(|s| s.profit_and_loss_in(p.from, p.to, p.scope))
             }
             "reports.balance_sheet" => {
                 let p: AsOf = params(p)?;
-                self.with(|s| s.balance_sheet(p.as_of.unwrap_or_else(today)))
+                self.with(|s| s.balance_sheet_in(p.as_of.unwrap_or_else(today), p.scope))
             }
             "reports.trial_balance" => {
                 let p: AsOf = params(p)?;
-                self.with(|s| s.trial_balance(p.as_of.unwrap_or_else(today)))
+                self.with(|s| s.trial_balance_in(p.as_of.unwrap_or_else(today), p.scope))
             }
             "reports.ar_aging" => {
                 let p: AsOf = params(p)?;
@@ -493,7 +539,11 @@ impl App {
             "accounts.create" => {
                 let p: CreateAccount = params(p)?;
                 self.with(|s| {
-                    let id = s.create_account(&NewAccount { code: p.code, name: p.name, subtype: p.subtype, parent_id: p.parent_id })?;
+                    let scope = match p.scope {
+                        Some(scope) => scope,
+                        None => main_side(s)?,
+                    };
+                    let id = s.create_account(&NewAccount { code: p.code, name: p.name, subtype: p.subtype, parent_id: p.parent_id, scope, flex: p.flex })?;
                     if let Some(amount) = p.opening_balance.filter(|a| !a.is_zero()) {
                         s.post_opening_balance(id, p.opening_date.unwrap_or_else(today), amount)?;
                     }
@@ -503,6 +553,10 @@ impl App {
             "accounts.rename" => {
                 let p: Rename = params(p)?;
                 self.with(|s| s.rename_account(p.id, &p.name))
+            }
+            "accounts.set_flex" => {
+                let p: SetFlex = params(p)?;
+                self.with(|s| s.set_flex(p.id, p.flex))
             }
             "accounts.archive" => {
                 let p: Archive = params(p)?;
@@ -785,9 +839,12 @@ impl App {
 
     // ------------------------------------------------------------ books
 
-    fn create_book(&self, path: &Path, company: &str) -> ApiResult<Value> {
+    fn create_book(&self, path: &Path, company: &str, sides: &[Scope]) -> ApiResult<Value> {
         if company.trim().is_empty() {
-            return Err(ApiError::new("rule", "give your business a name"));
+            return Err(ApiError::new("rule", "give your book a name"));
+        }
+        if sides.is_empty() {
+            return Err(ApiError::new("rule", "a book keeps a business, a household, or both"));
         }
         if path.exists() {
             return Err(ApiError::new("rule", format!("{} already exists", path.display())));
@@ -796,7 +853,9 @@ impl App {
             std::fs::create_dir_all(dir).map_err(|e| ApiError::new("io", e.to_string()))?;
         }
         let mut store = Store::open(path)?;
-        store.seed_default_chart()?;
+        for side in sides {
+            store.add_side(*side)?;
+        }
         store.set_pref("company.name", Some(company.trim()))?;
         self.install(store, path)
     }
@@ -858,6 +917,11 @@ impl App {
         book.store.backup_to(&dest)?;
         ok(dest)
     }
+}
+
+/// The side a book is mostly about: business when it keeps one.
+pub(crate) fn main_side(s: &Store) -> Result<Scope, StoreError> {
+    Ok(s.sides()?.first().copied().unwrap_or_default())
 }
 
 /// `~/Documents/Tallybook`, or `$TALLYBOOK_DIR` when set (development, tests).

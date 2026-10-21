@@ -1,7 +1,7 @@
 // Formatting and parsing at the UI edge. The backend only ever sees cents
 // and ISO dates.
 
-import type { AccountKind, AccountSubtype, Cents, ISODate } from "./types";
+import type { AccountKind, AccountSubtype, Cents, ISODate, Scope, Flex } from "./types";
 
 const usd = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
 const usdWhole = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
@@ -144,6 +144,19 @@ export const KIND_LABEL: Record<AccountKind, string> = {
 };
 
 export const KIND_ORDER: AccountKind[] = ["asset", "liability", "equity", "income", "expense"];
+
+/** A group heading for accounts of one kind; households spend rather than expense. */
+export function kindLabel(kind: AccountKind, scope: Scope, withSide = false): string {
+  const base = scope === "household" && kind === "expense" ? "Spending" : KIND_LABEL[kind];
+  return withSide ? `${scope === "household" ? "Household" : "Business"} · ${base}` : base;
+}
+
+/** How far a household category can bend, in plain words. */
+export const FLEX_LABEL: Record<Flex, string> = {
+  fixed: "Fixed",
+  usage: "Moves with use",
+  lifestyle: "Your choice",
+};
 
 export function plural(n: number, one: string, many = `${one}s`): string {
   return `${n} ${n === 1 ? one : many}`;

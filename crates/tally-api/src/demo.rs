@@ -42,9 +42,9 @@ pub fn seed(s: &mut Store, today: NaiveDate) -> Result<(), StoreError> {
     s.set_pref("company.address", Some("418 Alder St\nPortland, OR 97205"))?;
     s.set_pref("invoice.footer", Some("Thank you for your business! Payment via ACH or check."))?;
 
-    let checking = s.create_account(&NewAccount { code: Some("1000".into()), name: "Business Checking".into(), subtype: AccountSubtype::Bank, parent_id: None })?;
-    let savings = s.create_account(&NewAccount { code: Some("1010".into()), name: "Tax Savings".into(), subtype: AccountSubtype::Bank, parent_id: None })?;
-    let card = s.create_account(&NewAccount { code: Some("2000".into()), name: "Business Visa".into(), subtype: AccountSubtype::CreditCard, parent_id: None })?;
+    let checking = s.create_account(&NewAccount::new("Business Checking", AccountSubtype::Bank).code("1000"))?;
+    let savings = s.create_account(&NewAccount::new("Tax Savings", AccountSubtype::Bank).code("1010"))?;
+    let card = s.create_account(&NewAccount::new("Business Visa", AccountSubtype::CreditCard).code("2000"))?;
     s.post_opening_balance(checking, opening, Cents(18_250_00))?;
     s.post_opening_balance(savings, opening, Cents(9_000_00))?;
     s.post_opening_balance(card, opening, Cents(412_37))?;
