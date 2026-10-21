@@ -93,6 +93,8 @@ export interface Entry {
   voided_by_id: number | null;
   /** Customer or vendor this entry was with. */
   payee_id: number | null;
+  /** Who the money was for (household books). */
+  person_id: number | null;
   lines: PostedLine[];
 }
 
@@ -222,6 +224,8 @@ export interface ReviewedTxn extends BankTxn {
 
 export interface InboxItem extends BankTxn {
   suggestion: Suggestion | null;
+  /** Who it was probably for. */
+  person_id: number | null;
 }
 
 export interface ImportSummary {
@@ -254,6 +258,8 @@ export interface NewRule {
   target_account_id: number;
   rename_to: string | null;
   auto_post: boolean;
+  /** Who the money is for (household books). */
+  person_id?: number | null;
 }
 
 export interface Rule extends NewRule {
@@ -752,4 +758,78 @@ export interface ContactTaxInput {
   w9_on_file: boolean;
   legal_name: string | null;
   tin_last4: string | null;
+}
+
+// ------------------------------------------------------------- household budgets
+
+export interface Person {
+  id: number;
+  name: string;
+  color: string;
+  sort_order: number;
+  archived: boolean;
+}
+
+/** Spend up to this (ceiling), or get at least this much in (floor). */
+export type BudgetDirection = "ceiling" | "floor";
+export type Zone = "under" | "in_range" | "trending_over" | "over";
+export type Sentiment = "good" | "caution" | "alarm";
+
+export type BudgetTarget = { kind: "person"; id: number } | { kind: "account"; id: number };
+
+export interface BudgetStatus {
+  zone: Zone;
+  sentiment: Sentiment;
+  /** Projected end-of-month total. */
+  pace: Cents;
+  /** 0..1 of the month gone. */
+  elapsed: number;
+  remaining: Cents;
+  band: Cents;
+}
+
+export interface BudgetLineView {
+  id: number;
+  target: BudgetTarget;
+  name: string;
+  flex: Flex | null;
+  amount: Cents;
+  direction: BudgetDirection;
+  tolerance_pct: number;
+  progress: Cents;
+  status: BudgetStatus;
+  percent_used: number | null;
+}
+
+export interface PersonSpend {
+  person_id: number | null;
+  name: string;
+  spending: Cents;
+  entries: number;
+}
+
+export interface CategorySpend {
+  account_id: number;
+  name: string;
+  flex: Flex | null;
+  spending: Cents;
+}
+
+export interface MonthBudget {
+  month: string;
+  from: ISODate;
+  to: ISODate;
+  day_of_month: number;
+  days_in_month: number;
+  is_current: boolean;
+  plan_from: string | null;
+  available: Cents | null;
+  income: Cents;
+  spending: Cents;
+  overall: BudgetStatus | null;
+  lines: BudgetLineView[];
+  planned_for_people: Cents;
+  planned_for_categories: Cents;
+  people: PersonSpend[];
+  categories: CategorySpend[];
 }

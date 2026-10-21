@@ -1,5 +1,6 @@
 import {
   BarChart3,
+  CalendarDays,
   Building2,
   FileText,
   Home,
@@ -16,7 +17,7 @@ import { NavLink } from "react-router-dom";
 import { useAction, useApi } from "../api";
 import { useSides } from "../book";
 
-const HOUSEHOLD: NavItem[] = [];
+const HOUSEHOLD: NavItem[] = [{ to: "/month", label: "This month", icon: CalendarDays }];
 
 const MAIN: NavItem[] = [
   { to: "/", label: "Home", icon: Home, end: true },
@@ -42,6 +43,8 @@ export default function Sidebar({ companyName }: { companyName: string }) {
   const inbox = useApi<number>("inbox.count", undefined, { refetchInterval: 30_000 });
   const close = useAction("book.close");
   const { business, household } = useSides();
+  // A household-only book's home is its month, so the month needs no second link.
+  const householdNav = business ? HOUSEHOLD : [];
   const insight: NavItem[] = [
     { to: "/reports", label: "Reports", icon: BarChart3 },
     ...(business ? [{ to: "/taxes", label: "Taxes", icon: Scale }] : []),
@@ -64,10 +67,10 @@ export default function Sidebar({ companyName }: { companyName: string }) {
         </div>
       </div>
       {MAIN.map(item)}
-      {household && (
+      {household && householdNav.length > 0 && (
         <>
           <div className="nav-section">Household</div>
-          {HOUSEHOLD.map(item)}
+          {householdNav.map(item)}
         </>
       )}
       {business && (

@@ -15,10 +15,12 @@ use tally_core::reconcile::ReconcileSummary;
 use tally_core::report::{self, BalanceSheet, Balances, ProfitAndLoss, TrialBalance};
 use tally_core::{Account, AccountId, AccountSubtype, Cents, EntryError, EntryLine, Flex, NewEntry, Scope};
 
+mod budget;
 pub mod crypto;
 mod feed;
 mod sales;
 mod tax;
+pub use budget::*;
 pub use feed::*;
 pub use sales::*;
 pub use tax::*;
@@ -127,6 +129,8 @@ pub struct Entry {
     pub voided_by_id: Option<EntryId>,
     /// Customer or vendor this entry was with, if known.
     pub payee_id: Option<i64>,
+    /// Who the money was for (household books).
+    pub person_id: Option<PersonId>,
     pub lines: Vec<PostedLine>,
 }
 
@@ -950,9 +954,9 @@ fn bridge_lines(tx: &Transaction, business: Cents) -> Result<Vec<EntryLine>> {
 fn entry_in(conn: &Connection, id: EntryId) -> Result<Entry> {
     let head = conn
         .query_row(
-            "SELECT date, memo, source, reverses_id, voided_by_id, payee_id FROM journal_entries WHERE id = ?1",
+            "SELECT date, memo, source, reverses_id, voided_by_id, payee_id, person_id FROM journal_entries WHERE id = ?1",
             [id],
-            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?)),
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?, r.get(6)?)),
         )
         .optional()?
         .ok_or(StoreError::NotFound("entry", id))?;
@@ -972,8 +976,8 @@ fn entry_in(conn: &Connection, id: EntryId) -> Result<Entry> {
             })
         })?
         .collect::<rusqlite::Result<_>>()?;
-    let (date, memo, source, reverses_id, voided_by_id, payee_id) = head;
-    Ok(Entry { id, date, memo, source, reverses_id, voided_by_id, payee_id, lines })
+    let (date, memo, source, reverses_id, voided_by_id, payee_id, person_id) = head;
+    Ok(Entry { id, date, memo, source, reverses_id, voided_by_id, payee_id, person_id, lines })
 }
 
 fn reconciliation_in(conn: &Connection, id: ReconciliationId) -> Result<Reconciliation> {

@@ -133,6 +133,7 @@ fn rules_suggest_and_auto_post() {
         target_account_id: b.sales,
         rename_to: Some("Stripe payout".into()),
         auto_post: true,
+        person_id: None,
     };
     b.s.create_rule(&rule).unwrap();
     b.s.create_rule(&NewRule { name: "SaaS".into(), pattern: "notion".into(), direction: Direction::Outflow, target_account_id: b.software, auto_post: false, rename_to: None, ..rule.clone() })

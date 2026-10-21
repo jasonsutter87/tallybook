@@ -5,6 +5,7 @@ import { CheckCheck, ChevronRight, Clock, Landmark, Link2, PartyPopper, Plus, Re
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { call, queryClient, useAction, useApi } from "../api";
+import { PersonSelect, usePeople } from "../components/household";
 import { AccountSelect, Card, ContactSelect, EmptyState, ErrorBanner, Loading, MoneyInput, Spinner, Tabs, useAccountNames, useToast } from "../components/ui";
 import ImportModal from "../flows/ImportModal";
 import { date, money, plural, shortDate } from "../format";
@@ -404,6 +405,12 @@ function RowEditor({ item, onDone }: { item: InboxItem; onDone: (id: number, tex
   // contractors reach the 1099 summary.
   const [payeeId, setPayeeId] = useState<number | null>(null);
   const [payeeOpen, setPayeeOpen] = useState(false);
+  // Who it was for, on household money.
+  const [personId, setPersonId] = useState<number | null>(item.person_id);
+  const accountsList = useApi<Account[]>("accounts.list");
+  const { people } = usePeople();
+  const scopeOf = (id: number | null) => accountsList.data?.find((a) => a.id === id)?.scope;
+  const householdMoney = people.length > 0 && (scopeOf(accountId) === "household" || (accountId == null && scopeOf(item.ledger_account_id) === "household"));
   const total = Math.abs(item.amount);
   const sign = item.amount < 0 ? -1 : 1;
   const nextKey = useRef(3);
@@ -414,7 +421,7 @@ function RowEditor({ item, onDone }: { item: InboxItem; onDone: (id: number, tex
   const navigated = useRef(false);
   const excludeSelf = useMemo(() => [item.ledger_account_id], [item.ledger_account_id]);
 
-  const accept = useAction<number, { id: number; account_id: number; memo: string | null; remember: boolean; payee_id: number | null }>("inbox.accept");
+  const accept = useAction<number, { id: number; account_id: number; memo: string | null; remember: boolean; payee_id: number | null; person_id: number | null }>("inbox.accept");
   const exclude = useAction<void, { ids: number[] }>("inbox.exclude");
   const split = useAction<number, { id: number; splits: Split[]; memo: string | null }>("inbox.split");
   const match = useAction<void, { id: number; line_id: number }>("inbox.match");
@@ -440,7 +447,7 @@ function RowEditor({ item, onDone }: { item: InboxItem; onDone: (id: number, tex
   const doAccept = () => {
     if (accountId == null || busy) return;
     void run(
-      () => accept.mutateAsync({ id: item.id, account_id: accountId, memo: memo.trim() || null, remember, payee_id: payeeId }),
+      () => accept.mutateAsync({ id: item.id, account_id: accountId, memo: memo.trim() || null, remember, payee_id: payeeId, person_id: householdMoney ? personId : null }),
       remember ? `Filed under ${name(accountId)} — we'll remember ${label}` : `Filed under ${name(accountId)}`,
     );
   };
@@ -516,6 +523,19 @@ function RowEditor({ item, onDone }: { item: InboxItem; onDone: (id: number, tex
               />
             </label>
           </div>
+          {householdMoney && (
+            <div className="rv-editor-grid">
+              <div className="field">
+                <span className="label">
+                  Who was it for? <span className="subtle" style={{ fontWeight: 500 }}>(optional)</span>
+                </span>
+                <PersonSelect value={personId} onChange={setPersonId} />
+              </div>
+              <span className="hint" style={{ paddingBottom: 10 }}>
+                {remember ? `Next time, ${label} is suggested for them too.` : "Counts toward their budget for the month."}
+              </span>
+            </div>
+          )}
           {showPayee && (
             <div className="rv-editor-grid">
               <div className="field">

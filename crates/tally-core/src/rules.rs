@@ -41,6 +41,9 @@ pub struct Rule {
     pub rename_to: Option<String>,
     /// Post without waiting for review.
     pub auto_post: bool,
+    /// Who the money is for (household books), e.g. `Roblox` → a kid.
+    #[serde(default)]
+    pub person_id: Option<i64>,
 }
 
 impl Rule {
@@ -95,6 +98,7 @@ mod tests {
             target_account_id: 100 + id,
             rename_to: None,
             auto_post: false,
+            person_id: None,
         }
     }
 

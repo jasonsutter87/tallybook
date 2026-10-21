@@ -89,6 +89,7 @@ pub fn seed(s: &mut Store, today: NaiveDate) -> Result<(), StoreError> {
             target_account_id: target,
             rename_to: None,
             auto_post: auto,
+            person_id: None,
         })?;
     }
 

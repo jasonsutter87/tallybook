@@ -1,0 +1,180 @@
+/* The household month. */
+
+.month-hero {
+  display: flex;
+  gap: 32px;
+  align-items: flex-end;
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+
+.month-hero-main {
+  position: relative;
+  z-index: 1;
+  min-width: 0;
+  flex: 1 1 320px;
+}
+
+.month-hero-meter {
+  margin-top: 16px;
+  max-width: 460px;
+}
+
+.month-hero-meter .meter {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.month-hero-caption {
+  margin-top: 8px;
+  color: var(--hero-ink-2);
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.month-hero-figures {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  gap: 28px;
+  flex-wrap: wrap;
+}
+
+.month-figure {
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  margin-top: 4px;
+}
+
+.month-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .month-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.month-category {
+  display: block;
+  color: inherit;
+  text-decoration: none;
+}
+
+.month-category:hover .bold {
+  text-decoration: underline;
+}
+
+/* ------------------------------------------------------------- the meter */
+
+.meter {
+  position: relative;
+  height: 12px;
+  border-radius: 999px;
+  background: var(--surface-hover);
+  overflow: visible;
+}
+
+.meter-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--pos);
+  transition: width 0.3s ease;
+}
+
+.meter-warn .meter-fill {
+  background: var(--warn);
+}
+
+.meter-neg .meter-fill {
+  background: var(--neg);
+}
+
+.meter-notch {
+  position: absolute;
+  top: -4px;
+  bottom: -4px;
+  width: 2px;
+  margin-left: -1px;
+  border-radius: 2px;
+  background: var(--ink);
+}
+
+.month-hero .meter-notch {
+  background: var(--hero-ink);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .meter-fill {
+    transition: none;
+  }
+}
+
+/* ------------------------------------------------------------- flexibility pills */
+
+.pill.flex-fixed {
+  background: var(--surface-hover);
+  color: var(--ink-2);
+}
+
+.pill.flex-usage {
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+
+.pill.flex-lifestyle {
+  background: var(--violet-soft);
+  color: var(--violet);
+}
+
+/* ------------------------------------------------------------- plan editor */
+
+.plan-line {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+
+.plan-direction {
+  width: 110px;
+  flex-shrink: 0;
+}
+
+.plan-amount {
+  width: 130px;
+  flex-shrink: 0;
+}
+
+.plan-add {
+  display: grid;
+  gap: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
+
+@media (max-width: 560px) {
+  .plan-line {
+    flex-wrap: wrap;
+  }
+  .plan-direction,
+  .plan-amount {
+    width: calc(50% - 30px);
+  }
+}
+
+.link-button {
+  border: 0;
+  background: none;
+  padding: 0;
+  color: var(--brand);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}

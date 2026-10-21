@@ -25,18 +25,23 @@ const Reports = lazy(() => import("./pages/Reports"));
 const Settings = lazy(() => import("./pages/Settings"));
 const Rules = lazy(() => import("./pages/Rules"));
 const Taxes = lazy(() => import("./pages/Taxes"));
+const Month = lazy(() => import("./pages/Month"));
 
 export default function App() {
   const status = useApi<BookStatus>("book.status");
   if (status.isLoading) return <Loading label="Opening Tallybook…" />;
   if (!status.data?.open) return <Welcome />;
+  // A household-only book opens on its month; anything with a business, on the business home.
+  const home = status.data.sides?.includes("business") ? <Dashboard /> : <Month />;
   return (
     <div className="shell">
       <Sidebar companyName={status.data.company_name ?? "My Business"} />
       <main className="main">
         <Suspense fallback={<Loading />}>
           <Routes>
-            <Route path="/" element={<Dashboard />} />
+            <Route path="/" element={home} />
+            <Route path="/month" element={<Month />} />
+            <Route path="/month/:month" element={<Month />} />
             <Route path="/review" element={<Review />} />
             <Route path="/banking" element={<Banking />} />
             <Route path="/accounts" element={<Accounts />} />
@@ -56,7 +61,7 @@ export default function App() {
             <Route path="/rules" element={<Rules />} />
             <Route path="/taxes" element={<Taxes />} />
             <Route path="/taxes/:tab" element={<Taxes />} />
-            <Route path="*" element={<Dashboard />} />
+            <Route path="*" element={home} />
           </Routes>
         </Suspense>
       </main>

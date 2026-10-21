@@ -207,6 +207,44 @@ struct PostEntry {
     date: NaiveDate,
     memo: String,
     lines: Vec<EntryLine>,
+    /// Who the money was for (household books).
+    #[serde(default)]
+    person_id: Option<PersonId>,
+}
+
+#[derive(Deserialize)]
+struct SetPerson {
+    id: tally_core::journal::EntryId,
+    person_id: Option<PersonId>,
+}
+
+#[derive(Deserialize)]
+struct UpdatePerson {
+    id: PersonId,
+    person: NewPerson,
+}
+
+#[derive(Deserialize)]
+struct MonthParam {
+    month: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct SetBudget {
+    month: String,
+    line: BudgetLine,
+}
+
+#[derive(Deserialize)]
+struct RemoveBudget {
+    month: String,
+    target: BudgetTarget,
+}
+
+#[derive(Deserialize)]
+struct SetAvailable {
+    month: String,
+    amount: Option<Cents>,
 }
 
 #[derive(Deserialize)]
@@ -220,6 +258,9 @@ struct Accept {
     /// Who was paid (for 1099s) or who paid you.
     #[serde(default)]
     payee_id: Option<i64>,
+    /// Who the money was for (household books).
+    #[serde(default)]
+    person_id: Option<PersonId>,
 }
 
 #[derive(Deserialize)]
@@ -580,7 +621,49 @@ impl App {
             }
             "entries.post" => {
                 let p: PostEntry = params(p)?;
-                self.with(|s| s.post_entry(&NewEntry { date: p.date, memo: p.memo, lines: p.lines }))
+                self.with(|s| {
+                    let id = s.post_entry(&NewEntry { date: p.date, memo: p.memo, lines: p.lines })?;
+                    if p.person_id.is_some() {
+                        s.set_entry_person(id, p.person_id)?;
+                    }
+                    Ok(id)
+                })
+            }
+            "entries.set_person" => {
+                let p: SetPerson = params(p)?;
+                self.with(|s| s.set_entry_person(p.id, p.person_id))
+            }
+
+            // ---------------------------------------------------- people & budgets
+            "people.list" => self.with(|s| s.people()),
+            "people.create" => {
+                let p: NewPerson = params(p)?;
+                self.with(|s| s.create_person(&p))
+            }
+            "people.update" => {
+                let p: UpdatePerson = params(p)?;
+                self.with(|s| s.update_person(p.id, &p.person))
+            }
+            "people.archive" => {
+                let p: Archive = params(p)?;
+                self.with(|s| s.set_person_archived(p.id, p.archived))
+            }
+            "budget.month" => {
+                let p: MonthParam = params(p)?;
+                let month = p.month.unwrap_or_else(|| month_of(today()));
+                self.with(|s| s.month_budget(&month, today()))
+            }
+            "budget.set" => {
+                let p: SetBudget = params(p)?;
+                self.with(|s| s.set_budget_line(&p.month, &p.line))
+            }
+            "budget.remove" => {
+                let p: RemoveBudget = params(p)?;
+                self.with(|s| s.remove_budget_line(&p.month, p.target))
+            }
+            "budget.set_available" => {
+                let p: SetAvailable = params(p)?;
+                self.with(|s| s.set_available(&p.month, p.amount))
             }
             "entries.void" => {
                 let p: IdDate = params(p)?;
@@ -626,8 +709,11 @@ impl App {
                     if p.payee_id.is_some() {
                         s.set_entry_payee(entry, p.payee_id)?;
                     }
+                    if p.person_id.is_some() {
+                        s.set_entry_person(entry, p.person_id)?;
+                    }
                     if p.remember {
-                        remember_rule(s, &t, p.account_id)?;
+                        remember_rule(s, &t, p.account_id, p.person_id)?;
                     }
                     Ok(entry)
                 })
@@ -934,7 +1020,7 @@ pub fn default_dir() -> PathBuf {
 
 /// After the user categorizes a transaction with "remember", create a
 /// contains-rule keyed on the payee so next month's lands pre-categorized.
-fn remember_rule(s: &mut Store, t: &BankTxn, account_id: AccountId) -> Result<(), StoreError> {
+fn remember_rule(s: &mut Store, t: &BankTxn, account_id: AccountId, person_id: Option<PersonId>) -> Result<(), StoreError> {
     let pattern = t.merchant.clone().unwrap_or_else(|| tally_core::bank::normalize_description(&t.description));
     if pattern.trim().len() < 3 {
         return Ok(());
@@ -955,6 +1041,7 @@ fn remember_rule(s: &mut Store, t: &BankTxn, account_id: AccountId) -> Result<()
         target_account_id: account_id,
         rename_to: None,
         auto_post: false,
+        person_id,
     })?;
     Ok(())
 }
@@ -976,13 +1063,22 @@ fn accept_suggested(s: &mut Store, ids: &[BankTxnId]) -> Result<BatchResult, Sto
         };
         let done = match &item.suggestion {
             Some(Suggestion::Match { line_id, .. }) => s.match_txn(*id, *line_id).is_ok(),
-            Some(Suggestion::Rule { account_id, rename_to, .. }) => s.accept(*id, *account_id, rename_to.clone()).is_ok(),
-            Some(Suggestion::History { account_id }) => s.accept(*id, *account_id, None).is_ok(),
+            Some(Suggestion::Rule { account_id, rename_to, .. }) => accept_for(s, *id, *account_id, rename_to.clone(), item.person_id)?,
+            Some(Suggestion::History { account_id }) => accept_for(s, *id, *account_id, None, item.person_id)?,
             None => false,
         };
         if done { r.accepted += 1 } else { r.skipped += 1 }
     }
     Ok(r)
+}
+
+/// Accepts into a category and tags who it was for; `false` if it didn't post.
+fn accept_for(s: &mut Store, id: BankTxnId, account_id: AccountId, memo: Option<String>, person: Option<PersonId>) -> Result<bool, StoreError> {
+    let Ok(entry) = s.accept(id, account_id, memo) else { return Ok(false) };
+    if person.is_some() {
+        s.set_entry_person(entry, person)?;
+    }
+    Ok(true)
 }
 
 #[cfg(test)]

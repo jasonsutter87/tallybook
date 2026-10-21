@@ -126,7 +126,7 @@ fn voiding_a_crossing_entry_reverses_the_draw_too() {
 }
 
 #[test]
-fn a_one_sided_book_cannot_cross() {
+fn one_sided_books_need_no_bridge() {
     let mut s = Store::open_in_memory().unwrap();
     s.add_side(Scope::Household).unwrap();
     let checking = s.create_account(&NewAccount::new("Checking", AccountSubtype::Bank).scope(Scope::Household)).unwrap();
@@ -172,4 +172,186 @@ fn sub_accounts_stay_on_their_side() {
     let mut child = NewAccount::new("Costco", AccountSubtype::Expense).scope(Scope::Business);
     child.parent_id = Some(code(&b.s, "H6200"));
     assert!(b.s.create_account(&child).is_err());
+}
+
+// ---------------------------------------------------------------- people & budgets
+
+use tally_core::budget::{Direction, Sentiment, Zone};
+use tally_store::{BudgetLine, BudgetTarget, NewPerson};
+
+fn ceiling(target: BudgetTarget, cents: i64) -> BudgetLine {
+    BudgetLine { target, amount: Cents(cents), direction: Direction::Ceiling, tolerance_pct: 10 }
+}
+
+fn spend(s: &mut Store, date: NaiveDate, category: &str, from: AccountId, cents: i64, person: Option<i64>) -> i64 {
+    let category = code(s, category);
+    let id = post(s, date, "spend", category, from, cents);
+    s.set_entry_person(id, person).unwrap();
+    id
+}
+
+#[test]
+fn a_plan_carries_forward_until_a_month_changes_it() {
+    let mut b = both();
+    let groceries = BudgetTarget::Account(code(&b.s, "H6200"));
+    b.s.set_budget_line("2026-03", &ceiling(groceries, 1200_00)).unwrap();
+    b.s.set_available("2026-03", Some(Cents(6000_00))).unwrap();
+
+    let may = b.s.month_budget("2026-05", d(5, 10)).unwrap();
+    assert_eq!(may.plan_from.as_deref(), Some("2026-03"));
+    assert_eq!(may.lines[0].amount, Cents(1200_00));
+    assert_eq!(may.available, Some(Cents(6000_00)));
+    assert!(b.s.month_budget("2026-02", d(5, 10)).unwrap().lines.is_empty());
+
+    // Changing May gives May (and what follows) its own plan; March is untouched.
+    b.s.set_budget_line("2026-05", &ceiling(groceries, 1000_00)).unwrap();
+    assert_eq!(b.s.month_budget("2026-03", d(5, 10)).unwrap().lines[0].amount, Cents(1200_00));
+    assert_eq!(b.s.month_budget("2026-04", d(5, 10)).unwrap().lines[0].amount, Cents(1200_00));
+    let june = b.s.month_budget("2026-06", d(5, 10)).unwrap();
+    assert_eq!(june.lines[0].amount, Cents(1000_00));
+    assert_eq!(june.plan_from.as_deref(), Some("2026-05"));
+    assert_eq!(june.available, Some(Cents(6000_00)), "the copy keeps what there is to work with");
+
+    // Removing a line in July leaves it off from July on.
+    b.s.remove_budget_line("2026-07", groceries).unwrap();
+    assert!(b.s.month_budget("2026-08", d(5, 10)).unwrap().lines.is_empty());
+    assert_eq!(b.s.month_budget("2026-06", d(5, 10)).unwrap().lines.len(), 1);
+}
+
+#[test]
+fn a_category_line_knows_how_far_into_the_month_it_is() {
+    let mut b = both();
+    let groceries = code(&b.s, "H6200");
+    b.s.set_budget_line("2026-03", &ceiling(BudgetTarget::Account(groceries), 400_00)).unwrap();
+    spend(&mut b.s, d(3, 2), "H6200", b.home_checking, 200_00, None);
+
+    let early = b.s.month_budget("2026-03", d(3, 3)).unwrap();
+    assert_eq!(early.lines[0].progress, Cents(200_00));
+    assert_eq!(early.lines[0].status.zone, Zone::TrendingOver);
+    assert_eq!(early.lines[0].percent_used, Some(50));
+    assert_eq!(b.s.month_budget("2026-03", d(3, 16)).unwrap().lines[0].status.zone, Zone::InRange);
+    // Judged from the outside, a finished month is judged at its last day.
+    assert_eq!(b.s.month_budget("2026-03", d(9, 1)).unwrap().lines[0].status.zone, Zone::Under);
+
+    // A refund comes off; a voided purchase never happened.
+    post(&mut b.s, d(3, 4), "refund", b.home_checking, groceries, 20_00);
+    let oops = spend(&mut b.s, d(3, 5), "H6200", b.home_checking, 999_00, None);
+    b.s.void_entry(oops, d(4, 2)).unwrap();
+    let m = b.s.month_budget("2026-03", d(3, 16)).unwrap();
+    assert_eq!(m.lines[0].progress, Cents(180_00));
+    assert_eq!(m.spending, Cents(180_00));
+}
+
+#[test]
+fn people_budgets_count_what_was_for_them() {
+    let mut b = both();
+    let mom = b.s.create_person(&NewPerson { name: "Mom".into(), color: None }).unwrap();
+    let ethan = b.s.create_person(&NewPerson { name: "Ethan".into(), color: Some("teal".into()) }).unwrap();
+    b.s.set_budget_line("2026-03", &ceiling(BudgetTarget::Person(ethan), 150_00)).unwrap();
+    spend(&mut b.s, d(3, 3), "H6510", b.home_checking, 90_00, Some(ethan));
+    spend(&mut b.s, d(3, 4), "H6700", b.home_checking, 80_00, Some(ethan));
+    spend(&mut b.s, d(3, 5), "H6710", b.home_checking, 40_00, Some(mom));
+    spend(&mut b.s, d(3, 6), "H6200", b.home_checking, 300_00, None);
+
+    let m = b.s.month_budget("2026-03", d(3, 31)).unwrap();
+    let line = &m.lines[0];
+    assert_eq!((line.name.as_str(), line.progress), ("Ethan", Cents(170_00)));
+    assert_eq!((line.status.zone, line.status.sentiment), (Zone::Over, Sentiment::Alarm));
+    assert_eq!(m.planned_for_people, Cents(150_00));
+    let of = |p: Option<i64>| m.people.iter().find(|x| x.person_id == p).unwrap().spending;
+    assert_eq!((of(Some(mom)), of(Some(ethan)), of(None)), (Cents(40_00), Cents(170_00), Cents(300_00)));
+    assert_eq!(m.categories[0].name, "Groceries");
+
+    // A person's budget is a limit; floors are for savings and income.
+    let floor = BudgetLine { direction: Direction::Floor, ..ceiling(BudgetTarget::Person(mom), 10_00) };
+    assert!(b.s.set_budget_line("2026-03", &floor).is_err());
+    // Business categories aren't budgeted here.
+    assert!(b.s.set_budget_line("2026-03", &ceiling(BudgetTarget::Account(code(&b.s, "6500")), 10_00)).is_err());
+
+    // Archived people drop out of later copies of the plan.
+    b.s.set_person_archived(ethan, true).unwrap();
+    b.s.set_available("2026-04", Some(Cents(100_00))).unwrap();
+    assert!(b.s.month_budget("2026-04", d(4, 1)).unwrap().lines.is_empty());
+}
+
+#[test]
+fn savings_and_income_goals_are_floors() {
+    let mut b = both();
+    let savings = b.s.create_account(&NewAccount::new("Savings", AccountSubtype::Bank).scope(Scope::Household)).unwrap();
+    let floor = |t, c| BudgetLine { target: t, amount: Cents(c), direction: Direction::Floor, tolerance_pct: 10 };
+    b.s.set_budget_line("2026-03", &floor(BudgetTarget::Account(savings), 200_00)).unwrap();
+    b.s.set_budget_line("2026-03", &floor(BudgetTarget::Account(code(&b.s, "H4200")), 1500_00)).unwrap();
+    post(&mut b.s, d(3, 1), "to savings", savings, b.home_checking, 50_00);
+    let side = code(&b.s, "H4200");
+    post(&mut b.s, d(3, 2), "Freelance", b.home_checking, side, 1600_00);
+
+    let m = b.s.month_budget("2026-03", d(3, 31)).unwrap();
+    let saved = m.lines.iter().find(|l| l.target == BudgetTarget::Account(savings)).unwrap();
+    assert_eq!((saved.progress, saved.status.sentiment), (Cents(50_00), Sentiment::Alarm));
+    let earned = m.lines.iter().find(|l| l.name == "Side Income").unwrap();
+    assert_eq!((earned.status.zone, earned.status.sentiment), (Zone::Over, Sentiment::Good));
+    assert_eq!(m.income, Cents(1600_00));
+    assert_eq!(m.planned_for_categories, Cents::ZERO, "floors aren't spending");
+}
+
+#[test]
+fn rules_know_who_it_was_for() {
+    use tally_core::bank::{FeedBatch, FeedTransaction};
+    use tally_core::rules::{Direction as RuleDirection, MatchOp};
+    use tally_store::NewRule;
+
+    let mut b = both();
+    let ethan = b.s.create_person(&NewPerson { name: "Ethan".into(), color: None }).unwrap();
+    let fun = code(&b.s, "H6740");
+    b.s.create_rule(&NewRule {
+        name: "Roblox".into(),
+        priority: 100,
+        op: MatchOp::Contains,
+        pattern: "roblox".into(),
+        direction: RuleDirection::Outflow,
+        amount_min: None,
+        amount_max: None,
+        bank_account_id: None,
+        target_account_id: fun,
+        rename_to: None,
+        auto_post: true,
+        person_id: Some(ethan),
+    })
+    .unwrap();
+    let txn = |id: &str, desc: &str, cents: i64| FeedTransaction {
+        external_id: id.into(),
+        date: d(3, 3),
+        amount: Cents(cents),
+        description: desc.into(),
+        merchant: None,
+        category_hint: None,
+        pending: false,
+    };
+    let batch = FeedBatch { added: vec![txn("1", "ROBLOX CORP", -9_99), txn("2", "SUPERCUTS 123", -25_00)], ..Default::default() };
+    let summary = b.s.import_feed(b.home_checking, &batch).unwrap();
+    assert_eq!(summary.auto_posted, 1);
+    assert_eq!(b.s.month_budget("2026-03", d(3, 31)).unwrap().people.iter().find(|p| p.person_id == Some(ethan)).unwrap().spending, Cents(9_99));
+
+    // The haircut waits for review; once tagged, the next one is suggested for the same person.
+    let cut = b.s.inbox(None).unwrap().into_iter().next().unwrap();
+    assert_eq!(cut.person_id, None);
+    let entry = b.s.accept(cut.txn.id, code(&b.s, "H6710"), None).unwrap();
+    b.s.set_entry_person(entry, Some(ethan)).unwrap();
+    b.s.import_feed(b.home_checking, &FeedBatch { added: vec![txn("3", "SUPERCUTS 123", -25_00)], ..Default::default() }).unwrap();
+    assert_eq!(b.s.inbox(None).unwrap()[0].person_id, Some(ethan));
+}
+
+#[test]
+fn rent_on_the_first_doesnt_look_like_overspending() {
+    let mut b = both();
+    let rent = code(&b.s, "H6000");
+    b.s.set_budget_line("2026-03", &ceiling(BudgetTarget::Account(rent), 1495_00)).unwrap();
+    b.s.set_available("2026-03", Some(Cents(3200_00))).unwrap();
+    spend(&mut b.s, d(3, 1), "H6000", b.home_checking, 1495_00, None);
+    spend(&mut b.s, d(3, 10), "H6200", b.home_checking, 500_00, None);
+    let m = b.s.month_budget("2026-03", d(3, 14)).unwrap();
+    assert_eq!(m.lines[0].status.zone, Zone::InRange, "paid in full on its day is on plan");
+    let overall = m.overall.unwrap();
+    assert_eq!(overall.pace, Cents(1495_00 + 1107_14), "$500 by day 14 of 31 projects to $1,107.14");
+    assert_eq!(overall.zone, Zone::Under);
 }

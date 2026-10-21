@@ -147,6 +147,8 @@ pub struct InboxItem {
     #[serde(flatten)]
     pub txn: BankTxn,
     pub suggestion: Option<Suggestion>,
+    /// Who it was probably for: the rule's person, or the last one used for this payee.
+    pub person_id: Option<crate::PersonId>,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
@@ -182,6 +184,8 @@ pub struct NewRule {
     pub target_account_id: AccountId,
     pub rename_to: Option<String>,
     pub auto_post: bool,
+    #[serde(default)]
+    pub person_id: Option<crate::PersonId>,
 }
 
 // ---------------------------------------------------------------- row mapping
@@ -253,7 +257,7 @@ fn txn_from_row(r: &Row) -> rusqlite::Result<BankTxn> {
 }
 
 const RULE_COLS: &str = "id, name, priority, op, pattern, direction, amount_min, amount_max, bank_account_id, \
-                         target_account_id, rename_to, auto_post";
+                         target_account_id, rename_to, auto_post, person_id";
 
 fn rule_from_row(r: &Row) -> rusqlite::Result<Rule> {
     let op: String = r.get(3)?;
@@ -281,6 +285,7 @@ fn rule_from_row(r: &Row) -> rusqlite::Result<Rule> {
         target_account_id: r.get(9)?,
         rename_to: r.get(10)?,
         auto_post: r.get(11)?,
+        person_id: r.get(12)?,
     })
 }
 
@@ -504,8 +509,11 @@ impl Store {
             }
             if let Some(r) = rules_mod::first_match(&rules, ledger_account_id, &t.description, t.amount)
                 && r.auto_post
-                && self.post_bank_txn_inner(&t, &[Split { account_id: r.target_account_id, amount: t.amount, memo: None }], r.rename_to.clone(), Some(r.id)).is_ok()
+                && let Ok(entry) = self.post_bank_txn_inner(&t, &[Split { account_id: r.target_account_id, amount: t.amount, memo: None }], r.rename_to.clone(), Some(r.id))
             {
+                if r.person_id.is_some() {
+                    self.set_entry_person(entry, r.person_id)?;
+                }
                 summary.auto_posted += 1;
             }
         }
@@ -531,7 +539,8 @@ impl Store {
         txns.into_iter()
             .map(|txn| {
                 let suggestion = self.suggest(&txn, &rules)?;
-                Ok(InboxItem { txn, suggestion })
+                let person_id = self.suggest_person(&txn, &rules)?;
+                Ok(InboxItem { txn, suggestion, person_id })
             })
             .collect()
     }
@@ -576,6 +585,28 @@ impl Store {
             )
             .optional()?;
         Ok(account_id.map(|account_id| Suggestion::History { account_id }))
+    }
+
+    fn suggest_person(&self, t: &BankTxn, rules: &[Rule]) -> Result<Option<crate::PersonId>> {
+        if let Some(r) = rules_mod::first_match(rules, t.ledger_account_id, &t.description, t.amount)
+            && r.person_id.is_some()
+        {
+            return Ok(r.person_id);
+        }
+        Ok(self
+            .conn
+            .query_row(
+                "SELECT e.person_id
+                 FROM bank_transactions bt
+                 JOIN journal_entries e ON e.id = bt.entry_id
+                 JOIN people p ON p.id = e.person_id
+                 WHERE bt.normalized = ?1 AND bt.status = 'posted' AND bt.id <> ?2
+                   AND e.voided_by_id IS NULL AND p.archived = 0
+                 ORDER BY bt.date DESC, bt.id DESC LIMIT 1",
+                params![normalize_description(&t.description), t.id],
+                |r| r.get(0),
+            )
+            .optional()?)
     }
 
     /// Register lines that could be this transaction: same account, same
@@ -725,7 +756,7 @@ impl Store {
     pub fn create_rule(&self, r: &NewRule) -> Result<RuleId> {
         validate_rule(self, r)?;
         self.conn.execute(
-            &format!("INSERT INTO rules({}) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)", &RULE_COLS[4..]),
+            &format!("INSERT INTO rules({}) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)", &RULE_COLS[4..]),
             params![
                 r.name.trim(),
                 r.priority,
@@ -737,7 +768,8 @@ impl Store {
                 r.bank_account_id,
                 r.target_account_id,
                 r.rename_to.as_deref().map(str::trim).filter(|s| !s.is_empty()),
-                r.auto_post
+                r.auto_post,
+                r.person_id
             ],
         )?;
         Ok(self.conn.last_insert_rowid())
@@ -747,7 +779,8 @@ impl Store {
         validate_rule(self, r)?;
         let n = self.conn.execute(
             "UPDATE rules SET name = ?1, priority = ?2, op = ?3, pattern = ?4, direction = ?5, amount_min = ?6,
-                    amount_max = ?7, bank_account_id = ?8, target_account_id = ?9, rename_to = ?10, auto_post = ?11
+                    amount_max = ?7, bank_account_id = ?8, target_account_id = ?9, rename_to = ?10, auto_post = ?11,
+                    person_id = ?13
              WHERE id = ?12",
             params![
                 r.name.trim(),
@@ -761,7 +794,8 @@ impl Store {
                 r.target_account_id,
                 r.rename_to.as_deref().map(str::trim).filter(|s| !s.is_empty()),
                 r.auto_post,
-                id
+                id,
+                r.person_id
             ],
         )?;
         if n == 0 {
@@ -813,6 +847,11 @@ fn validate_rule(store: &Store, r: &NewRule) -> Result<()> {
     let target = store.account(r.target_account_id)?;
     if target.archived {
         return rule(format!("{} is archived", target.name));
+    }
+    if let Some(p) = r.person_id
+        && store.person(p)?.archived
+    {
+        return rule("that person is archived");
     }
     Ok(())
 }
