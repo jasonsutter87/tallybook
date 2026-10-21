@@ -220,6 +220,12 @@ impl Store {
             .collect())
     }
 
+    /// Brings a goal's achieved date in line after its entries change outside
+    /// [`Store::contribute_to_goal`] (an import, say).
+    pub fn refresh_goal(&self, id: GoalId) -> Result<()> {
+        self.refresh_achieved(id).map(|_| ())
+    }
+
     /// Sets the achieved date to the day the contributions first reached
     /// the target (or clears it). True when it went from not reached to reached.
     fn refresh_achieved(&self, id: GoalId) -> Result<bool> {

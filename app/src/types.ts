@@ -946,3 +946,29 @@ export interface Win {
   title: string;
   body: string;
 }
+
+// ------------------------------------------------------------- moving from Ledger
+
+export interface LedgerPreview {
+  people: number;
+  entries: number;
+  months: number;
+  goals: number;
+  bills: number;
+  stores: number;
+  first: ISODate | null;
+  last: ISODate | null;
+}
+
+export interface LedgerImport {
+  people: number;
+  categories_created: number;
+  entries: number;
+  entries_skipped: number;
+  goals: number;
+  bills: number;
+  rules: number;
+  months: number;
+  money_account_id: number;
+  notes: string[];
+}

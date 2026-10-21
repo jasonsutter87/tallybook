@@ -1,10 +1,10 @@
 import { Building2, CalendarRange, Home, Plus, Check, Cloud, Copy, GitBranch, KeyRound, ShieldOff, DatabaseBackup, Download, FileText, Lock, LockOpen, Monitor, Moon, Palette, ShieldCheck, Sun, Trash2 } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
-import { call, isTauri, useAction, useApi } from "../api";
+import { call, isTauri, queryClient, useAction, useApi } from "../api";
 import { SCOPE_LABEL, useSides } from "../book";
 import { ConfirmModal, ErrorBanner, Field, Loading, Modal, PageHeader, useToast } from "../components/ui";
 import { date } from "../format";
-import type { BookStatus, CloudBackupReport, CloudStatus, EncryptResult, ISODate, Scope, Settings as SettingsData } from "../types";
+import type { BookStatus, CloudBackupReport, CloudStatus, EncryptResult, ISODate, LedgerImport, LedgerPreview, Scope, Settings as SettingsData } from "../types";
 import "./Settings.css";
 import { readTheme, saveTheme, type ThemeChoice } from "../theme";
 import { currentVersion, useUpdater } from "../updater";
@@ -16,6 +16,7 @@ const ALL_SECTIONS = [
   { id: "business", label: "Profile", icon: <Building2 size={16} /> },
   { id: "sides", label: "Business & household", icon: <Home size={16} /> },
   { id: "invoices", label: "Invoices", icon: <FileText size={16} />, business: true },
+  { id: "ledger", label: "Move from Ledger", icon: <Download size={16} />, household: true },
   { id: "fiscal", label: "Fiscal year", icon: <CalendarRange size={16} /> },
   { id: "lock", label: "Close the books", icon: <Lock size={16} /> },
   { id: "appearance", label: "Appearance", icon: <Palette size={16} /> },
@@ -35,7 +36,7 @@ type Edits = Record<string, string>;
 export default function Settings() {
   const { data, error, isLoading } = useApi<SettingsData>("settings.get");
   const sides = useSides();
-  const SECTIONS = ALL_SECTIONS.filter((s) => sides.business || !("business" in s));
+  const SECTIONS = ALL_SECTIONS.filter((s) => (sides.business || !("business" in s)) && (sides.household || !("household" in s)));
   const [edits, setEdits] = useState<Edits>({});
   const [active, setActive] = useState("business");
 
@@ -100,6 +101,7 @@ export default function Settings() {
           <BusinessCard form={form} />
           <SidesCard />
           {sides.business && <InvoiceCard form={form} />}
+          {sides.household && <LedgerCard />}
           <FiscalCard current={data.fiscal_year_start_month} />
           <LockCard lockDate={data.lock_date} />
           <AppearanceCard />
@@ -898,6 +900,118 @@ function SecurityCard() {
           }
         }}
       />
+    </SettingsCard>
+  );
+}
+
+// ------------------------------------------------------------- moving from Ledger
+
+async function pickLedgerFile(): Promise<string | null> {
+  if (!isTauri) return null;
+  const { open } = await import("@tauri-apps/plugin-dialog");
+  const r = await open({ multiple: false, filters: [{ name: "Ledger database", extensions: ["db", "sqlite", "sqlite3"] }] });
+  return typeof r === "string" ? r : null;
+}
+
+/** Brings a household over from Ledger (mels-budget-app). Safe to run again. */
+function LedgerCard() {
+  const toast = useToast();
+  const [path, setPath] = useState("");
+  const [preview, setPreview] = useState<LedgerPreview | null>(null);
+  const [result, setResult] = useState<LedgerImport | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
+
+  const look = async (p: string) => {
+    setError(null);
+    setResult(null);
+    setPreview(null);
+    try {
+      setPreview(await call<LedgerPreview>("import.ledger_preview", { path: p }));
+    } catch (e) {
+      setError(e as Error);
+    }
+  };
+  const bringOver = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const r = await call<LedgerImport>("import.ledger", { path });
+      setResult(r);
+      await queryClient.invalidateQueries();
+      toast({ text: `${r.entries} entries brought over from Ledger` });
+    } catch (e) {
+      setError(e as Error);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <SettingsCard
+      id="ledger"
+      icon={<Download size={18} />}
+      title="Move from Ledger"
+      desc="Bring people, entries, monthly plans, bills, goals and stores over from the Ledger budgeting app. Ledger's file is only read, never changed, and running this again adds only what's new."
+    >
+      <div className="stack">
+        <ErrorBanner error={error} />
+        <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+          {isTauri ? (
+            <button
+              className="btn btn-secondary"
+              onClick={async () => {
+                const p = await pickLedgerFile();
+                if (p) {
+                  setPath(p);
+                  await look(p);
+                }
+              }}
+            >
+              Choose Ledger's database file…
+            </button>
+          ) : (
+            <>
+              <input className="input grow" value={path} onChange={(e) => setPath(e.target.value)} placeholder="Path to ledger.db" />
+              <button className="btn btn-secondary" disabled={!path.trim()} onClick={() => look(path.trim())}>
+                Look inside
+              </button>
+            </>
+          )}
+        </div>
+        <p className="muted small">
+          On a self-hosted Ledger it's <code>data/ledger.db</code>. On Turso, make a copy first with <code>turso db shell &lt;database&gt; .dump</code> and
+          load it into a file with <code>sqlite3 ledger.db &lt; dump.sql</code>.
+        </p>
+        {preview && !result && (
+          <div className="banner" style={{ display: "block" }}>
+            {preview.entries} entries{preview.first && preview.last ? ` from ${date(preview.first)} to ${date(preview.last)}` : ""}, {preview.people} people,{" "}
+            {preview.months} months of plans, {preview.bills} bills, {preview.goals} goals and {preview.stores} stores.
+            <div style={{ marginTop: 10 }}>
+              <button className="btn btn-primary" disabled={busy} onClick={bringOver}>
+                {busy ? "Bringing it over…" : "Bring it over"}
+              </button>
+            </div>
+          </div>
+        )}
+        {result && (
+          <div className="stack-sm">
+            <div className="bold">
+              Brought over {result.entries} entries{result.entries_skipped ? ` (${result.entries_skipped} were already here)` : ""}, {result.people} people,{" "}
+              {result.months} months of plans, {result.bills} bills, {result.goals} goals and {result.rules} rules.
+            </div>
+            <div className="muted small">
+              Ledger didn't know which bank paid, so the money moved through an account called "Ledger import". Every entry is tagged with who it was
+              for and what it was, so this month's plan and reports work straight away.
+            </div>
+            {result.notes.map((n, i) => (
+              <div key={i} className="muted small">
+                {n}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </SettingsCard>
   );
 }

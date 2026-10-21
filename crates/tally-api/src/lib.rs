@@ -268,6 +268,12 @@ struct SetGoal {
 }
 
 #[derive(Deserialize)]
+struct LedgerImportParams {
+    path: PathBuf,
+    money_account_id: Option<AccountId>,
+}
+
+#[derive(Deserialize)]
 struct SetActive {
     id: i64,
     active: bool,
@@ -875,6 +881,15 @@ impl App {
                 }
                 let st = statements.swap_remove(p.index);
                 self.with(|s| s.import_feed(p.account_id, &tally_core::bank::FeedBatch { added: st.transactions, ..Default::default() }))
+            }
+
+            "import.ledger_preview" => {
+                let p: OpenPath = params(p)?;
+                ok(Store::preview_ledger(&p.path)?)
+            }
+            "import.ledger" => {
+                let p: LedgerImportParams = params(p)?;
+                self.with(|s| s.import_ledger(&p.path, p.money_account_id))
             }
 
             // ---------------------------------------------------- rules

@@ -19,6 +19,7 @@ mod budget;
 pub mod crypto;
 mod feed;
 mod insights;
+pub mod ledger_import;
 mod recurring;
 mod sales;
 mod tax;
@@ -32,7 +33,7 @@ pub use tax::*;
 pub type LineId = i64;
 pub type ReconciliationId = i64;
 
-const SCHEMA_VERSION: i64 = 8;
+const SCHEMA_VERSION: i64 = 9;
 
 #[derive(Debug, thiserror::Error)]
 pub enum StoreError {
@@ -334,6 +335,12 @@ impl Store {
             let tx = self.conn.transaction()?;
             tx.execute_batch(include_str!("schema_v8.sql"))?;
             tx.pragma_update(None, "user_version", 8)?;
+            tx.commit()?;
+        }
+        if version < 9 {
+            let tx = self.conn.transaction()?;
+            tx.execute_batch(include_str!("schema_v9.sql"))?;
+            tx.pragma_update(None, "user_version", 9)?;
             tx.commit()?;
         }
         Ok(())

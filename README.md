@@ -90,6 +90,25 @@ For sole proprietors and single-member LLCs:
 > files anything for you. Have a tax professional review before you file.
 > [What it does and doesn't cover →](docs/TAXES.md)
 
+### Your household, too
+Keep a household budget in its own book, or alongside your business in the
+same one. Each side keeps its own numbers. When business money pays for
+something at home, Tallybook records the owner's draw for you.
+
+- **A month at a glance.** A plan per category or per person (who the money
+  was for), with a meter that knows how far into the month you are. Rent on
+  the 1st isn't overspending.
+- **Bills and due dates.** What's due today and this week. Bills tick
+  themselves off when the payment shows up from your bank.
+- **Goals.** Savings that build up month after month, with when you'll get
+  there at the rate you're going.
+- **Where there's room.** Spending split into fixed, moves-with-use, and
+  your-choice, so you know what can actually change.
+- **A budget score and wins.** A number to watch (it isn't a credit score),
+  and credit when you come in under or put money aside.
+- **Moving from Ledger.** Bring a household over from the Ledger budgeting
+  app in Settings.
+
 ### Light or dark
 Follows your system, or pick one in Settings.
 
