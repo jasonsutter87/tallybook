@@ -242,6 +242,33 @@ struct RemoveBudget {
 }
 
 #[derive(Deserialize)]
+struct UpdateBill {
+    id: RecurringBillId,
+    bill: NewRecurringBill,
+}
+
+#[derive(Deserialize)]
+struct SetActive {
+    id: i64,
+    active: bool,
+}
+
+#[derive(Deserialize)]
+struct DueQuery {
+    from: Option<NaiveDate>,
+    to: Option<NaiveDate>,
+}
+
+#[derive(Deserialize)]
+struct MarkDue {
+    bill_id: RecurringBillId,
+    due_date: NaiveDate,
+    /// "paid", "skipped", or null to go back to automatic.
+    status: Option<DueState>,
+    entry_id: Option<tally_core::journal::EntryId>,
+}
+
+#[derive(Deserialize)]
 struct SetAvailable {
     month: String,
     amount: Option<Cents>,
@@ -661,6 +688,32 @@ impl App {
                 let p: RemoveBudget = params(p)?;
                 self.with(|s| s.remove_budget_line(&p.month, p.target))
             }
+            "recurring.list" => self.with(|s| s.recurring_bills(today())),
+            "recurring.create" => {
+                let p: NewRecurringBill = params(p)?;
+                self.with(|s| s.create_recurring_bill(&p))
+            }
+            "recurring.update" => {
+                let p: UpdateBill = params(p)?;
+                self.with(|s| s.update_recurring_bill(p.id, &p.bill))
+            }
+            "recurring.set_active" => {
+                let p: SetActive = params(p)?;
+                self.with(|s| s.set_recurring_bill_active(p.id, p.active))
+            }
+            "recurring.due" => {
+                // Default: the past week through the end of next month.
+                let p: DueQuery = params(p)?;
+                let t = today();
+                let from = p.from.unwrap_or(t - chrono::Days::new(7));
+                let to = p.to.unwrap_or_else(|| month_range(&month_of(t + chrono::Months::new(1))).map(|r| r.1).unwrap_or(t));
+                self.with(|s| s.due_dates(from, to, t))
+            }
+            "recurring.mark" => {
+                let p: MarkDue = params(p)?;
+                self.with(|s| s.mark_due_date(p.bill_id, p.due_date, p.status, p.entry_id))
+            }
+            "recurring.suggestions" => self.with(|s| s.bill_suggestions(today())),
             "budget.set_available" => {
                 let p: SetAvailable = params(p)?;
                 self.with(|s| s.set_available(&p.month, p.amount))

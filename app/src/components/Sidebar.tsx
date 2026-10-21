@@ -1,5 +1,6 @@
 import {
   BarChart3,
+  CalendarClock,
   CalendarDays,
   Building2,
   FileText,
@@ -17,7 +18,8 @@ import { NavLink } from "react-router-dom";
 import { useAction, useApi } from "../api";
 import { useSides } from "../book";
 
-const HOUSEHOLD: NavItem[] = [{ to: "/month", label: "This month", icon: CalendarDays }];
+const MONTH: NavItem = { to: "/month", label: "This month", icon: CalendarDays };
+const HOUSEHOLD: NavItem[] = [{ to: "/due", label: "Bills & due dates", icon: CalendarClock }];
 
 const MAIN: NavItem[] = [
   { to: "/", label: "Home", icon: Home, end: true },
@@ -44,7 +46,7 @@ export default function Sidebar({ companyName }: { companyName: string }) {
   const close = useAction("book.close");
   const { business, household } = useSides();
   // A household-only book's home is its month, so the month needs no second link.
-  const householdNav = business ? HOUSEHOLD : [];
+  const householdNav = business ? [MONTH, ...HOUSEHOLD] : HOUSEHOLD;
   const insight: NavItem[] = [
     { to: "/reports", label: "Reports", icon: BarChart3 },
     ...(business ? [{ to: "/taxes", label: "Taxes", icon: Scale }] : []),
@@ -67,7 +69,7 @@ export default function Sidebar({ companyName }: { companyName: string }) {
         </div>
       </div>
       {MAIN.map(item)}
-      {household && householdNav.length > 0 && (
+      {household && (
         <>
           <div className="nav-section">Household</div>
           {householdNav.map(item)}
@@ -76,7 +78,7 @@ export default function Sidebar({ companyName }: { companyName: string }) {
       {business && (
         <>
           <div className="nav-section">{household ? "Business" : "Money in & out"}</div>
-          {MONEY.map(item)}
+          {MONEY.map((n) => item(household && n.to === "/bills" ? { ...n, label: "Vendor bills" } : n))}
         </>
       )}
       <div className="nav-section">Insights & setup</div>

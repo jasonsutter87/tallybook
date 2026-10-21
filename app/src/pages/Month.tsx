@@ -5,13 +5,14 @@ import { ChevronLeft, ChevronRight, ClipboardList, Plus, Users } from "lucide-re
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useApi } from "../api";
+import { DueList, groupDue } from "../components/DueList";
 import { Meter, SENTIMENT_TONE, meterCaption, monthName, shiftMonth, thisMonth, zoneLabel } from "../components/household";
 import { BigMoney, Card, EmptyState, ErrorBanner, Loading, Money, PageHeader } from "../components/ui";
 import LogMoneyModal from "../flows/LogMoneyModal";
 import PeopleModal from "../flows/PeopleModal";
 import PlanModal from "../flows/PlanModal";
-import { FLEX_LABEL, money } from "../format";
-import type { BudgetLineView, MonthBudget } from "../types";
+import { FLEX_LABEL, money, todayISO } from "../format";
+import type { BudgetLineView, DueDate, MonthBudget } from "../types";
 import "./Month.css";
 
 export default function Month() {
@@ -19,6 +20,7 @@ export default function Month() {
   const navigate = useNavigate();
   const month = params.month && /^\d{4}-\d{2}$/.test(params.month) ? params.month : thisMonth();
   const { data, error, isLoading } = useApi<MonthBudget>("budget.month", { month });
+  const due = useApi<DueDate[]>("recurring.due");
   const [logging, setLogging] = useState(false);
   const [planning, setPlanning] = useState(false);
   const [peopleOpen, setPeopleOpen] = useState(false);
@@ -39,6 +41,10 @@ export default function Month() {
   const goalLines = data.lines.filter((l) => l.direction === "floor");
   const maxCategory = Math.max(1, ...data.categories.map((c) => c.spending));
   const maxPerson = Math.max(1, ...data.people.map((p) => p.spending));
+  const soon = (() => {
+    const g = groupDue(due.data ?? [], todayISO());
+    return [...g.now, ...g.week];
+  })();
 
   return (
     <div className="page">
@@ -98,6 +104,12 @@ export default function Month() {
             <Figure label={net >= 0 ? "Ahead by" : "Behind by"} cents={Math.abs(net)} />
           </div>
         </div>
+
+        {data.is_current && (due.data?.length ?? 0) > 0 && (
+          <Card title="Due today & this week" action={<Link to="/due" className="small bold">All bills</Link>}>
+            <DueList items={soon} empty="Nothing due this week." />
+          </Card>
+        )}
 
         {data.lines.length === 0 ? (
           <Card>

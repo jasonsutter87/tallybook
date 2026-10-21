@@ -19,6 +19,7 @@ pub mod money;
 pub mod reconcile;
 pub mod report;
 pub mod rules;
+pub mod schedule;
 pub mod tax;
 
 pub use account::{Account, AccountId, AccountKind, AccountSubtype, Flex, Scope};

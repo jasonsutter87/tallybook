@@ -6,7 +6,7 @@
 //! the latest earlier plan, and editing it gives the month its own copy.
 //! Only household money is budgeted.
 
-use crate::{BadValue, Result, Store, StoreError, conversion_err, rule};
+use crate::{BadValue, DueState, Result, Store, StoreError, conversion_err, rule};
 use chrono::{Datelike, Months, NaiveDate};
 use rusqlite::{OptionalExtension, Row, params};
 use serde::{Deserialize, Serialize};
@@ -112,6 +112,9 @@ pub struct MonthBudget {
     pub lines: Vec<BudgetLineView>,
     pub planned_for_people: Cents,
     pub planned_for_categories: Cents,
+    /// Recurring bills paid this month, and still to come.
+    pub bills_paid: Cents,
+    pub bills_due: Cents,
     pub people: Vec<PersonSpend>,
     pub categories: Vec<CategorySpend>,
 }
@@ -128,6 +131,10 @@ pub fn month_range(month: &str) -> Result<(NaiveDate, NaiveDate)> {
 
 pub fn month_of(date: NaiveDate) -> String {
     date.format("%Y-%m").to_string()
+}
+
+fn get<K: std::hash::Hash + Eq>(m: &HashMap<K, Cents>, k: &K) -> Cents {
+    m.get(k).copied().unwrap_or_default()
 }
 
 const PERSON_COLS: &str = "id, name, color, sort_order, archived";
@@ -424,19 +431,45 @@ impl Store {
             None => vec![],
         };
 
-        let judge = |allocated: Cents, progress: Cents, direction: Direction, tolerance_pct: u32, scheduled: Cents| {
+        // Recurring bills: paid ones count as-is (like fixed categories), and
+        // ones still to come are added to the projection in full.
+        let mut bill_paid: HashMap<AccountId, Cents> = HashMap::new();
+        let mut bill_due: HashMap<AccountId, Cents> = HashMap::new();
+        let mut bill_paid_by_person: HashMap<PersonId, Cents> = HashMap::new();
+        let mut bill_due_by_person: HashMap<PersonId, Cents> = HashMap::new();
+        for d in self.due_dates(from, to, today)? {
+            match (d.state, &d.payment) {
+                (DueState::Paid, Some(p)) if (from..=to).contains(&p.date) && !is_fixed(d.account_id) => {
+                    *bill_paid.entry(d.account_id).or_default() += p.amount;
+                    if let Some(person) = d.person_id {
+                        *bill_paid_by_person.entry(person).or_default() += p.amount;
+                    }
+                }
+                (DueState::DueToday | DueState::Upcoming | DueState::Processing, _) if today <= to => {
+                    *bill_due.entry(d.account_id).or_default() += d.amount;
+                    if let Some(person) = d.person_id {
+                        *bill_due_by_person.entry(person).or_default() += d.amount;
+                    }
+                }
+                _ => {}
+            }
+        }
+        let bills_paid: Cents = bill_paid.values().copied().sum();
+        let bills_due: Cents = bill_due.values().copied().sum();
+
+        let judge = |allocated: Cents, progress: Cents, direction: Direction, tolerance_pct: u32, scheduled: Cents, due: Cents| {
             let input = StatusInput::new(allocated, progress, direction, tolerance_pct, day_of_month, days_in_month);
-            budget::status(&StatusInput { scheduled_paid: scheduled.clamp(Cents::ZERO, progress.max(Cents::ZERO)), ..input })
+            budget::status(&StatusInput { scheduled_paid: scheduled.clamp(Cents::ZERO, progress.max(Cents::ZERO)), scheduled_due: due, ..input })
         };
         let mut lines = Vec::new();
         let (mut planned_for_people, mut planned_for_categories) = (Cents::ZERO, Cents::ZERO);
         for r in rows {
-            let (name, flex, progress, scheduled) = match r.target {
+            let (name, flex, progress, scheduled, due) = match r.target {
                 BudgetTarget::Person(p) => {
                     let Some(person) = people.iter().find(|x| x.id == p && !x.archived) else { continue };
                     planned_for_people += r.amount;
-                    let scheduled = fixed_by_person.get(&Some(p)).copied().unwrap_or_default();
-                    (person.name.clone(), None, by_person.get(&Some(p)).map(|x| x.0).unwrap_or_default(), scheduled)
+                    let scheduled = get(&fixed_by_person, &Some(p)) + get(&bill_paid_by_person, &p);
+                    (person.name.clone(), None, by_person.get(&Some(p)).map(|x| x.0).unwrap_or_default(), scheduled, get(&bill_due_by_person, &p))
                 }
                 BudgetTarget::Account(a) => {
                     let Some(acct) = accounts.get(&a).filter(|x| !x.archived) else { continue };
@@ -444,10 +477,11 @@ impl Store {
                         planned_for_categories += r.amount;
                     }
                     let progress = by_account.get(&a).copied().unwrap_or_default();
-                    (acct.name.clone(), acct.flex, progress, if is_fixed(a) { progress } else { Cents::ZERO })
+                    let scheduled = if is_fixed(a) { progress } else { get(&bill_paid, &a) };
+                    (acct.name.clone(), acct.flex, progress, scheduled, get(&bill_due, &a))
                 }
             };
-            let status = judge(r.amount, progress.max(Cents::ZERO), r.direction, r.tolerance_pct, scheduled);
+            let status = judge(r.amount, progress.max(Cents::ZERO), r.direction, r.tolerance_pct, scheduled, due);
             let percent_used = (r.direction == Direction::Ceiling).then(|| budget::percent_used(r.amount, progress)).flatten();
             lines.push(BudgetLineView {
                 id: r.id,
@@ -494,10 +528,12 @@ impl Store {
             available,
             income,
             spending,
-            overall: available.map(|a| judge(a, spending.max(Cents::ZERO), Direction::Ceiling, 10, fixed)),
+            overall: available.map(|a| judge(a, spending.max(Cents::ZERO), Direction::Ceiling, 10, fixed + bills_paid, bills_due)),
             lines,
             planned_for_people,
             planned_for_categories,
+            bills_paid,
+            bills_due,
             people: people_spend,
             categories,
         })

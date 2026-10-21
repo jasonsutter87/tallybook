@@ -830,6 +830,55 @@ export interface MonthBudget {
   lines: BudgetLineView[];
   planned_for_people: Cents;
   planned_for_categories: Cents;
+  bills_paid: Cents;
+  bills_due: Cents;
   people: PersonSpend[];
   categories: CategorySpend[];
+}
+
+// ------------------------------------------------------------- recurring bills
+
+export type Cadence = { every: "month"; day: number } | { every: "months"; months: number; day: number } | { every: "week" };
+
+export interface NewRecurringBill {
+  name: string;
+  /** 0 when it varies. */
+  amount: Cents;
+  account_id: number;
+  paid_from_id: number | null;
+  person_id: number | null;
+  cadence: Cadence;
+  start_date: ISODate;
+  auto_pay: boolean;
+  match_text: string | null;
+}
+
+export interface RecurringBill extends NewRecurringBill {
+  id: number;
+  active: boolean;
+  next_due: ISODate | null;
+}
+
+export type DueState = "paid" | "skipped" | "overdue" | "processing" | "due_today" | "upcoming";
+
+export interface DueDate {
+  bill_id: number;
+  name: string;
+  amount: Cents;
+  account_id: number;
+  person_id: number | null;
+  auto_pay: boolean;
+  due_date: ISODate;
+  state: DueState;
+  payment: { entry_id: number; date: ISODate; amount: Cents; manual: boolean } | null;
+}
+
+export interface BillSuggestion {
+  name: string;
+  account_id: number;
+  amount: Cents;
+  day: number;
+  match_text: string;
+  months_seen: number;
+  paid_from_id: number | null;
 }

@@ -355,3 +355,101 @@ fn rent_on_the_first_doesnt_look_like_overspending() {
     assert_eq!(overall.pace, Cents(1495_00 + 1107_14), "$500 by day 14 of 31 projects to $1,107.14");
     assert_eq!(overall.zone, Zone::Under);
 }
+
+// ---------------------------------------------------------------- recurring bills
+
+use tally_core::schedule::Cadence;
+use tally_store::{DueState, NewRecurringBill};
+
+fn bill(name: &str, category: AccountId, cents: i64, day: u32) -> NewRecurringBill {
+    NewRecurringBill {
+        name: name.into(),
+        amount: Cents(cents),
+        account_id: category,
+        paid_from_id: None,
+        person_id: None,
+        cadence: Cadence::Month { day },
+        start_date: d(1, 1),
+        auto_pay: false,
+        match_text: None,
+    }
+}
+
+#[test]
+fn a_payment_near_the_due_date_marks_it_paid() {
+    let mut b = both();
+    let phones = code(&b.s, "H6130");
+    let verizon = b.s.create_recurring_bill(&NewRecurringBill { match_text: Some("verizon".into()), ..bill("Verizon", phones, 160_00, 14) }).unwrap();
+    b.s.create_recurring_bill(&bill("Rent", code(&b.s, "H6000"), 1495_00, 1)).unwrap();
+
+    // A different phone charge doesn't count; Verizon's, two days late and a bit more, does.
+    let other = code(&b.s, "H6130");
+    b.s.post_entry(&NewEntry::new(d(3, 14), "Mint Mobile").line(EntryLine::debit(other, Cents(160_00))).line(EntryLine::credit(b.home_checking, Cents(160_00)))).unwrap();
+    let paid = b.s.post_entry(&NewEntry::new(d(3, 16), "VERIZON WIRELESS").line(EntryLine::debit(phones, Cents(162_53))).line(EntryLine::credit(b.home_checking, Cents(162_53)))).unwrap();
+
+    let due = b.s.due_dates(d(3, 1), d(3, 31), d(3, 20)).unwrap();
+    let rent = due.iter().find(|x| x.name == "Rent").unwrap();
+    assert_eq!(rent.state, DueState::Overdue);
+    let v = due.iter().find(|x| x.bill_id == verizon).unwrap();
+    assert_eq!(v.state, DueState::Paid);
+    assert_eq!(v.payment.as_ref().unwrap().entry_id, paid);
+
+    // April's isn't paid by March's payment.
+    let april = b.s.due_dates(d(4, 1), d(4, 30), d(4, 10)).unwrap();
+    assert_eq!(april.iter().find(|x| x.bill_id == verizon).unwrap().state, DueState::Upcoming);
+}
+
+#[test]
+fn states_today_auto_pay_and_marks() {
+    let b = both();
+    let rent = code(&b.s, "H6000");
+    let internet = b.s.create_recurring_bill(&NewRecurringBill { auto_pay: true, ..bill("Internet", code(&b.s, "H6120"), 65_00, 17) }).unwrap();
+    let rent_bill = b.s.create_recurring_bill(&bill("Rent", rent, 1495_00, 1)).unwrap();
+    let state = |s: &Store, id, today| s.due_dates(d(3, 1), d(3, 31), today).unwrap().into_iter().find(|x| x.bill_id == id).unwrap().state;
+
+    assert_eq!(state(&b.s, internet, d(3, 17)), DueState::DueToday);
+    assert_eq!(state(&b.s, internet, d(3, 19)), DueState::Processing, "auto-pay gets a few days' grace");
+    assert_eq!(state(&b.s, internet, d(3, 25)), DueState::Overdue);
+
+    // Paid in cash, outside the books: mark it by hand. Then undo.
+    b.s.mark_due_date(rent_bill, d(3, 1), Some(DueState::Paid), None).unwrap();
+    assert_eq!(state(&b.s, rent_bill, d(3, 20)), DueState::Paid);
+    b.s.mark_due_date(rent_bill, d(3, 1), Some(DueState::Skipped), None).unwrap();
+    assert_eq!(state(&b.s, rent_bill, d(3, 20)), DueState::Skipped);
+    b.s.mark_due_date(rent_bill, d(3, 1), None, None).unwrap();
+    assert_eq!(state(&b.s, rent_bill, d(3, 20)), DueState::Overdue);
+    assert!(b.s.mark_due_date(rent_bill, d(3, 2), Some(DueState::Paid), None).is_err(), "not a due date");
+
+    b.s.set_recurring_bill_active(internet, false).unwrap();
+    assert!(b.s.due_dates(d(3, 1), d(3, 31), d(3, 1)).unwrap().iter().all(|x| x.bill_id != internet));
+}
+
+#[test]
+fn bills_still_to_come_count_in_the_projection() {
+    let mut b = both();
+    let utilities = code(&b.s, "H6100");
+    b.s.create_recurring_bill(&bill("PG&E", utilities, 150_00, 25)).unwrap();
+    b.s.set_available("2026-03", Some(Cents(1000_00))).unwrap();
+    spend(&mut b.s, d(3, 5), "H6200", b.home_checking, 300_00, None);
+    let m = b.s.month_budget("2026-03", d(3, 15)).unwrap();
+    assert_eq!(m.bills_due, Cents(150_00));
+    // $300 by day 15 of 31 is $620 at that pace, plus the $150 bill still to come.
+    assert_eq!(m.overall.unwrap().pace, Cents(620_00 + 150_00));
+}
+
+#[test]
+fn repeat_payments_are_suggested_as_bills() {
+    let mut b = both();
+    let phones = code(&b.s, "H6130");
+    let groceries = code(&b.s, "H6200");
+    for (m, day, cents) in [(6, 11, 160_88), (7, 12, 160_88), (8, 11, 158_20), (9, 10, 160_88)] {
+        post(&mut b.s, d(m, day), "Verizon", phones, b.home_checking, cents);
+        post(&mut b.s, d(m, day * 2), "Safeway", groceries, b.home_checking, 50_00 * i64::from(m));
+    }
+    let s = b.s.bill_suggestions(d(10, 5)).unwrap();
+    assert_eq!(s.len(), 1, "groceries vary too much to be a bill: {s:?}");
+    assert_eq!((s[0].name.as_str(), s[0].account_id, s[0].amount, s[0].months_seen), ("Verizon", phones, Cents(160_88), 4));
+
+    b.s.create_recurring_bill(&NewRecurringBill { match_text: Some(s[0].match_text.clone()), ..bill("Verizon", phones, 160_88, 11) }).unwrap();
+    assert!(b.s.bill_suggestions(d(10, 5)).unwrap().is_empty(), "already a bill");
+}
