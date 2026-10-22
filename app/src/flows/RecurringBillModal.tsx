@@ -17,6 +17,7 @@ export default function RecurringBillModal(props: { open: boolean; onClose: () =
   const toast = useToast();
   const [name, setName] = useState("");
   const [amount, setAmount] = useState<Cents | null>(null);
+  const [varies, setVaries] = useState(false);
   const [category, setCategory] = useState<number | null>(null);
   const [paidFrom, setPaidFrom] = useState<number | null>(null);
   const [person, setPerson] = useState<number | null>(null);
@@ -33,7 +34,8 @@ export default function RecurringBillModal(props: { open: boolean; onClose: () =
     if (!props.open) return;
     const b = props.bill ?? {};
     setName(b.name ?? "");
-    setAmount(b.amount ?? null);
+    setAmount(b.amount || null);
+    setVaries(b.varies ?? false);
     setCategory(b.account_id ?? null);
     setPaidFrom(b.paid_from_id ?? null);
     setPerson(b.person_id ?? null);
@@ -49,7 +51,7 @@ export default function RecurringBillModal(props: { open: boolean; onClose: () =
 
   const cadence: Cadence = every === "week" ? { every } : every === "months" ? { every, months, day } : { every, day };
   const editing = props.bill && "id" in props.bill && props.bill.id != null ? props.bill.id : null;
-  const ready = !!name.trim() && category != null;
+  const ready = !!name.trim() && category != null && (!varies || !!amount);
 
   const save = async () => {
     if (!ready) return;
@@ -58,6 +60,7 @@ export default function RecurringBillModal(props: { open: boolean; onClose: () =
     const bill: NewRecurringBill = {
       name: name.trim(),
       amount: amount ?? 0,
+      varies,
       account_id: category!,
       paid_from_id: paidFrom,
       person_id: person,
@@ -108,7 +111,7 @@ export default function RecurringBillModal(props: { open: boolean; onClose: () =
           <Field label="Name">
             <input className="input" autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Verizon" />
           </Field>
-          <Field label="Amount" hint="Leave blank if it changes month to month.">
+          <Field label={varies ? "Typical amount" : "Amount"} hint={varies ? "Payments from half to double this count." : "Leave blank if you don't know it yet."}>
             <MoneyInput value={amount} onChange={setAmount} />
           </Field>
         </div>
@@ -154,6 +157,10 @@ export default function RecurringBillModal(props: { open: boolean; onClose: () =
         <Field label="Bank description contains (optional)" hint="Helps tell this bill apart from others in the same category, e.g. VERIZON.">
           <input className="input" value={matchText} onChange={(e) => setMatchText(e.target.value)} />
         </Field>
+        <label className="switch">
+          <input type="checkbox" checked={varies} onChange={(e) => setVaries(e.target.checked)} />
+          <span>Changes month to month (power, water)</span>
+        </label>
         <label className="switch">
           <input type="checkbox" checked={autoPay} onChange={(e) => setAutoPay(e.target.checked)} />
           <span>Pays itself (auto-pay)</span>

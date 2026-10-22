@@ -139,6 +139,13 @@ fn get<K: std::hash::Hash + Eq>(m: &HashMap<K, Cents>, k: &K) -> Cents {
 
 const PERSON_COLS: &str = "id, name, color, sort_order, archived";
 
+/// Adds a bill's amount, stopping at the largest `Cents` rather than
+/// overflowing: a payment matched or marked by hand can be any amount, and
+/// the budget page mustn't panic over one.
+fn add_capped(total: &mut Cents, x: Cents) {
+    *total = Cents(total.0.saturating_add(x.0));
+}
+
 fn person_from_row(r: &Row) -> rusqlite::Result<Person> {
     Ok(Person { id: r.get(0)?, name: r.get(1)?, color: r.get(2)?, sort_order: r.get(3)?, archived: r.get(4)? })
 }
@@ -440,22 +447,28 @@ impl Store {
         for d in self.due_dates(from, to, today)? {
             match (d.state, &d.payment) {
                 (DueState::Paid, Some(p)) if (from..=to).contains(&p.date) && !is_fixed(d.account_id) => {
-                    *bill_paid.entry(d.account_id).or_default() += p.amount;
+                    add_capped(bill_paid.entry(d.account_id).or_default(), p.amount);
                     if let Some(person) = d.person_id {
-                        *bill_paid_by_person.entry(person).or_default() += p.amount;
+                        add_capped(bill_paid_by_person.entry(person).or_default(), p.amount);
                     }
                 }
                 (DueState::DueToday | DueState::Upcoming | DueState::Processing, _) if today <= to => {
-                    *bill_due.entry(d.account_id).or_default() += d.amount;
+                    add_capped(bill_due.entry(d.account_id).or_default(), d.amount);
                     if let Some(person) = d.person_id {
-                        *bill_due_by_person.entry(person).or_default() += d.amount;
+                        add_capped(bill_due_by_person.entry(person).or_default(), d.amount);
                     }
                 }
                 _ => {}
             }
         }
-        let bills_paid: Cents = bill_paid.values().copied().sum();
-        let bills_due: Cents = bill_due.values().copied().sum();
+        let bills_paid = bill_paid.values().fold(Cents::ZERO, |mut a, b| {
+            add_capped(&mut a, *b);
+            a
+        });
+        let bills_due = bill_due.values().fold(Cents::ZERO, |mut a, b| {
+            add_capped(&mut a, *b);
+            a
+        });
 
         let judge = |allocated: Cents, progress: Cents, direction: Direction, tolerance_pct: u32, scheduled: Cents, due: Cents| {
             let input = StatusInput::new(allocated, progress, direction, tolerance_pct, day_of_month, days_in_month);
@@ -468,7 +481,8 @@ impl Store {
                 BudgetTarget::Person(p) => {
                     let Some(person) = people.iter().find(|x| x.id == p && !x.archived) else { continue };
                     planned_for_people += r.amount;
-                    let scheduled = get(&fixed_by_person, &Some(p)) + get(&bill_paid_by_person, &p);
+                    let mut scheduled = get(&fixed_by_person, &Some(p));
+                    add_capped(&mut scheduled, get(&bill_paid_by_person, &p));
                     (person.name.clone(), None, by_person.get(&Some(p)).map(|x| x.0).unwrap_or_default(), scheduled, get(&bill_due_by_person, &p))
                 }
                 BudgetTarget::Account(a) => {
@@ -528,7 +542,7 @@ impl Store {
             available,
             income,
             spending,
-            overall: available.map(|a| judge(a, spending.max(Cents::ZERO), Direction::Ceiling, 10, fixed + bills_paid, bills_due)),
+            overall: available.map(|a| judge(a, spending.max(Cents::ZERO), Direction::Ceiling, 10, Cents(fixed.0.saturating_add(bills_paid.0)), bills_due)),
             lines,
             planned_for_people,
             planned_for_categories,

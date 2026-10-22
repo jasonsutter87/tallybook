@@ -555,11 +555,26 @@ impl Store {
         Ok(stmt.query_map(params![ledger_account_id, limit], txn_from_row)?.collect::<rusqlite::Result<_>>()?)
     }
 
+    /// Settled money out of household accounts still waiting in Review,
+    /// dated in `[from, to]`, newest first, at most `limit`. Bill detection
+    /// reads this rather than `inbox`, which works out a suggestion for every
+    /// row, money in and business side included.
+    pub(crate) fn review_money_out(&self, from: NaiveDate, to: NaiveDate, limit: usize) -> Result<Vec<BankTxn>> {
+        let mut stmt = self.conn.prepare(&format!(
+            "SELECT {TXN_COLS} FROM bank_transactions
+             WHERE status = 'new' AND pending = 0 AND amount < 0 AND date BETWEEN ?1 AND ?2
+               AND ledger_account_id IN (SELECT id FROM accounts WHERE scope = 'household')
+             ORDER BY date DESC, id DESC LIMIT ?3"
+        ))?;
+        let limit = i64::try_from(limit).unwrap_or(i64::MAX);
+        Ok(stmt.query_map(params![from, to, limit], txn_from_row)?.collect::<rusqlite::Result<_>>()?)
+    }
+
     pub fn inbox_count(&self) -> Result<i64> {
         Ok(self.conn.query_row("SELECT COUNT(*) FROM bank_transactions WHERE status = 'new' AND pending = 0", [], |r| r.get(0))?)
     }
 
-    fn suggest(&self, t: &BankTxn, rules: &[Rule]) -> Result<Option<Suggestion>> {
+    pub(crate) fn suggest(&self, t: &BankTxn, rules: &[Rule]) -> Result<Option<Suggestion>> {
         if let Some(m) = self.match_candidates(t)?.into_iter().next() {
             return Ok(Some(m));
         }
@@ -587,7 +602,7 @@ impl Store {
         Ok(account_id.map(|account_id| Suggestion::History { account_id }))
     }
 
-    fn suggest_person(&self, t: &BankTxn, rules: &[Rule]) -> Result<Option<crate::PersonId>> {
+    pub(crate) fn suggest_person(&self, t: &BankTxn, rules: &[Rule]) -> Result<Option<crate::PersonId>> {
         if let Some(r) = rules_mod::first_match(rules, t.ledger_account_id, &t.description, t.amount)
             && r.person_id.is_some()
         {

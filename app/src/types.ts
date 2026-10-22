@@ -842,8 +842,10 @@ export type Cadence = { every: "month"; day: number } | { every: "months"; month
 
 export interface NewRecurringBill {
   name: string;
-  /** 0 when it varies. */
+  /** What it usually comes to; 0 when that isn't known. */
   amount: Cents;
+  /** The amount moves around (power, water): `amount` is the typical one. */
+  varies: boolean;
   account_id: number;
   paid_from_id: number | null;
   person_id: number | null;
@@ -875,12 +877,20 @@ export interface DueDate {
 
 export interface BillSuggestion {
   name: string;
-  account_id: number;
+  /** null when it's only been seen in Review, uncategorized. */
+  account_id: number | null;
   amount: Cents;
-  day: number;
+  /** The amount moves around (power, water). */
+  varies: boolean;
+  cadence: Cadence;
+  start_date: ISODate;
+  last_seen: ISODate;
+  times_seen: number;
+  /** How many are still waiting in Review. */
+  in_review: number;
   match_text: string;
-  months_seen: number;
   paid_from_id: number | null;
+  person_id: number | null;
 }
 
 // ------------------------------------------------------------- goals & insights

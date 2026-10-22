@@ -5,6 +5,7 @@ import { CheckCheck, ChevronRight, Clock, Landmark, Link2, PartyPopper, Plus, Re
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { call, queryClient, useAction, useApi } from "../api";
+import { ReviewBillNudge } from "../components/BillSuggestions";
 import { PersonSelect, usePeople } from "../components/household";
 import { AccountSelect, Card, ContactSelect, EmptyState, ErrorBanner, Loading, MoneyInput, Spinner, Tabs, useAccountNames, useToast } from "../components/ui";
 import ImportModal from "../flows/ImportModal";
@@ -208,6 +209,7 @@ export default function Review() {
       </div>
 
       <ErrorBanner error={inbox.error ?? accounts.error} />
+      <ReviewBillNudge />
 
       <div className="row-between" style={{ marginBottom: 16, flexWrap: "wrap" }}>
         <Tabs<Tab>

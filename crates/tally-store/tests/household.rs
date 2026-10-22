@@ -372,6 +372,7 @@ fn bill(name: &str, category: AccountId, cents: i64, day: u32) -> NewRecurringBi
         start_date: d(1, 1),
         auto_pay: false,
         match_text: None,
+        varies: false,
     }
 }
 
@@ -444,14 +445,336 @@ fn repeat_payments_are_suggested_as_bills() {
     let groceries = code(&b.s, "H6200");
     for (m, day, cents) in [(6, 11, 160_88), (7, 12, 160_88), (8, 11, 158_20), (9, 10, 160_88)] {
         post(&mut b.s, d(m, day), "Verizon", phones, b.home_checking, cents);
-        post(&mut b.s, d(m, day * 2), "Safeway", groceries, b.home_checking, 50_00 * i64::from(m));
+        // A couple of grocery runs a month isn't a schedule.
+        post(&mut b.s, d(m, day - 7), "Safeway", groceries, b.home_checking, 50_00 * i64::from(m));
+        post(&mut b.s, d(m, day + 9), "Safeway", groceries, b.home_checking, 30_00 * i64::from(m));
     }
     let s = b.s.bill_suggestions(d(10, 5)).unwrap();
-    assert_eq!(s.len(), 1, "groceries vary too much to be a bill: {s:?}");
-    assert_eq!((s[0].name.as_str(), s[0].account_id, s[0].amount, s[0].months_seen), ("Verizon", phones, Cents(160_88), 4));
+    assert_eq!(s.len(), 1, "groceries aren't a bill: {s:?}");
+    assert_eq!((s[0].name.as_str(), s[0].account_id, s[0].amount, s[0].times_seen), ("Verizon", Some(phones), Cents(160_88), 4));
+    assert_eq!((s[0].cadence, s[0].start_date, s[0].in_review), (Cadence::Month { day: 11 }, d(6, 11), 0));
 
     b.s.create_recurring_bill(&NewRecurringBill { match_text: Some(s[0].match_text.clone()), ..bill("Verizon", phones, 160_88, 11) }).unwrap();
     assert!(b.s.bill_suggestions(d(10, 5)).unwrap().is_empty(), "already a bill");
+}
+
+#[test]
+fn a_bill_named_like_a_payee_only_covers_it_when_the_amount_fits() {
+    let mut b = both();
+    let fuel = code(&b.s, "H6200");
+    for m in 6..=9 {
+        post(&mut b.s, d(m, 8), "SHELL GAS 4411", fuel, b.home_checking, 45_00);
+    }
+    assert_eq!(b.s.bill_suggestions(d(10, 5)).unwrap()[0].name, "Shell Gas");
+    // A $200 "Gas" utility bill isn't this $45 fill-up...
+    b.s.create_recurring_bill(&bill("Gas", fuel, 200_00, 20)).unwrap();
+    assert_eq!(b.s.bill_suggestions(d(10, 5)).unwrap().len(), 1);
+    // ...but a $45 one is.
+    b.s.create_recurring_bill(&bill("Gas", fuel, 45_00, 8)).unwrap();
+    assert!(b.s.bill_suggestions(d(10, 5)).unwrap().is_empty());
+}
+
+#[test]
+fn a_fresh_bank_import_is_enough_to_spot_bills() {
+    use tally_core::bank::{FeedBatch, FeedTransaction};
+    let mut b = both();
+    let txn = |id: String, date: NaiveDate, desc: &str, cents: i64| FeedTransaction {
+        external_id: id,
+        date,
+        amount: Cents(cents),
+        description: desc.into(),
+        merchant: None,
+        category_hint: None,
+        pending: false,
+    };
+    let mut added = Vec::new();
+    // May through September. Power moves with the weather; Netflix doesn't;
+    // the card gets paid off; the gym was quit in June.
+    let power_bills = [118_40, 162_10, 188_75, 171_30, 131_05];
+    for (m, power) in (5..=9).zip(power_bills) {
+        added.push(txn(format!("pge{m}"), d(m, 18), "PGE WEB ONLINE 0518", -power));
+        added.push(txn(format!("nfx{m}"), d(m, 2), "NETFLIX.COM 866", -15_49));
+        added.push(txn(format!("card{m}"), d(m, 25), "ONLINE TRANSFER TO CARD 4411", -400_00));
+        if m <= 6 {
+            added.push(txn(format!("gym{m}"), d(m, 9), "PLANET FITNESS", -24_99));
+        }
+    }
+    // A weekly allowance by Venmo.
+    for w in 0..4 {
+        added.push(txn(format!("ven{w}"), d(9, 4) + chrono::Days::new(w * 7), "VENMO *ETHAN", -10_00));
+    }
+    b.s.import_feed(b.home_checking, &FeedBatch { added, ..Default::default() }).unwrap();
+
+    let s = b.s.bill_suggestions(d(10, 1)).unwrap();
+    let names: Vec<&str> = s.iter().map(|x| x.name.as_str()).collect();
+    assert_eq!(names, ["Pge Web Online", "Netflix.com", "Venmo Ethan"], "biggest first, nothing stale or transferred");
+    let power = &s[0];
+    assert!(power.varies);
+    assert_eq!((power.amount, power.cadence, power.in_review, power.account_id, power.paid_from_id), (Cents(162_10), Cadence::Month { day: 18 }, 5, None, Some(b.home_checking)));
+    assert_eq!(s[2].cadence, Cadence::Week);
+
+    // "Not a bill" sticks.
+    b.s.dismiss_bill_suggestion(&s[2].match_text).unwrap();
+    assert_eq!(b.s.bill_suggestions(d(10, 1)).unwrap().len(), 2);
+}
+
+#[test]
+fn hostile_bank_text_and_amounts_dont_break_suggestions() {
+    use tally_core::bank::{FeedBatch, FeedTransaction};
+    let mut b = both();
+    let txn = |id: String, date: NaiveDate, desc: String, cents: i64| FeedTransaction {
+        external_id: id,
+        date,
+        amount: Cents(cents),
+        description: desc,
+        merchant: None,
+        category_hint: None,
+        pending: false,
+    };
+    let huge = format!("ÉLECTRICITÉ 日本 {}", "Z".repeat(50_000));
+    let mut added = Vec::new();
+    for m in 6..=9 {
+        // Amounts at the edges of i64; i64::MIN has no positive and is skipped.
+        added.push(txn(format!("max{m}"), d(m, 3), "HUGE AMOUNT CO".into(), -i64::MAX));
+        added.push(txn(format!("min{m}"), d(m, 4), "MIN AMOUNT CO".into(), i64::MIN));
+        added.push(txn(format!("big{m}"), d(m, 5), huge.clone(), -12_00));
+    }
+    b.s.import_feed(b.home_checking, &FeedBatch { added, ..Default::default() }).unwrap();
+
+    let s = b.s.bill_suggestions(d(10, 1)).unwrap();
+    let names: Vec<&str> = s.iter().map(|x| x.name.as_str()).collect();
+    // An i64::MAX bill is no household bill (`MAX_BILL_AMOUNT`).
+    assert_eq!(names.len(), 1, "{names:?}");
+    assert!(names[0].starts_with("Électricité 日本 Z") && names[0].chars().count() <= 80);
+    assert!(s[0].match_text.chars().count() <= 120);
+
+    // The capped key round-trips through "Not a bill", even sent in full.
+    b.s.dismiss_bill_suggestion(&huge).unwrap();
+    assert!(b.s.bill_suggestions(d(10, 1)).unwrap().is_empty());
+}
+
+#[test]
+fn dismissals_are_bounded_and_waving_off_always_works() {
+    let b = both();
+    for junk in ["", "  ", "##", "12345", "ab"] {
+        assert!(matches!(b.s.dismiss_bill_suggestion(junk), Err(tally_store::StoreError::Rule(_))), "{junk:?}");
+    }
+    for i in 0..1000 {
+        b.s.dismiss_bill_suggestion(&format!("payee {}", char::from(b'a' + (i % 26) as u8).to_string().repeat(i / 26 + 1))).unwrap();
+    }
+    // Full: the oldest is forgotten rather than "Not a bill" failing.
+    b.s.dismiss_bill_suggestion("one too many").unwrap();
+    // Waving off one already on the list is still fine.
+    b.s.dismiss_bill_suggestion("PAYEE A").unwrap();
+}
+
+// Bank text and amounts are whatever the bank, or whoever wrote the
+// description, says. These are the Black Team's attacks on bill detection,
+// kept as regressions.
+
+fn feed_txn(id: String, date: NaiveDate, desc: &str, merchant: Option<&str>, cents: i64) -> tally_core::bank::FeedTransaction {
+    tally_core::bank::FeedTransaction {
+        external_id: id,
+        date,
+        amount: Cents(cents),
+        description: desc.into(),
+        merchant: merchant.map(Into::into),
+        category_hint: None,
+        pending: false,
+    }
+}
+
+fn import(b: &mut Both, added: Vec<tally_core::bank::FeedTransaction>) {
+    b.s.import_feed(b.home_checking, &tally_core::bank::FeedBatch { added, ..Default::default() }).unwrap();
+}
+
+/// What "Add as a bill" in BillSuggestions.tsx sends, once a category is picked.
+fn bill_from(s: &tally_store::BillSuggestion, category: AccountId) -> NewRecurringBill {
+    NewRecurringBill {
+        name: s.name.clone(),
+        amount: s.amount,
+        varies: s.varies,
+        account_id: s.account_id.unwrap_or(category),
+        paid_from_id: s.paid_from_id,
+        person_id: s.person_id,
+        cadence: s.cadence,
+        start_date: s.start_date,
+        auto_pay: false,
+        match_text: Some(s.match_text.clone()),
+    }
+}
+
+#[test]
+fn a_different_ach_originator_behind_the_same_text_is_a_different_payee() {
+    let mut b = both();
+    let insurance = code(&b.s, "H6010");
+    for m in 6..=9 {
+        post(&mut b.s, d(m, 5), "ACH DEBIT 8005551212", insurance, b.home_checking, 50_00);
+    }
+    let s = b.s.bill_suggestions(d(10, 1)).unwrap();
+    assert_eq!(s[0].match_text, "ach debit 8005551212", "the originator's id is part of the payee");
+    b.s.create_recurring_bill(&bill_from(&s[0], insurance)).unwrap();
+
+    // Someone else debiting under the same bank text, monthly on the 20th.
+    for m in 6..=10 {
+        post(&mut b.s, d(m, 20), "ACH DEBIT 3334445555", insurance, b.home_checking, 49_00);
+    }
+    let s = b.s.bill_suggestions(d(10, 21)).unwrap();
+    assert_eq!(s.iter().map(|x| x.match_text.as_str()).collect::<Vec<_>>(), ["ach debit 3334445555"], "surfaced, not hidden");
+    // And it can't pay the real bill.
+    post(&mut b.s, d(10, 28), "ACH DEBIT 3334445555", insurance, b.home_checking, 49_00);
+    let due = &b.s.due_dates(d(11, 1), d(11, 30), d(11, 6)).unwrap()[0];
+    assert_eq!((due.state, due.payment.is_none()), (DueState::Overdue, true));
+    post(&mut b.s, d(11, 5), "ACH DEBIT 8005551212", insurance, b.home_checking, 50_00);
+    assert_eq!(b.s.due_dates(d(11, 1), d(11, 30), d(11, 6)).unwrap()[0].state, DueState::Paid);
+}
+
+#[test]
+fn store_numbers_and_reference_numbers_still_group() {
+    let mut b = both();
+    let (groceries, internet) = (code(&b.s, "H6200"), code(&b.s, "H6120"));
+    for m in 6..=9 {
+        let store = if m % 2 == 0 { "SAFEWAY #1234" } else { "SAFEWAY #5678" };
+        post(&mut b.s, d(m, 3), store, groceries, b.home_checking, 80_00);
+        // A fresh reference number on every payment.
+        post(&mut b.s, d(m, 9), &format!("COMCAST PAYMENT REF 99812{m:05}"), internet, b.home_checking, 65_00);
+    }
+    let s = b.s.bill_suggestions(d(10, 1)).unwrap();
+    let keys: Vec<&str> = s.iter().map(|x| x.match_text.as_str()).collect();
+    assert_eq!(keys, ["safeway", "comcast payment ref"]);
+}
+
+#[test]
+fn a_look_alike_isnt_hidden_by_a_bill_it_merely_contains() {
+    let mut b = both();
+    let tv = code(&b.s, "H6120");
+    let netflix = NewRecurringBill { match_text: Some("NETFLIX.COM".into()), cadence: Cadence::Month { day: 2 }, ..bill("Netflix", tv, 15_49, 2) };
+    b.s.create_recurring_bill(&netflix).unwrap();
+    for m in 6..=9 {
+        // The real thing is covered...
+        post(&mut b.s, d(m, 2), "NETFLIX.COM 866", tv, b.home_checking, 15_49);
+        // ...a charge five times the size that merely contains it isn't.
+        post(&mut b.s, d(m, 14), "NETFLIX.COM-PREMIUM-BILLING-SVC", tv, b.home_checking, 89_99);
+    }
+    let s = b.s.bill_suggestions(d(10, 1)).unwrap();
+    assert_eq!(s.iter().map(|x| x.match_text.as_str()).collect::<Vec<_>>(), ["netflix.com-premium-billing-svc"]);
+
+    // A short match text covers whole words only.
+    b.s.create_recurring_bill(&NewRecurringBill { match_text: Some("pos".into()), ..bill("Gym", tv, 300_00, 22) }).unwrap();
+    for m in 6..=9 {
+        post(&mut b.s, d(m, 22), "POSSIBLE SECURITY SVC", tv, b.home_checking, 300_00);
+    }
+    assert!(b.s.bill_suggestions(d(10, 1)).unwrap().iter().any(|x| x.match_text == "possible security svc"));
+}
+
+#[test]
+fn a_usage_bill_keeps_its_typical_amount_and_wont_take_just_any_charge() {
+    let mut b = both();
+    let power = code(&b.s, "H6100");
+    import(&mut b, (5..=9).zip([118_40, 162_10, 188_75, 171_30, 131_05]).map(|(m, c)| feed_txn(format!("p{m}"), d(m, 18), "PGE WEB ONLINE 0518", None, -c)).collect());
+    let s = b.s.bill_suggestions(d(10, 1)).unwrap();
+    assert!(s[0].varies);
+    let bill = bill_from(&s[0], power);
+    assert_eq!((bill.amount, bill.varies), (Cents(162_10), true));
+    b.s.create_recurring_bill(&bill).unwrap();
+
+    // $4,999 under junk text, with the payee's name in the merchant field...
+    import(&mut b, vec![feed_txn("evil".into(), d(10, 16), "QZX HOLDINGS LLC", Some("PGE WEB ONLINE"), -4_999_00)]);
+    let accept = |b: &mut Both, ext: &str| {
+        let id = b.s.inbox(None).unwrap().into_iter().find(|i| i.txn.external_id == ext).unwrap().txn.id;
+        b.s.accept(id, power, None).unwrap();
+    };
+    accept(&mut b, "evil");
+    let due = &b.s.due_dates(d(10, 1), d(10, 31), d(10, 20)).unwrap()[0];
+    assert_eq!((due.state, due.payment.is_none()), (DueState::Overdue, true), "isn't a power bill");
+    // ...but a cold month's real bill is.
+    import(&mut b, vec![feed_txn("oct".into(), d(10, 19), "PGE WEB ONLINE 1018", None, -241_60)]);
+    accept(&mut b, "oct");
+    let due = &b.s.due_dates(d(10, 1), d(10, 31), d(10, 20)).unwrap()[0];
+    assert_eq!((due.state, due.payment.as_ref().map(|p| p.amount)), (DueState::Paid, Some(Cents(241_60))));
+
+    // A bill that varies needs its typical amount.
+    assert!(matches!(b.s.create_recurring_bill(&NewRecurringBill { amount: Cents::ZERO, ..bill }), Err(tally_store::StoreError::Rule(_))));
+}
+
+#[test]
+fn suggested_names_hide_invisible_characters_and_look_alikes() {
+    let mut b = both();
+    let mut added = vec![];
+    for m in 6..=9 {
+        // A merchant field that names someone else, drawn backwards with a bidi override.
+        added.push(feed_txn(format!("a{m}"), d(m, 3), "QZX HOLDINGS LLC", Some("\u{202E}xilfteN\u{200B} \u{202C}"), -15_49));
+        // A Cyrillic Е.
+        added.push(feed_txn(format!("b{m}"), d(m, 4), "NЕTFLIX.COM", None, -17_99));
+        // A merchant name that is the payee is still the nicer name.
+        added.push(feed_txn(format!("c{m}"), d(m, 5), "SPOTIFY USA 8775", Some("Spotify"), -11_99));
+    }
+    import(&mut b, added);
+    let s = b.s.bill_suggestions(d(10, 1)).unwrap();
+    let names: Vec<(&str, &str)> = s.iter().map(|x| (x.name.as_str(), x.match_text.as_str())).collect();
+    assert_eq!(names, [("N?tflix.com", "nеtflix.com"), ("Qzx Holdings Llc", "qzx holdings llc"), ("Spotify", "spotify usa")]);
+}
+
+#[test]
+fn a_flood_of_made_up_payees_is_capped_and_can_be_waved_off() {
+    let mut b = both();
+    let name = |i: usize| {
+        let mut n = String::from("PAYEE ");
+        let mut k = i;
+        loop {
+            n.push(char::from(b'a' + (k % 26) as u8));
+            k /= 26;
+            if k == 0 {
+                break;
+            }
+        }
+        n
+    };
+    let added = (0..1005).flat_map(|i| (7..=9).map(move |m| (i, m))).map(|(i, m)| feed_txn(format!("{i}-{m}"), d(m, 10), &name(i), None, -9_99)).collect();
+    import(&mut b, added);
+    assert_eq!(b.s.bill_suggestions(d(10, 1)).unwrap().len(), 50, "shown at most");
+    for i in 0..1005 {
+        b.s.dismiss_bill_suggestion(&name(i)).unwrap();
+    }
+    // The five waved off first were forgotten to make room.
+    let left: Vec<String> = b.s.bill_suggestions(d(10, 1)).unwrap().into_iter().map(|x| x.match_text).collect();
+    assert_eq!(left.len(), 5, "{left:?}");
+}
+
+#[test]
+fn an_absurd_amount_never_becomes_a_bill_or_breaks_the_budget() {
+    let mut b = both();
+    let cat = code(&b.s, "H6210");
+    let amt = 2_400_000_000_000_000_000_i64;
+    import(&mut b, (0..5).map(|w| feed_txn(format!("w{w}"), d(9, 1) + chrono::Days::new(w * 7), "WEEKLY THING", None, -amt)).collect());
+    assert!(b.s.bill_suggestions(d(10, 1)).unwrap().is_empty(), "no household bill is that big");
+    let weekly = NewRecurringBill { cadence: Cadence::Week, start_date: d(9, 1), ..bill("Weekly thing", cat, amt, 1) };
+    assert!(matches!(b.s.create_recurring_bill(&weekly), Err(tally_store::StoreError::Rule(_))));
+    // The biggest allowed, weekly, sums fine.
+    b.s.create_recurring_bill(&NewRecurringBill { amount: tally_store::MAX_BILL_AMOUNT, ..weekly }).unwrap();
+    let m = b.s.month_budget("2026-10", d(10, 1)).unwrap();
+    assert!(m.bills_due >= tally_store::MAX_BILL_AMOUNT);
+}
+
+/// Bill detection with a huge Review backlog. `cargo test --release -- --ignored --nocapture` to time it.
+#[test]
+#[ignore]
+fn suggestions_with_a_huge_review_backlog() {
+    for n in [10_000usize, 50_000, 100_000] {
+        let mut b = both();
+        let added = (0..n)
+            .map(|i| {
+                let desc = format!("MERCHANT {}", (b'a' + (i % 26) as u8) as char);
+                feed_txn(format!("x{i}"), d(10, 1) - chrono::Days::new((i % 700) as u64), &desc, None, -1_00 - (i as i64 % 5000))
+            })
+            .collect();
+        import(&mut b, added);
+        let t = std::time::Instant::now();
+        let k = b.s.bill_suggestions(d(10, 1)).unwrap().len();
+        let took = t.elapsed();
+        println!("n={n} suggestions({k}) in {took:?}");
+        assert!(took < std::time::Duration::from_secs(2));
+    }
 }
 
 // ---------------------------------------------------------------- goals & insights

@@ -1,28 +1,21 @@
 // Household bills: what's due today, this week, and later; what's been paid;
 // and every bill, with repeat payments offered as new ones.
 
-import { CalendarClock, Pencil, Plus, Sparkles } from "lucide-react";
+import { CalendarClock, Pencil, Plus } from "lucide-react";
 import { useState } from "react";
 import { useAction, useApi } from "../api";
+import { BillSuggestions, cadenceLabel } from "../components/BillSuggestions";
 import { DueList, groupDue } from "../components/DueList";
 import { Card, EmptyState, ErrorBanner, Loading, PageHeader, useAccountNames, useToast } from "../components/ui";
 import RecurringBillModal, { type BillDraft } from "../flows/RecurringBillModal";
 import { date, money, todayISO } from "../format";
-import type { BillSuggestion, Cadence, DueDate, RecurringBill } from "../types";
-
-function cadenceLabel(c: Cadence): string {
-  const nth = (n: number) => `${n}${n % 10 === 1 && n !== 11 ? "st" : n % 10 === 2 && n !== 12 ? "nd" : n % 10 === 3 && n !== 13 ? "rd" : "th"}`;
-  if (c.every === "week") return "Weekly";
-  if (c.every === "months") return c.months === 12 ? `Yearly on the ${nth(c.day)}` : `Every ${c.months} months on the ${nth(c.day)}`;
-  return `Monthly on the ${nth(c.day)}`;
-}
+import type { DueDate, RecurringBill } from "../types";
 
 export default function DueDates() {
   const toast = useToast();
   const today = todayISO();
   const due = useApi<DueDate[]>("recurring.due");
   const bills = useApi<RecurringBill[]>("recurring.list");
-  const suggestions = useApi<BillSuggestion[]>("recurring.suggestions");
   const setActive = useAction("recurring.set_active");
   const accountName = useAccountNames();
   const [editing, setEditing] = useState<BillDraft | RecurringBill | null>(null);
@@ -59,38 +52,7 @@ export default function DueDates() {
       />
 
       <div className="stack" style={{ gap: 20 }}>
-        {!!suggestions.data?.length && (
-          <Card title={<span className="row" style={{ gap: 8 }}><Sparkles size={16} /> These look like bills</span>}>
-            <div className="stack-sm">
-              {suggestions.data.map((s) => (
-                <div key={`${s.match_text}:${s.account_id}`} className="row-between" style={{ gap: 12, flexWrap: "wrap" }}>
-                  <div style={{ minWidth: 0 }}>
-                    <div className="bold truncate">{s.name}</div>
-                    <div className="subtle small">
-                      {money(s.amount)} around the {s.day}
-                      {s.day === 1 ? "st" : s.day === 2 ? "nd" : s.day === 3 ? "rd" : "th"} · {accountName(s.account_id)} · seen {s.months_seen} months running
-                    </div>
-                  </div>
-                  <button
-                    className="btn btn-secondary btn-sm"
-                    onClick={() =>
-                      edit({
-                        name: s.name,
-                        amount: s.amount,
-                        account_id: s.account_id,
-                        paid_from_id: s.paid_from_id,
-                        cadence: { every: "month", day: s.day },
-                        match_text: s.match_text,
-                      })
-                    }
-                  >
-                    <Plus size={14} /> Add as a bill
-                  </button>
-                </div>
-              ))}
-            </div>
-          </Card>
-        )}
+        <BillSuggestions onAdd={edit} />
 
         {active.length === 0 ? (
           <Card>
@@ -141,7 +103,7 @@ export default function DueDates() {
                       {b.name} {!b.active && <span className="pill">Stopped</span>}
                     </div>
                     <div className="subtle small">
-                      {cadenceLabel(b.cadence)} · {b.amount ? money(b.amount) : "varies"} · {accountName(b.account_id)}
+                      {cadenceLabel(b.cadence)} · {!b.amount ? "any amount" : b.varies ? `about ${money(b.amount)}, varies` : money(b.amount)} · {accountName(b.account_id)}
                       {b.next_due && ` · next ${date(b.next_due)}`}
                     </div>
                   </div>

@@ -33,7 +33,7 @@ pub use tax::*;
 pub type LineId = i64;
 pub type ReconciliationId = i64;
 
-const SCHEMA_VERSION: i64 = 9;
+const SCHEMA_VERSION: i64 = 10;
 
 #[derive(Debug, thiserror::Error)]
 pub enum StoreError {
@@ -341,6 +341,12 @@ impl Store {
             let tx = self.conn.transaction()?;
             tx.execute_batch(include_str!("schema_v9.sql"))?;
             tx.pragma_update(None, "user_version", 9)?;
+            tx.commit()?;
+        }
+        if version < 10 {
+            let tx = self.conn.transaction()?;
+            tx.execute_batch(include_str!("schema_v10.sql"))?;
+            tx.pragma_update(None, "user_version", 10)?;
             tx.commit()?;
         }
         Ok(())

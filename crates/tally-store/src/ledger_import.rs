@@ -491,7 +491,9 @@ impl Store {
                 };
                 let bill = self.create_recurring_bill(&NewRecurringBill {
                     name: label,
-                    amount: Cents(amount.abs()),
+                    // i64::MIN has no positive; saturated, it's refused as too big like any absurd amount.
+                    amount: Cents(amount.saturating_abs()),
+                    varies: false,
                     account_id: category,
                     paid_from_id: None,
                     person_id: person.as_ref().and_then(|p| people.get(p)).copied(),

@@ -289,6 +289,11 @@ struct DueQuery {
 }
 
 #[derive(Deserialize)]
+struct DismissSuggestion {
+    match_text: String,
+}
+
+#[derive(Deserialize)]
 struct MarkDue {
     bill_id: RecurringBillId,
     due_date: NaiveDate,
@@ -746,6 +751,10 @@ impl App {
                 self.with(|s| s.mark_due_date(p.bill_id, p.due_date, p.status, p.entry_id))
             }
             "recurring.suggestions" => self.with(|s| s.bill_suggestions(today())),
+            "recurring.dismiss_suggestion" => {
+                let p: DismissSuggestion = params(p)?;
+                self.with(|s| s.dismiss_bill_suggestion(&p.match_text))
+            }
 
             "goals.list" => self.with(|s| s.goals(today())),
             "goals.create" => {
