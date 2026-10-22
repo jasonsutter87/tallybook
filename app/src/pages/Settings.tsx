@@ -919,7 +919,7 @@ async function pickLedgerFile(): Promise<string | null> {
 }
 
 /**
- * Brings a household over from Ledger (mels-budget-app): pick its SQLite file,
+ * Brings a household over from Ledger: pick its SQLite file,
  * see what's inside, then bring it over. Safe to run again; only new entries come in.
  */
 function LedgerCard() {

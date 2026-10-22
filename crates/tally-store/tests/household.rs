@@ -276,20 +276,20 @@ fn a_category_line_knows_how_far_into_the_month_it_is() {
 fn people_budgets_count_what_was_for_them() {
     let mut b = both();
     let mom = b.s.create_person(&NewPerson { name: "Mom".into(), color: None }).unwrap();
-    let ethan = b.s.create_person(&NewPerson { name: "Ethan".into(), color: Some("teal".into()) }).unwrap();
-    b.s.set_budget_line("2026-03", &ceiling(BudgetTarget::Person(ethan), 150_00)).unwrap();
-    spend(&mut b.s, d(3, 3), "H6510", b.home_checking, 90_00, Some(ethan));
-    spend(&mut b.s, d(3, 4), "H6700", b.home_checking, 80_00, Some(ethan));
+    let bob = b.s.create_person(&NewPerson { name: "Bob".into(), color: Some("teal".into()) }).unwrap();
+    b.s.set_budget_line("2026-03", &ceiling(BudgetTarget::Person(bob), 150_00)).unwrap();
+    spend(&mut b.s, d(3, 3), "H6510", b.home_checking, 90_00, Some(bob));
+    spend(&mut b.s, d(3, 4), "H6700", b.home_checking, 80_00, Some(bob));
     spend(&mut b.s, d(3, 5), "H6710", b.home_checking, 40_00, Some(mom));
     spend(&mut b.s, d(3, 6), "H6200", b.home_checking, 300_00, None);
 
     let m = b.s.month_budget("2026-03", d(3, 31)).unwrap();
     let line = &m.lines[0];
-    assert_eq!((line.name.as_str(), line.progress), ("Ethan", Cents(170_00)));
+    assert_eq!((line.name.as_str(), line.progress), ("Bob", Cents(170_00)));
     assert_eq!((line.status.zone, line.status.sentiment), (Zone::Over, Sentiment::Alarm));
     assert_eq!(m.planned_for_people, Cents(150_00));
     let of = |p: Option<i64>| m.people.iter().find(|x| x.person_id == p).unwrap().spending;
-    assert_eq!((of(Some(mom)), of(Some(ethan)), of(None)), (Cents(40_00), Cents(170_00), Cents(300_00)));
+    assert_eq!((of(Some(mom)), of(Some(bob)), of(None)), (Cents(40_00), Cents(170_00), Cents(300_00)));
     assert_eq!(m.categories[0].name, "Groceries");
 
     // A person's budget is a limit; floors are for savings and income.
@@ -299,7 +299,7 @@ fn people_budgets_count_what_was_for_them() {
     assert!(b.s.set_budget_line("2026-03", &ceiling(BudgetTarget::Account(code(&b.s, "6500")), 10_00)).is_err());
 
     // Archived people drop out of later copies of the plan.
-    b.s.set_person_archived(ethan, true).unwrap();
+    b.s.set_person_archived(bob, true).unwrap();
     b.s.set_available("2026-04", Some(Cents(100_00))).unwrap();
     assert!(b.s.month_budget("2026-04", d(4, 1)).unwrap().lines.is_empty());
 }
@@ -331,7 +331,7 @@ fn rules_and_past_tags_say_who_a_purchase_was_for() {
     use tally_store::NewRule;
 
     let mut b = both();
-    let ethan = b.s.create_person(&NewPerson { name: "Ethan".into(), color: None }).unwrap();
+    let bob = b.s.create_person(&NewPerson { name: "Bob".into(), color: None }).unwrap();
     let fun = code(&b.s, "H6740");
     b.s.create_rule(&NewRule {
         name: "Roblox".into(),
@@ -345,7 +345,7 @@ fn rules_and_past_tags_say_who_a_purchase_was_for() {
         target_account_id: fun,
         rename_to: None,
         auto_post: true,
-        person_id: Some(ethan),
+        person_id: Some(bob),
     })
     .unwrap();
     let txn = |id: &str, desc: &str, cents: i64| FeedTransaction {
@@ -360,15 +360,15 @@ fn rules_and_past_tags_say_who_a_purchase_was_for() {
     let batch = FeedBatch { added: vec![txn("1", "ROBLOX CORP", -9_99), txn("2", "SUPERCUTS 123", -25_00)], ..Default::default() };
     let summary = b.s.import_feed(b.home_checking, &batch).unwrap();
     assert_eq!(summary.auto_posted, 1);
-    assert_eq!(b.s.month_budget("2026-03", d(3, 31)).unwrap().people.iter().find(|p| p.person_id == Some(ethan)).unwrap().spending, Cents(9_99));
+    assert_eq!(b.s.month_budget("2026-03", d(3, 31)).unwrap().people.iter().find(|p| p.person_id == Some(bob)).unwrap().spending, Cents(9_99));
 
     // The haircut waits for review; once tagged, the next one is suggested for the same person.
     let cut = b.s.inbox(None).unwrap().into_iter().next().unwrap();
     assert_eq!(cut.person_id, None);
     let entry = b.s.accept(cut.txn.id, code(&b.s, "H6710"), None).unwrap();
-    b.s.set_entry_person(entry, Some(ethan)).unwrap();
+    b.s.set_entry_person(entry, Some(bob)).unwrap();
     b.s.import_feed(b.home_checking, &FeedBatch { added: vec![txn("3", "SUPERCUTS 123", -25_00)], ..Default::default() }).unwrap();
-    assert_eq!(b.s.inbox(None).unwrap()[0].person_id, Some(ethan));
+    assert_eq!(b.s.inbox(None).unwrap()[0].person_id, Some(bob));
 }
 
 #[test]
@@ -534,13 +534,13 @@ fn a_fresh_bank_import_is_enough_to_spot_bills() {
     }
     // A weekly allowance by Venmo.
     for w in 0..4 {
-        added.push(txn(format!("ven{w}"), d(9, 4) + chrono::Days::new(w * 7), "VENMO *ETHAN", -10_00));
+        added.push(txn(format!("ven{w}"), d(9, 4) + chrono::Days::new(w * 7), "VENMO *BOB", -10_00));
     }
     b.s.import_feed(b.home_checking, &FeedBatch { added, ..Default::default() }).unwrap();
 
     let s = b.s.bill_suggestions(d(10, 1)).unwrap();
     let names: Vec<&str> = s.iter().map(|x| x.name.as_str()).collect();
-    assert_eq!(names, ["Pge Web Online", "Netflix.com", "Venmo Ethan"], "biggest first, nothing stale or transferred");
+    assert_eq!(names, ["Pge Web Online", "Netflix.com", "Venmo Bob"], "biggest first, nothing stale or transferred");
     let power = &s[0];
     assert!(power.varies);
     assert_eq!((power.amount, power.cadence, power.in_review, power.account_id, power.paid_from_id), (Cents(162_10), Cadence::Month { day: 18 }, 5, None, Some(b.home_checking)));

@@ -150,7 +150,7 @@ pub struct BillSuggestion {
 
 /// Settings key for payees the user waved off with "Not a bill". The value is
 /// a JSON array of `match_text`s as `normalize_description` writes them, kept
-/// sorted, e.g. `["netflix.com","venmo *ethan"]`, at most `MAX_DISMISSED` of
+/// sorted, e.g. `["netflix.com","venmo *bob"]`, at most `MAX_DISMISSED` of
 /// them, each cut to `MAX_PAYEE_CHARS`. A value that won't parse
 /// reads as empty: suggestions come back rather than the page failing.
 const DISMISSED_KEY: &str = "bill_suggestions.dismissed";

@@ -1,7 +1,7 @@
 // A small burst, for the one moment in a budgeting app that is plainly good
 // news: a goal reached. It fires then and at no other time; confetti for
 // ordinary events would wear out long before the goal did. Hand-rolled from
-// mels-budget-app: one canvas, no dependency.
+// Ledger: one canvas, no dependency.
 
 /** Read from the theme so the burst matches light and dark. */
 const COLOURS = ["--brand", "--pos", "--violet", "--warn", "--brand-strong"];

@@ -1,4 +1,4 @@
--- The schema of Ledger (mels-budget-app) after its sixth migration, copied
+-- The schema of Ledger after its sixth migration, copied
 -- from src/lib/db.ts, for testing the importer against the real shape.
 -- Do not tidy it: the CREATE-then-ALTER order is Ledger's migration history,
 -- and the importer checks for the later columns before reading them, so

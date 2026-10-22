@@ -1034,7 +1034,7 @@ export interface Win {
 }
 
 // ------------------------------------------------------------- moving from Ledger
-// Ledger is mels-budget-app, the household budgeting app this mode replaces.
+// Ledger is the household budgeting app this mode replaces.
 
 /** What's in a Ledger database, counted before bringing it in. */
 export interface LedgerPreview {

@@ -296,7 +296,7 @@ struct SetGoal {
     goal_id: Option<GoalId>,
 }
 
-/// `import.ledger`: the Ledger (mels-budget-app) SQLite file to bring over.
+/// `import.ledger`: the Ledger SQLite file to bring over.
 /// Safe to repeat: only entries not imported before are added.
 #[derive(Deserialize)]
 struct LedgerImportParams {

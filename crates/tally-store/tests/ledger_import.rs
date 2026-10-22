@@ -1,4 +1,4 @@
-//! Bringing a household over from Ledger (mels-budget-app), against a
+//! Bringing a household over from Ledger, against a
 //! database with Ledger's own schema (fixtures/ledger_schema.sql).
 //!
 //! Ledger's words map onto Tally's like this: a "sector" is a category
@@ -22,7 +22,7 @@ fn d(m: u32, day: u32) -> NaiveDate {
     NaiveDate::from_ymd_opt(2026, m, day).unwrap()
 }
 
-/// A small Ledger database: Mel and Ethan, a few sectors and stores, two
+/// A small Ledger database: Alice and Bob, a few sectors and stores, two
 /// months of entries, a plan, a bill, and a goal with contributions.
 /// Written to a fresh temp file named after the test, so tests can run in parallel.
 ///
@@ -40,23 +40,23 @@ fn ledger(name: &str) -> PathBuf {
     let c = Connection::open(&path).unwrap();
     c.execute_batch(include_str!("fixtures/ledger_schema.sql")).unwrap();
     c.execute_batch(
-        "INSERT INTO person VALUES ('p-mel', 'Mel', 'teal', 0, NULL), ('p-ethan', 'Ethan', 'amber', 1, NULL), ('p-old', 'Old', 'slate', 2, '2026-01-01');
+        "INSERT INTO person VALUES ('p-alice', 'Alice', 'teal', 0, NULL), ('p-bob', 'Bob', 'amber', 1, NULL), ('p-old', 'Old', 'slate', 2, '2026-01-01');
          INSERT INTO sector(id, name, sort_order, changeability) VALUES
            ('s-groc', 'Groceries', 0, 'medium'), ('s-dine', 'Dining', 1, 'high'),
            ('s-kids', 'Kids', 2, 'high'), ('s-save', 'Savings', 3, 'low'), ('s-yoga', 'Yoga', 4, 'high'), ('s-bills', 'Bills', 5, 'low');
          INSERT INTO store VALUES ('st-safe', 'Safeway', 's-groc', NULL, 'safeway', 4, NULL, NULL),
-           ('st-rob', 'Roblox', 's-kids', 'p-ethan', 'roblox', 2, NULL, NULL);
+           ('st-rob', 'Roblox', 's-kids', 'p-bob', 'roblox', 2, NULL, NULL);
          INSERT INTO month VALUES ('2026-08', 450000, '2026-08-01', NULL), ('2026-09', 0, '2026-09-01', NULL);
-         INSERT INTO allocation VALUES ('2026-08', 'p-mel', 300000, 'ceiling', 10), ('2026-08', 'p-ethan', 20000, 'ceiling', 10),
-           ('2026-09', 'p-mel', 30000, 'floor', 10);
+         INSERT INTO allocation VALUES ('2026-08', 'p-alice', 300000, 'ceiling', 10), ('2026-08', 'p-bob', 20000, 'ceiling', 10),
+           ('2026-09', 'p-alice', 30000, 'floor', 10);
          INSERT INTO goal VALUES ('g-hi', 'Hawaii', 300000, '2027-06-01', 'family trip', '2026-08-01', NULL, NULL);
-         INSERT INTO recurring VALUES ('r-phone', 'p-mel', 'Verizon', 16088, 'monthly', NULL, 11, NULL, 1, 's-bills', 1),
-           ('r-allow', 'p-ethan', 'Allowance', 1000, 'weekly', 5, NULL, NULL, 1, 's-kids', 0);
+         INSERT INTO recurring VALUES ('r-phone', 'p-alice', 'Verizon', 16088, 'monthly', NULL, 11, NULL, 1, 's-bills', 1),
+           ('r-allow', 'p-bob', 'Allowance', 1000, 'weekly', 5, NULL, NULL, 1, 's-kids', 0);
          INSERT INTO entry(id, month_id, person_id, occurred_on, amount_cents, note, source, external_id, created_at, store_id, sector_id, goal_id) VALUES
            ('e1', '2026-08', NULL, '2026-08-01', 320000, 'pay', 'manual', NULL, '1', NULL, NULL, NULL),
-           ('e2', '2026-08', 'p-mel', '2026-08-03', -8420, 'weekly shop', 'manual', NULL, '2', 'st-safe', 's-groc', NULL),
-           ('e3', '2026-08', 'p-ethan', '2026-08-04', -999, '', 'manual', NULL, '3', 'st-rob', 's-kids', NULL),
-           ('e4', '2026-08', 'p-mel', '2026-08-05', -4000, 'class', 'manual', NULL, '4', NULL, 's-yoga', NULL),
+           ('e2', '2026-08', 'p-alice', '2026-08-03', -8420, 'weekly shop', 'manual', NULL, '2', 'st-safe', 's-groc', NULL),
+           ('e3', '2026-08', 'p-bob', '2026-08-04', -999, '', 'manual', NULL, '3', 'st-rob', 's-kids', NULL),
+           ('e4', '2026-08', 'p-alice', '2026-08-05', -4000, 'class', 'manual', NULL, '4', NULL, 's-yoga', NULL),
            ('e5', '2026-08', NULL, '2026-08-06', 1500, 'returned', 'manual', NULL, '5', 'st-safe', 's-groc', NULL),
            ('e6', '2026-08', NULL, '2026-08-20', 25000, 'toward Hawaii', 'manual', NULL, '6', NULL, NULL, 'g-hi'),
            ('e7', '2026-09', NULL, '2026-09-03', -5000, '', 'manual', NULL, '7', NULL, NULL, NULL),
@@ -95,18 +95,18 @@ fn a_ledger_comes_over_whole() {
     assert_eq!(yoga.flex, Some(Flex::Lifestyle));
     assert_eq!(accounts.iter().find(|a| a.name == "Bills").unwrap().flex, Some(Flex::Fixed), "low changeability");
     let people = s.people().unwrap();
-    let mel = people.iter().find(|p| p.name == "Mel").unwrap().id;
-    let ethan = people.iter().find(|p| p.name == "Ethan").unwrap().id;
+    let alice = people.iter().find(|p| p.name == "Alice").unwrap().id;
+    let bob = people.iter().find(|p| p.name == "Bob").unwrap().id;
     assert!(people.iter().find(|p| p.name == "Old").unwrap().archived);
 
-    // August: $3,200 in, groceries $84.20 less a $15 return, Roblox for Ethan, yoga for Mel.
+    // August: $3,200 in, groceries $84.20 less a $15 return, Roblox for Bob, yoga for Alice.
     let aug = s.month_budget("2026-08", d(9, 30)).unwrap();
     assert_eq!(aug.income, Cents(3200_00));
     assert_eq!(aug.spending, Cents(84_20 - 15_00 + 9_99 + 40_00));
     assert_eq!(aug.available, Some(Cents(4500_00)));
     let line = |t| aug.lines.iter().find(|l| l.target == t).unwrap();
-    assert_eq!(line(BudgetTarget::Person(mel)).amount, Cents(3000_00));
-    assert_eq!(line(BudgetTarget::Person(ethan)).progress, Cents(9_99));
+    assert_eq!(line(BudgetTarget::Person(alice)).amount, Cents(3000_00));
+    assert_eq!(line(BudgetTarget::Person(bob)).progress, Cents(9_99));
     let groceries = aug.categories.iter().find(|c| c.name == "Groceries").unwrap();
     assert_eq!(groceries.spending, Cents(69_20));
 
@@ -128,12 +128,12 @@ fn a_ledger_comes_over_whole() {
     let allowance = bills.iter().find(|b| b.bill.name == "Allowance").unwrap();
     assert_eq!(allowance.bill.cadence, Cadence::Week);
     assert_eq!(allowance.bill.start_date, d(8, 7), "Friday (5) on or after August 1st");
-    assert_eq!(allowance.bill.person_id, Some(ethan));
+    assert_eq!(allowance.bill.person_id, Some(bob));
 
-    // Stores became rules: Roblox → Kids, for Ethan.
+    // Stores became rules: Roblox → Kids, for Bob.
     let rules = s.rules().unwrap();
     let roblox = rules.iter().find(|r| r.pattern == "Roblox").unwrap();
-    assert_eq!(roblox.person_id, Some(ethan));
+    assert_eq!(roblox.person_id, Some(bob));
     assert_eq!(s.account(roblox.target_account_id).unwrap().name, "Kids' Activities & Sports");
 
     // September's person floor wasn't turned into a limit.
@@ -154,7 +154,7 @@ fn importing_again_adds_only_whats_new() {
         .unwrap()
         .execute_batch(
             "INSERT INTO entry(id, month_id, person_id, occurred_on, amount_cents, note, source, external_id, created_at)
-             VALUES ('e9', '2026-09', 'p-mel', '2026-09-25', -2500, 'lunch', 'manual', NULL, '9')",
+             VALUES ('e9', '2026-09', 'p-alice', '2026-09-25', -2500, 'lunch', 'manual', NULL, '9')",
         )
         .unwrap();
     let r = s.import_ledger(&path, None).unwrap();

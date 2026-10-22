@@ -1,4 +1,4 @@
-//! Bringing a household over from Ledger (mels-budget-app).
+//! Bringing a household over from Ledger.
 //!
 //! Ledger keeps a single-entry list: signed amounts, each tagged with who it
 //! was for and what it was (a "sector"), with no notion of which bank paid.
