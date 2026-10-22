@@ -4260,7 +4260,7 @@ dependencies = [
 
 [[package]]
 name = "tally-api"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "chrono",
  "keyring",
@@ -4277,7 +4277,7 @@ dependencies = [
 
 [[package]]
 name = "tally-core"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "chrono",
  "serde",
@@ -4286,7 +4286,7 @@ dependencies = [
 
 [[package]]
 name = "tally-devserver"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "axum",
  "serde_json",
@@ -4296,7 +4296,7 @@ dependencies = [
 
 [[package]]
 name = "tally-feed"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "base64 0.22.1",
  "chrono",
@@ -4310,7 +4310,7 @@ dependencies = [
 
 [[package]]
 name = "tally-store"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "chrono",
  "getrandom 0.4.3",
@@ -4325,7 +4325,7 @@ dependencies = [
 
 [[package]]
 name = "tallybook-desktop"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "serde_json",
  "tally-api",
