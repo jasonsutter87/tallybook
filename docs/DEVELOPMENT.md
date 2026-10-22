@@ -54,8 +54,13 @@ npm run dev                     # terminal 2: UI on http://localhost:1440
 ```
 
 Set `TALLYBOOK_DIR` to keep development books out of `~/Documents/Tallybook`.
-"Explore with sample data" on the welcome screen builds a realistic sample
-business with six months of history.
+To look around a realistic sample business with six months of history,
+ask the devserver for one (the app itself no longer offers it):
+
+```sh
+curl -s -X POST 127.0.0.1:1441/api/book.create_demo \
+  -H 'content-type: application/json' -d '{"path": "/tmp/Northwind sample"}'
+```
 
 ## Checks
 

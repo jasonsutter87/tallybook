@@ -41,7 +41,6 @@ export default function Welcome() {
   const recent = useApi<RecentBook[]>("book.recent");
   const dir = useApi<string>("book.default_dir");
   const create = useAction("book.create");
-  const createDemo = useAction("book.create_demo");
   const open = useAction("book.open");
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
@@ -72,12 +71,6 @@ export default function Welcome() {
     if (!dir.data) return;
     const path = await pickSavePath(joinPath(dir.data, name));
     if (path) await run(create.mutateAsync({ path, company_name: name.trim(), sides: KINDS[kind].sides }));
-  };
-
-  const doDemo = async () => {
-    if (!dir.data) return;
-    const path = joinPath(dir.data, `Northwind Studio sample ${new Date().toISOString().slice(0, 19).replace(/[T:]/g, "-")}`);
-    await run(createDemo.mutateAsync({ path }));
   };
 
   return (
@@ -123,9 +116,6 @@ export default function Welcome() {
           </button>
           <button className="btn btn-secondary btn-lg btn-block" onClick={async () => { const p = await pickOpenPath(); if (p) await openBook(p); }}>
             <FolderOpen size={18} /> Open a book
-          </button>
-          <button className="btn btn-ghost btn-block" disabled={createDemo.isPending} onClick={doDemo}>
-            <Sparkles size={16} /> {createDemo.isPending ? "Building sample business…" : "Explore with sample data"}
           </button>
 
           {!!recent.data?.length && (

@@ -120,8 +120,8 @@ Follows your system, or pick one in Settings.
 
 1. **Download** the installer for your computer from the
    [latest release](https://github.com/jasonsutter87/tallybook/releases/latest).
-2. **Open Tallybook** and create a book for your business. Or click
-   **Explore with sample data** to look around a demo company first.
+2. **Open Tallybook** and create a book for your business, your household,
+   or both.
 3. **Bring in your transactions**, either way:
    - **Connect your bank** through Plaid or SimpleFIN. See the
      [bank connection guide](docs/BANK_FEEDS.md).
