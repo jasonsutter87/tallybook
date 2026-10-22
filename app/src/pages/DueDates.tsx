@@ -4,11 +4,11 @@
 import { CalendarClock, Pencil, Plus } from "lucide-react";
 import { useState } from "react";
 import { useAction, useApi } from "../api";
-import { BillSuggestions, cadenceLabel } from "../components/BillSuggestions";
+import { BillSuggestions } from "../components/BillSuggestions";
 import { DueList, groupDue } from "../components/DueList";
 import { Card, EmptyState, ErrorBanner, Loading, PageHeader, useAccountNames, useToast } from "../components/ui";
 import RecurringBillModal, { type BillDraft } from "../flows/RecurringBillModal";
-import { date, money, todayISO } from "../format";
+import { cadenceLabel, date, money, todayISO } from "../format";
 import type { DueDate, RecurringBill } from "../types";
 
 export default function DueDates() {
@@ -21,6 +21,7 @@ export default function DueDates() {
   const [editing, setEditing] = useState<BillDraft | RecurringBill | null>(null);
   const [open, setOpen] = useState(false);
 
+  /** Open the bill form: on a saved bill, a suggestion's draft, or blank (null). */
   const edit = (b: BillDraft | RecurringBill | null) => {
     setEditing(b);
     setOpen(true);
@@ -35,6 +36,7 @@ export default function DueDates() {
     );
 
   const g = groupDue(due.data ?? [], today);
+  // A bill that varies counts at its typical amount.
   const sum = (xs: DueDate[]) => xs.reduce((n, d) => n + d.amount, 0);
   const active = (bills.data ?? []).filter((b) => b.active);
   const stopped = (bills.data ?? []).filter((b) => !b.active);
@@ -127,6 +129,7 @@ export default function DueDates() {
   );
 }
 
+/** A total at the top of the page. `tone` colors the figure only when there's something in it. */
 function Stat(props: { label: string; cents: number; count: number; tone: string }) {
   return (
     <div className="card card-pad">

@@ -1,4 +1,5 @@
-//! The home screen's numbers, in one round trip.
+//! The home screen's numbers, in one round trip (the `dashboard` method).
+//! One side of the book at a time: a business home or a household home.
 
 use chrono::{Datelike, Months, NaiveDate};
 use serde::Serialize;
@@ -48,17 +49,27 @@ pub struct CountAmount {
 #[derive(Debug, Serialize)]
 pub struct Dashboard {
     pub today: NaiveDate,
+    /// Bank balances on this side.
     pub cash: Cents,
+    /// Credit card balances on this side.
     pub credit_owed: Cents,
     pub receivable: Cents,
     pub payable: Cents,
+    /// Open bank and card accounts on this side.
     pub accounts: Vec<MoneyAccount>,
+    /// The 1st through today.
     pub this_month: Period,
     pub last_month: Period,
+    /// The last six months, oldest first, this month included.
     pub cashflow: Vec<MonthFlow>,
+    /// This month's five biggest expense categories on this side.
     pub top_expenses: Vec<Category>,
+    /// Bank transactions waiting in Review, for the whole book.
     pub inbox_count: i64,
+    /// Customer invoices past due (business).
     pub overdue_invoices: CountAmount,
+    /// Vendor bills (accounts payable) due within 7 days. Not the household's
+    /// recurring bills, which have their own `recurring.due` method.
     pub bills_due_soon: CountAmount,
 }
 
@@ -76,7 +87,9 @@ fn period(store: &Store, from: NaiveDate, to: NaiveDate, scope: Scope) -> Result
     Ok(Period { income: p.total_income, expenses, net: p.net_income })
 }
 
-/// Home for one side of the book.
+/// Home for one side of the book. Balances, cash flow and top expenses
+/// cover only `scope`; the inbox, invoice and vendor-bill counts are the
+/// whole book's, since those queues aren't split by side.
 pub fn build(store: &Store, today: NaiveDate, scope: Scope) -> Result<Dashboard> {
     let accounts = store.accounts_in(Some(scope))?;
     let balances = store.balances(None, today)?;

@@ -1,6 +1,11 @@
 //! Goals, and what the household's numbers add up to: alerts worth
 //! interrupting for, where the room to save is, a budget score, and wins
 //! worth celebrating.
+//!
+//! Everything here reads the household side only, and nothing is stored but
+//! goals: alerts, opportunities, the score and wins are worked out fresh from
+//! the books each time they're asked for. The pure arithmetic (goal
+//! projections, the score's weights) lives in `tally_core::insights`.
 
 use crate::{BudgetTarget, DueState, Result, Store, StoreError, month_of, month_range, rule};
 use chrono::{Months, NaiveDate};
@@ -14,27 +19,51 @@ use tally_core::{AccountId, AccountKind, AccountSubtype, Cents, EntryLine, Flex,
 
 pub type GoalId = i64;
 
+/// A budget line at or past this percent of its ceiling gets a heads-up.
+const CAUTION_PERCENT: u32 = 80;
+/// A floor (savings, income) isn't called behind before this day of the
+/// month: early on, most of it simply hasn't come in yet.
+const FLOOR_ALERT_FROM_DAY: u32 = 20;
+/// Unpaid bills are looked for this far back: a month, so last month's
+/// stragglers still show.
+const OVERDUE_LOOKBACK_DAYS: u64 = 31;
+/// "Usual" spending or income is judged on this many months before.
+const USUAL_MONTHS: u32 = 3;
+/// The budget score looks at this many months, the asked-for one included.
+const SCORE_MONTHS: u32 = 6;
+/// Opportunities show what trimming your-choice spending by 1/N would free.
+const LIFESTYLE_TRIM_DIVISOR: i64 = 5;
+
+/// A savings goal as the user sets it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct NewGoal {
     pub name: String,
+    /// The amount to reach; always positive.
     pub target: Cents,
     #[serde(default)]
     pub target_date: Option<NaiveDate>,
+    /// The household account (savings, usually) the money is kept in.
     pub account_id: AccountId,
+    /// What was already saved before the goal was set up; it counts toward
+    /// the target but not toward the monthly pace.
     #[serde(default)]
     pub starting: Cents,
     #[serde(default)]
     pub note: String,
 }
 
+/// A goal with where it stands today.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Goal {
     pub id: GoalId,
     #[serde(flatten)]
     pub goal: NewGoal,
+    /// `YYYY-MM-DD` the running total reached the target and stayed there.
     pub achieved_at: Option<String>,
     pub archived: bool,
+    /// `starting` plus every contribution, money taken back out included.
     pub saved: Cents,
+    /// How many entries are tagged with the goal.
     pub contributions: i64,
     #[serde(flatten)]
     pub projection: Projection,
@@ -47,6 +76,7 @@ pub struct Contributed {
     pub finished: bool,
 }
 
+/// How loudly an alert speaks; alerts are sorted loudest first.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Tone {
@@ -55,7 +85,7 @@ pub enum Tone {
     Alarm,
 }
 
-/// Something worth interrupting her for.
+/// Something worth interrupting the user for.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Alert {
     pub tone: Tone,
@@ -66,15 +96,17 @@ pub struct Alert {
     pub bill_id: Option<i64>,
 }
 
+/// Spending in one flexibility tier (fixed, usage, lifestyle, or not set).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct FlexTier {
     /// `None` is categories nobody has said how far they bend.
     pub flex: Option<Flex>,
     pub spending: Cents,
-    /// Average of the three months before.
+    /// Average of the `USUAL_MONTHS` before.
     pub usual: Cents,
 }
 
+/// One category that can bend: this month against its usual.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct CategoryGap {
     pub account_id: AccountId,
@@ -95,12 +127,16 @@ pub struct Opportunities {
     pub tiers: Vec<FlexTier>,
     /// Categories that bend, biggest first.
     pub categories: Vec<CategoryGap>,
-    /// Trimming your-choice spending by a fifth would free up this much.
+    /// Trimming your-choice spending by a fifth (`LIFESTYLE_TRIM_DIVISOR`)
+    /// would free up this much.
     pub lifestyle_fifth: Cents,
 }
 
+/// A piece of good news.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Win {
+    /// What sort of win, for the UI to pick an icon: `under_budget`, `ahead`,
+    /// `gap`, `saved`, `goal` or `new_income`.
     pub kind: &'static str,
     pub title: String,
     pub body: String,
@@ -127,10 +163,12 @@ fn money(c: Cents) -> String {
     insights::dollars(c.abs())
 }
 
+/// "March" for `2026-03`; the raw text if it isn't a month.
 fn month_name(month: &str) -> String {
     month_range(month).map(|(from, _)| from.format("%B").to_string()).unwrap_or_else(|_| month.to_string())
 }
 
+/// The month `back` months before `month`.
 fn prev_month(month: &str, back: u32) -> Result<String> {
     Ok(month_of(month_range(month)?.0 - Months::new(back)))
 }
@@ -155,6 +193,8 @@ impl Store {
         Ok(())
     }
 
+    /// Starts a goal. Money reaches it by `contribute_to_goal` or by tagging
+    /// a transfer with `set_entry_goal`.
     pub fn create_goal(&self, g: &NewGoal) -> Result<GoalId> {
         self.validate_goal(g)?;
         self.conn.execute(
@@ -177,6 +217,8 @@ impl Store {
         Ok(())
     }
 
+    /// Archived goals keep their history and their money; they just stop
+    /// showing as in progress.
     pub fn set_goal_archived(&self, id: GoalId, archived: bool) -> Result<()> {
         if self.conn.execute("UPDATE goals SET archived = ?1 WHERE id = ?2", params![archived, id])? == 0 {
             return Err(StoreError::NotFound("goal", id));
@@ -197,6 +239,7 @@ impl Store {
         Ok(stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?, Cents(r.get(2)?))))?.collect::<rusqlite::Result<_>>()?)
     }
 
+    /// Every goal, in progress first, each projected as of `today`.
     pub fn goals(&self, today: NaiveDate) -> Result<Vec<Goal>> {
         let mut stmt = self.conn.prepare(
             "SELECT id, name, target, target_date, account_id, starting, note, achieved_at, archived FROM goals ORDER BY archived, achieved_at IS NOT NULL, id",
@@ -308,7 +351,7 @@ impl Store {
 
     // ------------------------------------------------------------ alerts
 
-    /// What's worth her attention in `month` as of `today`, most urgent first.
+    /// What's worth the user's attention in `month` as of `today`, most urgent first.
     pub fn alerts(&self, month: &str, today: NaiveDate) -> Result<Vec<Alert>> {
         let m = self.month_budget(month, today)?;
         let mut out = Vec::new();
@@ -324,7 +367,8 @@ impl Store {
                         target,
                         bill_id: None,
                     }),
-                    (Direction::Ceiling, Some(p), _) if p >= 80 && l.amount.0 > 0 && l.flex != Some(Flex::Fixed) => out.push(Alert {
+                    // A fixed category (rent) lands all at once: 100% used on the 1st is expected.
+                    (Direction::Ceiling, Some(p), _) if p >= CAUTION_PERCENT && l.amount.0 > 0 && l.flex != Some(Flex::Fixed) => out.push(Alert {
                         tone: Tone::Caution,
                         title: format!("You've used {p}% of your {} budget", l.name),
                         body: format!("{} left for the next {days_left} days.", money(l.status.remaining)),
@@ -338,7 +382,7 @@ impl Store {
                         target,
                         bill_id: None,
                     }),
-                    (Direction::Floor, _, _) if l.status.sentiment == Sentiment::Alarm && m.day_of_month >= 20 => out.push(Alert {
+                    (Direction::Floor, _, _) if l.status.sentiment == Sentiment::Alarm && m.day_of_month >= FLOOR_ALERT_FROM_DAY => out.push(Alert {
                         tone: Tone::Caution,
                         title: format!("{} is behind", l.name),
                         body: format!("{} to go, with {days_left} days left.", money(l.status.remaining)),
@@ -349,7 +393,7 @@ impl Store {
                 }
             }
         }
-        for d in self.due_dates(today - chrono::Days::new(31), today, today)? {
+        for d in self.due_dates(today - chrono::Days::new(OVERDUE_LOOKBACK_DAYS), today, today)? {
             match d.state {
                 DueState::Overdue => out.push(Alert {
                     tone: Tone::Alarm,
@@ -378,39 +422,38 @@ impl Store {
 
     // ------------------------------------------------------------ opportunity gaps
 
-    fn spending_by_account(&self, month: &str) -> Result<HashMap<AccountId, Cents>> {
+    /// Household totals in `month` per account of one kind, natural sign.
+    fn totals_by_account(&self, month: &str, kind: AccountKind) -> Result<HashMap<AccountId, Cents>> {
         let (from, to) = month_range(month)?;
         let kinds: HashMap<AccountId, AccountKind> = self.accounts_in(Some(Scope::Household))?.into_iter().map(|a| (a.id, a.kind())).collect();
         let mut out: HashMap<AccountId, Cents> = HashMap::new();
         for (account, _, amount, _) in self.household_movement(from, to)? {
-            if kinds.get(&account) == Some(&AccountKind::Expense) {
+            if kinds.get(&account) == Some(&kind) {
                 *out.entry(account).or_default() += amount;
             }
         }
         Ok(out)
+    }
+
+    fn spending_by_account(&self, month: &str) -> Result<HashMap<AccountId, Cents>> {
+        self.totals_by_account(month, AccountKind::Expense)
     }
 
     fn income_by_account(&self, month: &str) -> Result<HashMap<AccountId, Cents>> {
-        let (from, to) = month_range(month)?;
-        let kinds: HashMap<AccountId, AccountKind> = self.accounts_in(Some(Scope::Household))?.into_iter().map(|a| (a.id, a.kind())).collect();
-        let mut out: HashMap<AccountId, Cents> = HashMap::new();
-        for (account, _, amount, _) in self.household_movement(from, to)? {
-            if kinds.get(&account) == Some(&AccountKind::Income) {
-                *out.entry(account).or_default() += amount;
-            }
-        }
-        Ok(out)
+        self.totals_by_account(month, AccountKind::Income)
     }
 
+    /// Where the room to save is in `month`: spending by how far it can
+    /// bend, against the months before.
     pub fn opportunities(&self, month: &str) -> Result<Opportunities> {
         let accounts: HashMap<AccountId, tally_core::Account> = self.accounts_in(Some(Scope::Household))?.into_iter().map(|a| (a.id, a)).collect();
         let now = self.spending_by_account(month)?;
-        // "Usual" is the average of the three months before, counting only
+        // "Usual" is the average of the `USUAL_MONTHS` before, counting only
         // months with any household spending, so a new book isn't averaged
         // against months it never saw.
         let mut before: HashMap<AccountId, Cents> = HashMap::new();
         let mut active_months = 0;
-        for back in 1..=3 {
+        for back in 1..=USUAL_MONTHS {
             let m = self.spending_by_account(&prev_month(month, back)?)?;
             if m.values().any(|c| !c.is_zero()) {
                 active_months += 1;
@@ -448,7 +491,7 @@ impl Store {
             gap: income - spending,
             tiers,
             categories,
-            lifestyle_fifth: Cents(lifestyle.0.max(0) / 5),
+            lifestyle_fifth: Cents(lifestyle.0.max(0) / LIFESTYLE_TRIM_DIVISOR),
         })
     }
 
@@ -467,9 +510,11 @@ impl Store {
         Ok(goals.max(floors))
     }
 
+    /// A credit-score-shaped score for how `month` is going, judged on it and
+    /// the months before (see `tally_core::insights::score` for the weights).
     pub fn budget_score(&self, month: &str, today: NaiveDate) -> Result<BudgetScore> {
         let mut months = Vec::new();
-        for back in (0..6).rev() {
+        for back in (0..SCORE_MONTHS).rev() {
             let m = prev_month(month, back)?;
             let b = self.month_budget(&m, today)?;
             let planned = b.available.unwrap_or(b.planned_for_categories + b.planned_for_people);
@@ -549,10 +594,11 @@ impl Store {
         }
 
         // A new source of income: money this month in an income category
-        // that was quiet for the three months before.
+        // that was quiet for the `USUAL_MONTHS` before. Money from the
+        // business is the owner's draw, not new income.
         let now = self.income_by_account(month)?;
         let mut before: HashSet<AccountId> = HashSet::new();
-        for back in 1..=3 {
+        for back in 1..=USUAL_MONTHS {
             before.extend(self.income_by_account(&prev_month(month, back)?)?.into_iter().filter(|(_, c)| c.0 > 0).map(|(a, _)| a));
         }
         let had_history = !before.is_empty();

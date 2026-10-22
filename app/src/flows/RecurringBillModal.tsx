@@ -1,4 +1,5 @@
-// Add or change a household bill that comes around again.
+// Add or change a household bill that comes around again. Once saved, the
+// backend ticks each due date off when a matching payment arrives.
 
 import { useEffect, useState } from "react";
 import { call, queryClient } from "../api";
@@ -7,8 +8,21 @@ import { AccountSelect, ErrorBanner, Field, Modal, MoneyInput, useToast } from "
 import { todayISO } from "../format";
 import type { Cadence, Cents, NewRecurringBill, RecurringBill } from "../types";
 
-type Every = "month" | "months" | "week";
+type Every = Cadence["every"];
 
+// The same limits the backend checks (Cadence::validate in crates/tally-core/src/schedule.rs).
+const LAST_DUE_DAY = 31;
+const MOST_MONTHS_APART = 24;
+/** Where "every few months" starts: twice a year. */
+const DEFAULT_MONTHS_APART = 6;
+
+/** Clamp a typed number into 1..max, treating junk as 1. */
+const clampInput = (raw: string, max: number) => Math.min(max, Math.max(1, Number(raw) || 1));
+
+/**
+ * A bill to open the form with: a saved bill (has `id`, so saving updates it)
+ * or a partly filled new one, such as a suggestion.
+ */
 export interface BillDraft extends Partial<NewRecurringBill> {
   id?: number;
 }
@@ -23,7 +37,7 @@ export default function RecurringBillModal(props: { open: boolean; onClose: () =
   const [person, setPerson] = useState<number | null>(null);
   const [every, setEvery] = useState<Every>("month");
   const [day, setDay] = useState(1);
-  const [months, setMonths] = useState(6);
+  const [months, setMonths] = useState(DEFAULT_MONTHS_APART);
   const [start, setStart] = useState(todayISO());
   const [autoPay, setAutoPay] = useState(false);
   const [matchText, setMatchText] = useState("");
@@ -42,7 +56,7 @@ export default function RecurringBillModal(props: { open: boolean; onClose: () =
     const c = b.cadence;
     setEvery(c?.every ?? "month");
     setDay(c && c.every !== "week" ? c.day : 1);
-    setMonths(c?.every === "months" ? c.months : 6);
+    setMonths(c?.every === "months" ? c.months : DEFAULT_MONTHS_APART);
     setStart(b.start_date ?? todayISO());
     setAutoPay(b.auto_pay ?? false);
     setMatchText(b.match_text ?? "");
@@ -50,7 +64,9 @@ export default function RecurringBillModal(props: { open: boolean; onClose: () =
   }, [props.open, props.bill]);
 
   const cadence: Cadence = every === "week" ? { every } : every === "months" ? { every, months, day } : { every, day };
-  const editing = props.bill && "id" in props.bill && props.bill.id != null ? props.bill.id : null;
+  // The id of the bill being changed; null when adding a new one.
+  const editingId = props.bill && "id" in props.bill && props.bill.id != null ? props.bill.id : null;
+  // A bill that varies needs its typical amount: that's what payments are matched against.
   const ready = !!name.trim() && category != null && (!varies || !!amount);
 
   const save = async () => {
@@ -70,10 +86,10 @@ export default function RecurringBillModal(props: { open: boolean; onClose: () =
       match_text: matchText.trim() || null,
     };
     try {
-      if (editing != null) await call("recurring.update", { id: editing, bill });
+      if (editingId != null) await call("recurring.update", { id: editingId, bill });
       else await call("recurring.create", bill);
       await queryClient.invalidateQueries();
-      toast({ text: editing != null ? `${bill.name} updated` : `${bill.name} added` });
+      toast({ text: editingId != null ? `${bill.name} updated` : `${bill.name} added` });
       props.onClose();
     } catch (e) {
       setError(e as Error);
@@ -86,7 +102,7 @@ export default function RecurringBillModal(props: { open: boolean; onClose: () =
     <Modal
       open={props.open}
       onClose={props.onClose}
-      title={editing != null ? "Edit bill" : "Add a bill"}
+      title={editingId != null ? "Edit bill" : "Add a bill"}
       subtitle="Tallybook ticks it off when the payment shows up in your bank feed."
       footer={
         <>
@@ -94,7 +110,7 @@ export default function RecurringBillModal(props: { open: boolean; onClose: () =
             Cancel
           </button>
           <button className="btn btn-primary" disabled={!ready || busy} onClick={save}>
-            {busy ? "Saving…" : editing != null ? "Save" : "Add bill"}
+            {busy ? "Saving…" : editingId != null ? "Save" : "Add bill"}
           </button>
         </>
       }
@@ -132,14 +148,14 @@ export default function RecurringBillModal(props: { open: boolean; onClose: () =
             </Field>
           ) : (
             <Field label="Due on day">
-              <input className="input" type="number" min={1} max={31} value={day} onChange={(e) => setDay(Math.min(31, Math.max(1, Number(e.target.value) || 1)))} />
+              <input className="input" type="number" min={1} max={LAST_DUE_DAY} value={day} onChange={(e) => setDay(clampInput(e.target.value, LAST_DUE_DAY))} />
             </Field>
           )}
         </div>
         {every === "months" && (
           <div className="form-grid">
             <Field label="Every how many months">
-              <input className="input" type="number" min={1} max={24} value={months} onChange={(e) => setMonths(Math.min(24, Math.max(1, Number(e.target.value) || 1)))} />
+              <input className="input" type="number" min={1} max={MOST_MONTHS_APART} value={months} onChange={(e) => setMonths(clampInput(e.target.value, MOST_MONTHS_APART))} />
             </Field>
             <Field label="First due" hint="Counts from this month.">
               <input className="input" type="date" value={start} onChange={(e) => setStart(e.target.value)} />

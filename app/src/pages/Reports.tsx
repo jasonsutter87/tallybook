@@ -30,6 +30,11 @@ const HOUSEHOLD_WORDS: Record<string, { title: string; question: string }> = {
   "balance-sheet": { title: "Net worth", question: "What you have and what you owe, on a given day." },
 };
 
+/**
+ * A report's title and question for the side being shown. `scope` is the side
+ * picked in a two-sided book; undefined means a one-sided book, whose only
+ * side decides.
+ */
 function words(def: ReportDef, scope: Scope | undefined, sides: BookSides) {
   const household = scope === "household" || (!scope && !sides.business);
   return household ? (HOUSEHOLD_WORDS[def.slug] ?? def) : def;
@@ -61,18 +66,19 @@ function Gallery() {
       />
       <div className="report-gallery">
         {reports.map((r) => {
+          // The gallery speaks business whenever the book has a business side.
           const w = words(r, sides.business ? undefined : "household", sides);
           return (
-          <Link key={r.slug} to={`/reports/${r.slug}`} className="card report-card">
-            <span className={`icon-bubble ${r.tone}`}>{r.icon}</span>
-            <div className="grow">
-              <div className="report-card-title">{w.title}</div>
-              <div className="muted small" style={{ marginTop: 3 }}>
-                {w.question}
+            <Link key={r.slug} to={`/reports/${r.slug}`} className="card report-card">
+              <span className={`icon-bubble ${r.tone}`}>{r.icon}</span>
+              <div className="grow">
+                <div className="report-card-title">{w.title}</div>
+                <div className="muted small" style={{ marginTop: 3 }}>
+                  {w.question}
+                </div>
               </div>
-            </div>
-            <ChevronRight size={18} className="report-card-go" />
-          </Link>
+              <ChevronRight size={18} className="report-card-go" />
+            </Link>
           );
         })}
       </div>
@@ -140,7 +146,8 @@ function ReportView({ def }: { def: ReportDef }) {
   const to = search.get("to") ?? defTo;
   const asOf = search.get("as_of") ?? today;
   const sides = useSides();
-  // A two-sided book reports one side at a time; aging reports are business-only.
+  // A two-sided book reports one side at a time, picked by ?side= in the URL;
+  // aging reports are business-only. A one-sided book sends no scope at all.
   const scope: Scope | undefined = sides.both ? (def.business ? "business" : ((search.get("side") as Scope | null) ?? sides.main)) : undefined;
   const w = words(def, scope, sides);
 
@@ -329,6 +336,9 @@ function Total(props: { label: ReactNode; cents: Cents; kind?: "total" | "subtot
 
 function PnL({ from, to, scope }: { from: ISODate; to: ISODate; scope?: Scope }) {
   const { data, error, isLoading } = useReport<ProfitAndLoss>("reports.pnl", { from, to, scope });
+  const sides = useSides();
+  // A household doesn't make a profit; what's left is just left over.
+  const household = scope === "household" || (!scope && !sides.business);
   if (isLoading) return <Loading />;
   if (error || !data) return <ErrorBanner error={error} />;
 
@@ -345,11 +355,11 @@ function PnL({ from, to, scope }: { from: ISODate; to: ISODate; scope?: Scope })
         <SummaryStat
           icon={<PiggyBank size={18} />}
           tone={data.net_income < 0 ? "neg" : "pos"}
-          label={data.net_income < 0 ? "Net loss" : "Net profit"}
+          label={household ? (data.net_income < 0 ? "Overspent" : "Left over") : data.net_income < 0 ? "Net loss" : "Net profit"}
           cents={data.net_income}
           big
           color
-          foot={margin !== null ? `${margin}% of income kept as profit` : "No income in this period"}
+          foot={margin !== null ? `${margin}% of income ${household ? "left over" : "kept as profit"}` : "No income in this period"}
         />
         <SummaryStat icon={<ArrowDownLeft size={18} />} tone="pos" label="Income" cents={data.total_income} foot={`${data.income.length} income ${data.income.length === 1 ? "account" : "accounts"}`} />
         <SummaryStat

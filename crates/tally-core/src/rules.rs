@@ -1,4 +1,8 @@
 //! Bank-feed categorization rules ("anything containing GUSTO → Payroll").
+//!
+//! A rule turns an imported bank line into a categorized entry: which
+//! account it goes to, optionally a cleaner description, and on household
+//! books who it was for.
 
 use crate::account::AccountId;
 use crate::money::Cents;
@@ -6,6 +10,7 @@ use serde::{Deserialize, Serialize};
 
 pub type RuleId = i64;
 
+/// How `pattern` is compared with a bank description.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum MatchOp {
@@ -14,14 +19,19 @@ pub enum MatchOp {
     StartsWith,
 }
 
+/// Which way the money moved for a rule to apply. Not the same thing as
+/// [`crate::budget::Direction`], which is about a budget's target.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Direction {
     Any,
+    /// Money in: a positive bank amount.
     Inflow,
+    /// Money out: a negative bank amount.
     Outflow,
 }
 
+/// One categorization rule. Every condition set must hold for it to match.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Rule {
     pub id: RuleId,
@@ -37,7 +47,9 @@ pub struct Rule {
     pub amount_max: Option<Cents>,
     /// Restrict to one bank/card account; `None` = all.
     pub bank_account_id: Option<AccountId>,
+    /// The category (or other account) a match is posted to.
     pub target_account_id: AccountId,
+    /// Replaces the bank's description on a match.
     pub rename_to: Option<String>,
     /// Post without waiting for review.
     pub auto_post: bool,
@@ -47,6 +59,8 @@ pub struct Rule {
 }
 
 impl Rule {
+    /// Does this rule apply to a bank line? `amount` is signed as the bank
+    /// reports it: positive in, negative out.
     pub fn matches(&self, bank_account_id: AccountId, description: &str, amount: Cents) -> bool {
         if self.bank_account_id.is_some_and(|id| id != bank_account_id) {
             return false;

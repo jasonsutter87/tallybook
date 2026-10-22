@@ -1,5 +1,8 @@
 //! Tax-center persistence: Schedule C mapping, payees and 1099 totals,
 //! estimated tax payments. The arithmetic lives in `tally_core::tax`.
+//!
+//! Only the business side of a book is taxed here: Schedule C is a business
+//! form, so household categories are neither mapped nor reported.
 
 use crate::{BadValue, Result, Store, StoreError, conversion_err, post_in, rule};
 use chrono::NaiveDate;
@@ -117,6 +120,8 @@ pub fn year_range(year: i32) -> (NaiveDate, NaiveDate) {
 impl Store {
     // ------------------------------------------------------------ Schedule C
 
+    /// Confirms which Schedule C line a business income or expense account
+    /// feeds; `None` goes back to the suggested line.
     pub fn set_tax_line(&self, account_id: AccountId, line: Option<ScheduleCLine>) -> Result<()> {
         let account = self.account(account_id)?;
         if account.kind().is_balance_sheet() {
@@ -154,6 +159,7 @@ impl Store {
         let balances = self.balances(Some(from), to)?;
         let confirmed = self.confirmed_lines()?;
         let mut rows = Vec::new();
+        // Household spending isn't a business deduction.
         for a in self.accounts_in(Some(Scope::Business))? {
             if a.kind().is_balance_sheet() {
                 continue;

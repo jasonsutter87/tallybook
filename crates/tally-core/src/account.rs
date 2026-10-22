@@ -147,7 +147,9 @@ impl FromStr for AccountSubtype {
 
 /// Which side of a book an account belongs to. A book can keep a business,
 /// a household, or both; each side balances on its own, and money that
-/// crosses between them is an owner's draw or contribution.
+/// crosses between them is an owner's draw or contribution (see the
+/// bridge in [`crate::chart`]). Old books predate scopes, so the default is
+/// `Business`.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Scope {
@@ -159,6 +161,7 @@ pub enum Scope {
 impl Scope {
     pub const ALL: [Scope; 2] = [Scope::Business, Scope::Household];
 
+    /// The name stored in `accounts.scope`.
     pub fn as_str(self) -> &'static str {
         match self {
             Scope::Business => "business",
@@ -176,6 +179,8 @@ impl FromStr for Scope {
 
 /// How much a household spending category can bend: the "opportunity" in an
 /// opportunity gap. Rent barely moves; dining out moves with a decision.
+/// Insights group spending by flex, list only `Usage` and `Lifestyle`
+/// categories as places to cut, and don't send "80% used" alerts on `Fixed`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Flex {
@@ -190,6 +195,7 @@ pub enum Flex {
 impl Flex {
     pub const ALL: [Flex; 3] = [Flex::Fixed, Flex::Usage, Flex::Lifestyle];
 
+    /// The name stored in `accounts.flex`.
     pub fn as_str(self) -> &'static str {
         match self {
             Flex::Fixed => "fixed",
@@ -214,6 +220,7 @@ pub struct Account {
     pub subtype: AccountSubtype,
     pub parent_id: Option<AccountId>,
     pub archived: bool,
+    /// Which side of the book it's on.
     #[serde(default)]
     pub scope: Scope,
     /// Household spending categories only.

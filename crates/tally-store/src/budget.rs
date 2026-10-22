@@ -16,17 +16,29 @@ use tally_core::journal::EntryId;
 use tally_core::{AccountId, AccountKind, Cents, Flex, Scope};
 
 pub type PersonId = i64;
+/// One line of one month's plan (a row of `budgets`).
+pub type BudgetId = i64;
 
 /// Household money moved on one account for one person: (account, person,
 /// natural-sign amount, number of entries).
 pub(crate) type Movement = (AccountId, Option<PersonId>, Cents, i64);
-pub type BudgetId = i64;
 
+/// How far a line may run over (or a floor fall short) before it's called
+/// off track, unless the user says otherwise. Also the slack for the month
+/// as a whole against what there is to work with.
+const DEFAULT_TOLERANCE_PCT: u32 = 10;
+
+/// A new person's color when none is chosen, as the `people` table's default.
+const DEFAULT_PERSON_COLOR: &str = "slate";
+
+/// Someone the household's money is for: a partner, a child, "the dog".
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Person {
     pub id: PersonId,
     pub name: String,
+    /// A color name, e.g. "slate"; kept as given.
     pub color: String,
+    /// Where they sit in lists; new people go last.
     pub sort_order: i64,
     pub archived: bool,
 }
@@ -34,6 +46,7 @@ pub struct Person {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct NewPerson {
     pub name: String,
+    /// `None` keeps the current color (or the default for someone new).
     #[serde(default)]
     pub color: Option<String>,
 }
@@ -46,20 +59,24 @@ pub enum BudgetTarget {
     Account(AccountId),
 }
 
+/// One line of a month's plan, as the user sets it.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct BudgetLine {
     pub target: BudgetTarget,
     pub amount: Cents,
+    /// A ceiling (spend at most) or a floor (put in or earn at least).
     #[serde(default)]
     pub direction: Direction,
+    /// Percent of `amount`, 0 to 100.
     #[serde(default = "default_tolerance")]
     pub tolerance_pct: u32,
 }
 
 fn default_tolerance() -> u32 {
-    10
+    DEFAULT_TOLERANCE_PCT
 }
 
+/// A plan line with how the month is going against it.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct BudgetLineView {
     pub id: BudgetId,
@@ -72,9 +89,11 @@ pub struct BudgetLineView {
     /// Spent for a ceiling, put in or earned for a floor.
     pub progress: Cents,
     pub status: Status,
+    /// Ceilings only; `None` for a floor or a zero plan.
     pub percent_used: Option<u32>,
 }
 
+/// One person's household spending in a month.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct PersonSpend {
     /// `None` is shared household spending nobody was tagged on.
@@ -84,6 +103,7 @@ pub struct PersonSpend {
     pub entries: i64,
 }
 
+/// One household spending category's total in a month.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct CategorySpend {
     pub account_id: AccountId,
@@ -92,8 +112,10 @@ pub struct CategorySpend {
     pub spending: Cents,
 }
 
+/// A household month at a glance: the plan, the money, and the bills.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct MonthBudget {
+    /// `YYYY-MM`, spanning `from` to `to`.
     pub month: String,
     pub from: NaiveDate,
     pub to: NaiveDate,
@@ -104,6 +126,7 @@ pub struct MonthBudget {
     pub is_current: bool,
     /// The month this plan was set in, when it was carried forward.
     pub plan_from: Option<String>,
+    /// What there is to work with this month, when the user has said.
     pub available: Option<Cents>,
     pub income: Cents,
     pub spending: Cents,
@@ -129,6 +152,7 @@ pub fn month_range(month: &str) -> Result<(NaiveDate, NaiveDate)> {
     Ok((from, to))
 }
 
+/// The `YYYY-MM` month a date falls in.
 pub fn month_of(date: NaiveDate) -> String {
     date.format("%Y-%m").to_string()
 }
@@ -144,6 +168,24 @@ const PERSON_COLS: &str = "id, name, color, sort_order, archived";
 /// the budget page mustn't panic over one.
 fn add_capped(total: &mut Cents, x: Cents) {
     *total = Cents(total.0.saturating_add(x.0));
+}
+
+/// A total of bill amounts, capped like `add_capped`.
+fn sum_capped<'a>(xs: impl Iterator<Item = &'a Cents>) -> Cents {
+    let mut total = Cents::ZERO;
+    for x in xs {
+        add_capped(&mut total, *x);
+    }
+    total
+}
+
+/// A month's recurring bills: paid and still due, by category and by person.
+#[derive(Default)]
+struct BillTotals {
+    paid: HashMap<AccountId, Cents>,
+    due: HashMap<AccountId, Cents>,
+    paid_by_person: HashMap<PersonId, Cents>,
+    due_by_person: HashMap<PersonId, Cents>,
 }
 
 fn person_from_row(r: &Row) -> rusqlite::Result<Person> {
@@ -178,6 +220,7 @@ fn plan_from_row(r: &Row) -> rusqlite::Result<PlanRow> {
 impl Store {
     // ------------------------------------------------------------ people
 
+    /// Everyone, archived last, in their set order.
     pub fn people(&self) -> Result<Vec<Person>> {
         let mut stmt = self.conn.prepare(&format!("SELECT {PERSON_COLS} FROM people ORDER BY archived, sort_order, id"))?;
         Ok(stmt.query_map([], person_from_row)?.collect::<rusqlite::Result<_>>()?)
@@ -198,7 +241,7 @@ impl Store {
         let order: i64 = self.conn.query_row("SELECT IFNULL(MAX(sort_order), 0) + 1 FROM people", [], |r| r.get(0))?;
         self.conn.execute(
             "INSERT INTO people(name, color, sort_order) VALUES (?1, ?2, ?3)",
-            params![name, p.color.as_deref().unwrap_or("slate"), order],
+            params![name, p.color.as_deref().unwrap_or(DEFAULT_PERSON_COLOR), order],
         )?;
         Ok(self.conn.last_insert_rowid())
     }
@@ -385,6 +428,32 @@ impl Store {
         Ok(rows.into_iter().filter_map(|(a, p, raw, n)| accounts.get(&a).map(|k| (a, p, k.natural(raw), n))).collect())
     }
 
+    /// Recurring bills in `[from, to]`, by category and by person. Paid ones
+    /// count as-is rather than projected, and ones still to come are added to
+    /// the projection in full. Bills in a fixed category are left out of
+    /// "paid": that category already counts all its spending as-is.
+    fn bill_totals(&self, from: NaiveDate, to: NaiveDate, today: NaiveDate, is_fixed: &dyn Fn(AccountId) -> bool) -> Result<BillTotals> {
+        let mut t = BillTotals::default();
+        for d in self.due_dates(from, to, today)? {
+            match (d.state, &d.payment) {
+                (DueState::Paid, Some(p)) if (from..=to).contains(&p.date) && !is_fixed(d.account_id) => {
+                    add_capped(t.paid.entry(d.account_id).or_default(), p.amount);
+                    if let Some(person) = d.person_id {
+                        add_capped(t.paid_by_person.entry(person).or_default(), p.amount);
+                    }
+                }
+                (DueState::DueToday | DueState::Upcoming | DueState::Processing, _) if today <= to => {
+                    add_capped(t.due.entry(d.account_id).or_default(), d.amount);
+                    if let Some(person) = d.person_id {
+                        add_capped(t.due_by_person.entry(person).or_default(), d.amount);
+                    }
+                }
+                _ => {}
+            }
+        }
+        Ok(t)
+    }
+
     /// How `month` is going against its plan, judged as of `today`.
     pub fn month_budget(&self, month: &str, today: NaiveDate) -> Result<MonthBudget> {
         let (from, to) = month_range(month)?;
@@ -438,37 +507,10 @@ impl Store {
             None => vec![],
         };
 
-        // Recurring bills: paid ones count as-is (like fixed categories), and
-        // ones still to come are added to the projection in full.
-        let mut bill_paid: HashMap<AccountId, Cents> = HashMap::new();
-        let mut bill_due: HashMap<AccountId, Cents> = HashMap::new();
-        let mut bill_paid_by_person: HashMap<PersonId, Cents> = HashMap::new();
-        let mut bill_due_by_person: HashMap<PersonId, Cents> = HashMap::new();
-        for d in self.due_dates(from, to, today)? {
-            match (d.state, &d.payment) {
-                (DueState::Paid, Some(p)) if (from..=to).contains(&p.date) && !is_fixed(d.account_id) => {
-                    add_capped(bill_paid.entry(d.account_id).or_default(), p.amount);
-                    if let Some(person) = d.person_id {
-                        add_capped(bill_paid_by_person.entry(person).or_default(), p.amount);
-                    }
-                }
-                (DueState::DueToday | DueState::Upcoming | DueState::Processing, _) if today <= to => {
-                    add_capped(bill_due.entry(d.account_id).or_default(), d.amount);
-                    if let Some(person) = d.person_id {
-                        add_capped(bill_due_by_person.entry(person).or_default(), d.amount);
-                    }
-                }
-                _ => {}
-            }
-        }
-        let bills_paid = bill_paid.values().fold(Cents::ZERO, |mut a, b| {
-            add_capped(&mut a, *b);
-            a
-        });
-        let bills_due = bill_due.values().fold(Cents::ZERO, |mut a, b| {
-            add_capped(&mut a, *b);
-            a
-        });
+        let BillTotals { paid: bill_paid, due: bill_due, paid_by_person: bill_paid_by_person, due_by_person: bill_due_by_person } =
+            self.bill_totals(from, to, today, &is_fixed)?;
+        let bills_paid = sum_capped(bill_paid.values());
+        let bills_due = sum_capped(bill_due.values());
 
         let judge = |allocated: Cents, progress: Cents, direction: Direction, tolerance_pct: u32, scheduled: Cents, due: Cents| {
             let input = StatusInput::new(allocated, progress, direction, tolerance_pct, day_of_month, days_in_month);
@@ -542,7 +584,9 @@ impl Store {
             available,
             income,
             spending,
-            overall: available.map(|a| judge(a, spending.max(Cents::ZERO), Direction::Ceiling, 10, Cents(fixed.0.saturating_add(bills_paid.0)), bills_due)),
+            overall: available.map(|a| {
+                judge(a, spending.max(Cents::ZERO), Direction::Ceiling, DEFAULT_TOLERANCE_PCT, Cents(fixed.0.saturating_add(bills_paid.0)), bills_due)
+            }),
             lines,
             planned_for_people,
             planned_for_categories,

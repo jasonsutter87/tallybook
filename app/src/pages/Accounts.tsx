@@ -37,6 +37,9 @@ function sortAccounts(a: Account, b: Account) {
   return a.name.localeCompare(b.name);
 }
 
+/** Section headings a household reads differently: it spends, and its equity is just where it started. */
+const HOUSEHOLD_SECTION_TITLE: Record<string, string> = { expense: "Spending", equity: "Starting balances" };
+
 export default function Accounts() {
   const navigate = useNavigate();
   const { data, error, isLoading } = useApi<Account[]>("accounts.list");
@@ -44,6 +47,7 @@ export default function Accounts() {
   const [adding, setAdding] = useState(false);
   const [journal, setJournal] = useState(false);
   const { both, household, main } = useSides();
+  // A two-sided book opens on the household tab, matching the account picker's order.
   const [side, setSide] = useState<Scope>(household ? "household" : main);
   const inSide = useMemo(() => (data ?? []).filter((a) => a.scope === side), [data, side]);
 
@@ -111,7 +115,7 @@ export default function Accounts() {
 
         {SECTIONS.map((s) => {
           const accounts = visible.filter(s.match).sort(sortAccounts);
-          const title = side === "household" && s.key === "expense" ? "Spending" : side === "household" && s.key === "equity" ? "Starting balances" : s.title;
+          const title = (side === "household" && HOUSEHOLD_SECTION_TITLE[s.key]) || s.title;
           if (accounts.length === 0 && s.key !== "bank") return null;
           const total = accounts.filter((a) => !a.archived).reduce((n, a) => n + a.balance, 0);
           return (

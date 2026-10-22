@@ -6,6 +6,7 @@ import DeleteBookModal from "../flows/DeleteBookModal";
 import UnlockBookModal from "../flows/UnlockBookModal";
 import type { RecentBook, Scope } from "../types";
 
+/** The kinds of book on offer when creating one. `sides` goes to the backend as-is, main side first. */
 const KINDS: { sides: Scope[]; label: string; body: string; icon: typeof Home }[] = [
   { sides: ["business"], label: "A business", body: "Invoices, bills, reports and tax prep.", icon: Briefcase },
   { sides: ["household"], label: "A household", body: "A monthly budget, bills coming up, and goals.", icon: Home },
@@ -44,7 +45,9 @@ export default function Welcome() {
   const open = useAction("book.open");
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
+  // An index into KINDS; the first, a business, is the default.
   const [kind, setKind] = useState(0);
+  // Word the form for a household when that's the book's main side.
   const household = KINDS[kind].sides[0] === "household";
 
   const [locked, setLocked] = useState<string | null>(null);

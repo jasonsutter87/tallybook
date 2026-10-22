@@ -184,6 +184,8 @@ pub struct NewRule {
     pub target_account_id: AccountId,
     pub rename_to: Option<String>,
     pub auto_post: bool,
+    /// Who matching money is for (household rules); tagged on auto-posted
+    /// entries and offered in Review.
     #[serde(default)]
     pub person_id: Option<crate::PersonId>,
 }
@@ -574,6 +576,9 @@ impl Store {
         Ok(self.conn.query_row("SELECT COUNT(*) FROM bank_transactions WHERE status = 'new' AND pending = 0", [], |r| r.get(0))?)
     }
 
+    /// Where a Review row probably goes, best evidence first: a register line
+    /// it matches, the first rule that fits, or the category last used for
+    /// the same payee.
     pub(crate) fn suggest(&self, t: &BankTxn, rules: &[Rule]) -> Result<Option<Suggestion>> {
         if let Some(m) = self.match_candidates(t)?.into_iter().next() {
             return Ok(Some(m));
@@ -602,6 +607,9 @@ impl Store {
         Ok(account_id.map(|account_id| Suggestion::History { account_id }))
     }
 
+    /// Who a Review row was probably for: the first matching rule's person,
+    /// else whoever the last posted payment from the same payee was tagged
+    /// with (if they aren't archived). `None` when nothing says.
     pub(crate) fn suggest_person(&self, t: &BankTxn, rules: &[Rule]) -> Result<Option<crate::PersonId>> {
         if let Some(r) = rules_mod::first_match(rules, t.ledger_account_id, &t.description, t.amount)
             && r.person_id.is_some()

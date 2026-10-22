@@ -5,7 +5,15 @@
 //! (Tauri) and the browser dev server both just forward to it, so the two can
 //! never drift apart.
 //!
-//! Money crosses the boundary as integer cents; dates as `YYYY-MM-DD`.
+//! Money crosses the boundary as integer cents; dates as `YYYY-MM-DD`;
+//! budget months as `YYYY-MM`.
+//!
+//! The full method list is the `match` in [`App::call`], grouped under
+//! `// ---- section` dividers. Each method's params are a `#[derive(Deserialize)]`
+//! struct below (or a store type taken whole); missing `Option` fields take
+//! the defaults noted beside them, usually "today". A book has one or two
+//! sides (`"business"`, `"household"`); methods that take an optional `scope`
+//! cover the whole book when it is absent, unless noted otherwise.
 
 mod books;
 mod cloud;
@@ -140,6 +148,7 @@ struct AsOf {
     scope: Option<Scope>,
 }
 
+/// `dashboard`: which side to show; the book's main side when absent.
 #[derive(Deserialize)]
 struct MaybeScope {
     scope: Option<Scope>,
@@ -154,11 +163,14 @@ struct CreateBook {
     sides: Option<Vec<Scope>>,
 }
 
+/// `book.add_side`: adding a side the book already has is a no-op.
 #[derive(Deserialize)]
 struct AddSide {
     scope: Scope,
 }
 
+/// `accounts.set_flex`: how far a household category can bend
+/// ("fixed", "usage", "lifestyle"); null clears it. Household spending only.
 #[derive(Deserialize)]
 struct SetFlex {
     id: AccountId,
@@ -215,93 +227,120 @@ struct PostEntry {
     payee_id: Option<i64>,
 }
 
+/// `entries.set_person`: tag an entry as being for someone; null untags it.
 #[derive(Deserialize)]
 struct SetPerson {
     id: tally_core::journal::EntryId,
     person_id: Option<PersonId>,
 }
 
+/// `people.update`: replaces the person's name and color.
 #[derive(Deserialize)]
 struct UpdatePerson {
     id: PersonId,
     person: NewPerson,
 }
 
+/// `budget.month` and `household.*`: a `YYYY-MM` month; the current one when absent.
 #[derive(Deserialize)]
 struct MonthParam {
     month: Option<String>,
 }
 
+/// `budget.set`: sets one line of `month`'s plan. Plans carry forward, so
+/// this also changes later months that had no plan of their own.
 #[derive(Deserialize)]
 struct SetBudget {
     month: String,
     line: BudgetLine,
 }
 
+/// `budget.remove`: drops one line from `month`'s plan onward.
+/// `target` is `{"kind": "person" | "account", "id": n}`.
 #[derive(Deserialize)]
 struct RemoveBudget {
     month: String,
     target: BudgetTarget,
 }
 
+/// `recurring.update`: replaces every field of the bill.
 #[derive(Deserialize)]
 struct UpdateBill {
     id: RecurringBillId,
     bill: NewRecurringBill,
 }
 
+/// `goals.update`: replaces every field of the goal.
 #[derive(Deserialize)]
 struct UpdateGoal {
     id: GoalId,
     goal: NewGoal,
 }
 
+/// `goals.contribute`: moves `amount` from account `from` into the goal's
+/// savings account, tagged to the goal. Negative takes money back out.
 #[derive(Deserialize)]
 struct Contribute {
     id: GoalId,
     from: AccountId,
     amount: Cents,
+    /// Today when absent.
     date: Option<NaiveDate>,
 }
 
+/// `entries.set_goal`: counts an existing entry toward a goal; null untags it.
+/// The entry must touch the goal's savings account.
 #[derive(Deserialize)]
 struct SetGoal {
     id: tally_core::journal::EntryId,
     goal_id: Option<GoalId>,
 }
 
+/// `import.ledger`: the Ledger (mels-budget-app) SQLite file to bring over.
+/// Safe to repeat: only entries not imported before are added.
 #[derive(Deserialize)]
 struct LedgerImportParams {
     path: PathBuf,
+    /// The household account Ledger's money lands in; a new
+    /// "Ledger import" account when absent.
     money_account_id: Option<AccountId>,
 }
 
+/// `recurring.set_active`: an inactive bill stops producing due dates.
 #[derive(Deserialize)]
 struct SetActive {
     id: i64,
     active: bool,
 }
 
+/// `recurring.due`: the window of due dates to list. Defaults: from a week
+/// ago through the end of next month.
 #[derive(Deserialize)]
 struct DueQuery {
     from: Option<NaiveDate>,
     to: Option<NaiveDate>,
 }
 
+/// `recurring.dismiss_suggestion`: "Not a bill". Send the suggestion's
+/// `match_text`; it is remembered so the payee isn't suggested again.
 #[derive(Deserialize)]
 struct DismissSuggestion {
     match_text: String,
 }
 
+/// `recurring.mark`: overrides one due date by hand, e.g. paid in cash.
+/// `due_date` must be one of the bill's actual due dates.
 #[derive(Deserialize)]
 struct MarkDue {
     bill_id: RecurringBillId,
     due_date: NaiveDate,
     /// "paid", "skipped", or null to go back to automatic.
     status: Option<DueState>,
+    /// The entry that paid it, when there is one.
     entry_id: Option<tally_core::journal::EntryId>,
 }
 
+/// `budget.set_available`: what there is to work with in `month`; null clears it.
 #[derive(Deserialize)]
 struct SetAvailable {
     month: String,
@@ -563,6 +602,7 @@ impl App {
                 ok(())
             }
             "book.default_dir" => ok(default_dir()),
+            // {scope} -> null. Adds a side and its default chart.
             "book.add_side" => {
                 let p: AddSide = params(p)?;
                 self.with(|s| s.add_side(p.scope))
@@ -656,6 +696,7 @@ impl App {
                 let p: Rename = params(p)?;
                 self.with(|s| s.rename_account(p.id, &p.name))
             }
+            // {id, flex} -> null.
             "accounts.set_flex" => {
                 let p: SetFlex = params(p)?;
                 self.with(|s| s.set_flex(p.id, p.flex))
@@ -693,51 +734,70 @@ impl App {
                     Ok(id)
                 })
             }
+            // {id, person_id} -> null.
             "entries.set_person" => {
                 let p: SetPerson = params(p)?;
                 self.with(|s| s.set_entry_person(p.id, p.person_id))
             }
 
             // ---------------------------------------------------- people & budgets
+            // Household side only. People are who money was for; budgets are
+            // monthly plans of ceilings (spend at most) and floors (at least).
+
+            // null -> [Person], archived ones last.
             "people.list" => self.with(|s| s.people()),
+            // {name, color?} -> new person id.
             "people.create" => {
                 let p: NewPerson = params(p)?;
                 self.with(|s| s.create_person(&p))
             }
+            // {id, person} -> null.
             "people.update" => {
                 let p: UpdatePerson = params(p)?;
                 self.with(|s| s.update_person(p.id, &p.person))
             }
+            // {id, archived} -> null. Archived people drop out of later plans.
             "people.archive" => {
                 let p: Archive = params(p)?;
                 self.with(|s| s.set_person_archived(p.id, p.archived))
             }
+            // {month?} -> MonthBudget: the plan in effect, progress so far, and the
+            // pace projection, judged as of today.
             "budget.month" => {
                 let p: MonthParam = params(p)?;
                 let month = p.month.unwrap_or_else(|| month_of(today()));
                 self.with(|s| s.month_budget(&month, today()))
             }
+            // {month, line} -> budget line id.
             "budget.set" => {
                 let p: SetBudget = params(p)?;
                 self.with(|s| s.set_budget_line(&p.month, &p.line))
             }
+            // {month, target} -> null.
             "budget.remove" => {
                 let p: RemoveBudget = params(p)?;
                 self.with(|s| s.remove_budget_line(&p.month, p.target))
             }
+
+            // ---------------------------------------------------- recurring bills
+            // null -> [RecurringBill], each with its next due date.
             "recurring.list" => self.with(|s| s.recurring_bills(today())),
+            // NewRecurringBill -> new bill id.
             "recurring.create" => {
                 let p: NewRecurringBill = params(p)?;
                 self.with(|s| s.create_recurring_bill(&p))
             }
+            // {id, bill} -> null.
             "recurring.update" => {
                 let p: UpdateBill = params(p)?;
                 self.with(|s| s.update_recurring_bill(p.id, &p.bill))
             }
+            // {id, active} -> null.
             "recurring.set_active" => {
                 let p: SetActive = params(p)?;
                 self.with(|s| s.set_recurring_bill_active(p.id, p.active))
             }
+            // {from?, to?} -> [DueDate], each paid / overdue / upcoming / etc.
             "recurring.due" => {
                 // Default: the past week through the end of next month.
                 let p: DueQuery = params(p)?;
@@ -746,37 +806,52 @@ impl App {
                 let to = p.to.unwrap_or_else(|| month_range(&month_of(t + chrono::Months::new(1))).map(|r| r.1).unwrap_or(t));
                 self.with(|s| s.due_dates(from, to, t))
             }
+            // {bill_id, due_date, status, entry_id?} -> null.
             "recurring.mark" => {
                 let p: MarkDue = params(p)?;
                 self.with(|s| s.mark_due_date(p.bill_id, p.due_date, p.status, p.entry_id))
             }
+            // null -> [BillSuggestion]: repeat payments that look like bills,
+            // detected from the books and the Review inbox. At most 50.
             "recurring.suggestions" => self.with(|s| s.bill_suggestions(today())),
+            // {match_text} -> null.
             "recurring.dismiss_suggestion" => {
                 let p: DismissSuggestion = params(p)?;
                 self.with(|s| s.dismiss_bill_suggestion(&p.match_text))
             }
 
+            // ---------------------------------------------------- goals & insights
+            // null -> [Goal], each with saved so far and a projection.
             "goals.list" => self.with(|s| s.goals(today())),
+            // NewGoal -> new goal id. The goal's account must be a household asset.
             "goals.create" => {
                 let p: NewGoal = params(p)?;
                 self.with(|s| s.create_goal(&p))
             }
+            // {id, goal} -> null.
             "goals.update" => {
                 let p: UpdateGoal = params(p)?;
                 self.with(|s| s.update_goal(p.id, &p.goal))
             }
+            // {id, archived} -> null.
             "goals.archive" => {
                 let p: Archive = params(p)?;
                 self.with(|s| s.set_goal_archived(p.id, p.archived))
             }
+            // {id, from, amount, date?} -> {entry_id, finished}; finished means this one reached the target.
             "goals.contribute" => {
                 let p: Contribute = params(p)?;
                 self.with(|s| s.contribute_to_goal(p.id, p.from, p.amount, p.date.unwrap_or_else(today)))
             }
+            // {id, goal_id} -> null.
             "entries.set_goal" => {
                 let p: SetGoal = params(p)?;
                 self.with(|s| s.set_entry_goal(p.id, p.goal_id))
             }
+            // {month?} -> alerts: [Alert] (near or over budget, unpaid bills);
+            // opportunities: Opportunities (spending by flex, where it could bend);
+            // score: BudgetScore (a 300-850 style score with its factors);
+            // wins: [Win] (true, specific good news).
             "household.alerts" | "household.opportunities" | "household.score" | "household.wins" => {
                 let p: MonthParam = params(p)?;
                 let month = p.month.unwrap_or_else(|| month_of(today()));
@@ -787,6 +862,7 @@ impl App {
                     _ => self.with(|s| s.wins(&month, today())),
                 }
             }
+            // {month, amount} -> null.
             "budget.set_available" => {
                 let p: SetAvailable = params(p)?;
                 self.with(|s| s.set_available(&p.month, p.amount))
@@ -898,10 +974,13 @@ impl App {
                 self.with(|s| s.import_feed(p.account_id, &tally_core::bank::FeedBatch { added: st.transactions, ..Default::default() }))
             }
 
+            // {path} -> LedgerPreview: counts and date range, without importing.
             "import.ledger_preview" => {
                 let p: OpenPath = params(p)?;
                 ok(Store::preview_ledger(&p.path)?)
             }
+            // {path, money_account_id?} -> LedgerImport: what was added and skipped,
+            // plus notes on anything that couldn't come over as-is.
             "import.ledger" => {
                 let p: LedgerImportParams = params(p)?;
                 self.with(|s| s.import_ledger(&p.path, p.money_account_id))

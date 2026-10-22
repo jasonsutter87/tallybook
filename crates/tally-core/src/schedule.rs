@@ -3,12 +3,18 @@
 //! A bill repeats monthly, every few months, yearly, or weekly. Monthly-ish
 //! bills land on a day of the month, moved back to the month's last day when
 //! the month is short (a bill due on the 31st is due April 30th).
+//!
+//! The second half, [`detect`], works backwards: given past payments from a
+//! bank import, does a schedule explain them?
 
 use crate::Cents;
 use chrono::{Datelike, Days, Months, NaiveDate};
 use serde::{Deserialize, Serialize};
 use std::ops::RangeInclusive;
 
+/// How often a bill comes around. Stored as JSON in
+/// `recurring_bills.cadence`, e.g. `{"every":"month","day":11}`, so the
+/// variant and field names are part of the file format.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "every", rename_all = "snake_case")]
 pub enum Cadence {
@@ -22,6 +28,8 @@ pub enum Cadence {
 
 impl Cadence {
     /// Rough count per year, for turning a bill into a monthly amount.
+    /// Rough because it's whole: every 5 months counts as 2 a year, and
+    /// anything rarer than yearly as 1.
     pub fn per_year(self) -> u32 {
         match self {
             Cadence::Month { .. } => 12,
@@ -30,6 +38,8 @@ impl Cadence {
         }
     }
 
+    /// Rejects due days that no month has and repeats longer than two years,
+    /// which is past anything a household bill does.
     pub fn validate(self) -> Result<(), &'static str> {
         match self {
             Cadence::Month { day } | Cadence::Months { day, .. } if !(1..=31).contains(&day) => Err("a due day is 1 to 31"),
@@ -39,6 +49,7 @@ impl Cadence {
     }
 }
 
+/// The last day of the month: 28 to 31.
 fn last_day(year: i32, month: u32) -> u32 {
     let first = NaiveDate::from_ymd_opt(year, month, 1).expect("valid month");
     (first + Months::new(1) - Days::new(1)).day()
@@ -49,6 +60,7 @@ pub fn day_in_month(year: i32, month: u32, day: u32) -> NaiveDate {
     NaiveDate::from_ymd_opt(year, month, day.clamp(1, last_day(year, month))).expect("clamped day is valid")
 }
 
+/// Months since year 0, so two dates' month difference is a subtraction.
 fn month_index(d: NaiveDate) -> i64 {
     i64::from(d.year()) * 12 + i64::from(d.month0())
 }
@@ -62,6 +74,7 @@ pub fn occurrences(cadence: Cadence, start: NaiveDate, from: NaiveDate, to: Naiv
     }
     match cadence {
         Cadence::Week => {
+            // The first weekly date on or after `from`: round the gap up to whole weeks.
             let gap = (from - start).num_days();
             let mut d = start + Days::new(((gap + 6) / 7 * 7) as u64);
             while d <= to {
@@ -89,9 +102,13 @@ pub fn occurrences(cadence: Cadence, start: NaiveDate, from: NaiveDate, to: Naiv
     out
 }
 
+/// How far ahead `next_due` looks: past the longest repeat `validate`
+/// allows (24 months) with room to spare.
+const NEXT_DUE_HORIZON_DAYS: u64 = 800;
+
 /// The first due date on or after `on`.
 pub fn next_due(cadence: Cadence, start: NaiveDate, on: NaiveDate) -> Option<NaiveDate> {
-    occurrences(cadence, start, on, on + Days::new(800)).into_iter().next()
+    occurrences(cadence, start, on, on + Days::new(NEXT_DUE_HORIZON_DAYS)).into_iter().next()
 }
 
 /// A repeat payment found in past transactions.
@@ -100,11 +117,13 @@ pub struct Pattern {
     pub cadence: Cadence,
     /// The first time it was seen, which is where the schedule counts from.
     pub start: NaiveDate,
+    /// The most recent payment.
     pub last: NaiveDate,
     /// The typical (median) amount.
     pub amount: Cents,
     /// The amount moves around (power, water): a usage bill.
     pub varies: bool,
+    /// How many payments it was found in.
     pub times: usize,
 }
 
@@ -183,6 +202,7 @@ fn usual_day(dates: &[NaiveDate]) -> Option<u32> {
     let spread = |v: &[u32]| v.iter().max().zip(v.iter().min()).map_or(0, |(hi, lo)| hi - lo);
     let days: Vec<u32> = dates.iter().map(|d| d.day()).collect();
     // Early days pushed past the month's end, so a bill drifting from the 30th to the 1st stays together.
+    // Days 1 to 15 become 32 to 46; whichever reading is tighter wins.
     let wrapped: Vec<u32> = days.iter().map(|&d| if d <= 15 { d + 31 } else { d }).collect();
     let v = if spread(&wrapped) < spread(&days) { wrapped } else { days };
     if spread(&v) > MAX_DAY_SPREAD {

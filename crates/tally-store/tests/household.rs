@@ -1,3 +1,23 @@
+//! Household (personal) mode, end to end through the store.
+//!
+//! A book has one or two "sides": Business and Household. These tests cover
+//! how the sides stay apart, then people and monthly budgets, recurring bills
+//! and bill detection from bank text, and finally goals and insights.
+//! Sections are marked with `// ---- name` dividers.
+//!
+//! Conventions used throughout:
+//! - Every date is in 2026; `d(3, 14)` is 2026-03-14.
+//! - Amounts are integer cents written as dollars_cents: `1495_00` is $1,495.00.
+//! - Accounts are found by chart code. Business codes are bare ("4100"
+//!   Service Revenue, "6400" Rent, "6500" Software); household codes start
+//!   with H. The ones used here:
+//!   H4100 Child Support, H4200 Side Income, H6000 Rent or Mortgage,
+//!   H6010 Renters or Home Insurance, H6100 Gas & Electric, H6120 Internet & TV,
+//!   H6130 Phones, H6200 Groceries, H6210 Dining Out, H6510 Kids' Activities,
+//!   H6700 Clothing, H6710 Personal Care, H6720 Shopping,
+//!   H6740 Fun & Entertainment. The full list is in tally-core's chart.rs.
+//! - Months are "YYYY-MM" strings, as the budget tables store them.
+
 // Amounts are written as dollars_cents (e.g. 1200_00), hence the grouping.
 #![allow(clippy::inconsistent_digit_grouping)]
 
@@ -6,15 +26,19 @@ use tally_core::chart::codes;
 use tally_core::{AccountId, AccountSubtype, Cents, EntryLine, Flex, NewEntry, Scope};
 use tally_store::{NewAccount, Store};
 
+/// A date in 2026, the year every test here lives in.
 fn d(m: u32, day: u32) -> NaiveDate {
     NaiveDate::from_ymd_opt(2026, m, day).unwrap()
 }
 
+/// The account with this chart code, e.g. "H6200" for Groceries.
 fn code(s: &Store, c: &str) -> AccountId {
     s.account_by_code(c).unwrap().unwrap().id
 }
 
-/// A sole proprietor who keeps the business and the household in one book.
+/// A sole proprietor who keeps the business and the household in one book:
+/// a business checking account, a business credit card, and a household
+/// checking account, on top of both default charts.
 struct Both {
     s: Store,
     biz_checking: AccountId,
@@ -34,10 +58,13 @@ fn both() -> Both {
     Both { s, biz_checking, biz_card, home_checking }
 }
 
+/// Posts a two-line entry moving `cents` from `credit` to `debit`; returns the entry id.
 fn post(s: &mut Store, date: NaiveDate, memo: &str, debit: AccountId, credit: AccountId, cents: i64) -> i64 {
     s.post_entry(&NewEntry::new(date, memo).line(EntryLine::debit(debit, Cents(cents))).line(EntryLine::credit(credit, Cents(cents))))
         .unwrap()
 }
+
+// ---------------------------------------------------------------- sides & the bridge between them
 
 #[test]
 fn a_household_book_has_only_household_accounts() {
@@ -93,7 +120,7 @@ fn groceries_on_the_business_card_become_an_owners_draw() {
 }
 
 #[test]
-fn moving_money_home_and_back() {
+fn paying_yourself_and_covering_the_business_keep_both_sides_balanced() {
     let mut b = both();
     let services = code(&b.s, "4100");
     post(&mut b.s, d(1, 2), "Client payment", b.biz_checking, services, 5000_00);
@@ -179,10 +206,13 @@ fn sub_accounts_stay_on_their_side() {
 use tally_core::budget::{Direction, Sentiment, Zone};
 use tally_store::{BudgetLine, BudgetTarget, NewPerson};
 
+/// A "spend at most" budget line with the default 10% tolerance.
 fn ceiling(target: BudgetTarget, cents: i64) -> BudgetLine {
     BudgetLine { target, amount: Cents(cents), direction: Direction::Ceiling, tolerance_pct: 10 }
 }
 
+/// Spends `cents` on the category with chart code `category`, paid from `from`,
+/// optionally tagged as being for a person. Returns the entry id.
 fn spend(s: &mut Store, date: NaiveDate, category: &str, from: AccountId, cents: i64, person: Option<i64>) -> i64 {
     let category = code(s, category);
     let id = post(s, date, "spend", category, from, cents);
@@ -295,7 +325,7 @@ fn savings_and_income_goals_are_floors() {
 }
 
 #[test]
-fn rules_know_who_it_was_for() {
+fn rules_and_past_tags_say_who_a_purchase_was_for() {
     use tally_core::bank::{FeedBatch, FeedTransaction};
     use tally_core::rules::{Direction as RuleDirection, MatchOp};
     use tally_store::NewRule;
@@ -361,6 +391,8 @@ fn rent_on_the_first_doesnt_look_like_overspending() {
 use tally_core::schedule::Cadence;
 use tally_store::{DueState, NewRecurringBill};
 
+/// A plain monthly bill due on `day`, starting 2026-01-01, paid by hand.
+/// Tests override fields with `..bill(...)`.
 fn bill(name: &str, category: AccountId, cents: i64, day: u32) -> NewRecurringBill {
     NewRecurringBill {
         name: name.into(),
@@ -401,7 +433,7 @@ fn a_payment_near_the_due_date_marks_it_paid() {
 }
 
 #[test]
-fn states_today_auto_pay_and_marks() {
+fn a_due_date_goes_due_today_then_overdue_and_can_be_marked_by_hand() {
     let b = both();
     let rent = code(&b.s, "H6000");
     let internet = b.s.create_recurring_bill(&NewRecurringBill { auto_pay: true, ..bill("Internet", code(&b.s, "H6120"), 65_00, 17) }).unwrap();
@@ -461,6 +493,7 @@ fn repeat_payments_are_suggested_as_bills() {
 #[test]
 fn a_bill_named_like_a_payee_only_covers_it_when_the_amount_fits() {
     let mut b = both();
+    // The category doesn't matter here, only the payee text and the amount.
     let fuel = code(&b.s, "H6200");
     for m in 6..=9 {
         post(&mut b.s, d(m, 8), "SHELL GAS 4411", fuel, b.home_checking, 45_00);
@@ -518,6 +551,7 @@ fn a_fresh_bank_import_is_enough_to_spot_bills() {
     assert_eq!(b.s.bill_suggestions(d(10, 1)).unwrap().len(), 2);
 }
 
+// Blocks: bank text that is huge or non-ASCII, and amounts at the i64 edges, crashing or bloating suggestions.
 #[test]
 fn hostile_bank_text_and_amounts_dont_break_suggestions() {
     use tally_core::bank::{FeedBatch, FeedTransaction};
@@ -553,6 +587,7 @@ fn hostile_bank_text_and_amounts_dont_break_suggestions() {
     assert!(b.s.bill_suggestions(d(10, 1)).unwrap().is_empty());
 }
 
+// Blocks: junk "Not a bill" keys, and an unbounded dismissal list that grows forever or starts refusing.
 #[test]
 fn dismissals_are_bounded_and_waving_off_always_works() {
     let b = both();
@@ -568,10 +603,14 @@ fn dismissals_are_bounded_and_waving_off_always_works() {
     b.s.dismiss_bill_suggestion("PAYEE A").unwrap();
 }
 
+// ---------------------------------------------------------------- bill detection: security regressions
+//
 // Bank text and amounts are whatever the bank, or whoever wrote the
-// description, says. These are the Black Team's attacks on bill detection,
-// kept as regressions.
+// description, says. These are the Black Team's (internal red team) attacks
+// on bill detection, kept as regressions. Each test opens with a "Blocks:"
+// line naming the attack it stops.
 
+/// One posted bank-feed line. Negative `cents` is money leaving the account.
 fn feed_txn(id: String, date: NaiveDate, desc: &str, merchant: Option<&str>, cents: i64) -> tally_core::bank::FeedTransaction {
     tally_core::bank::FeedTransaction {
         external_id: id,
@@ -584,6 +623,7 @@ fn feed_txn(id: String, date: NaiveDate, desc: &str, merchant: Option<&str>, cen
     }
 }
 
+/// Imports feed lines into household checking, as a bank sync would.
 fn import(b: &mut Both, added: Vec<tally_core::bank::FeedTransaction>) {
     b.s.import_feed(b.home_checking, &tally_core::bank::FeedBatch { added, ..Default::default() }).unwrap();
 }
@@ -604,6 +644,7 @@ fn bill_from(s: &tally_store::BillSuggestion, category: AccountId) -> NewRecurri
     }
 }
 
+// Blocks: a stranger debiting under the same ACH text hiding behind, or paying off, a real bill.
 #[test]
 fn a_different_ach_originator_behind_the_same_text_is_a_different_payee() {
     let mut b = both();
@@ -629,6 +670,7 @@ fn a_different_ach_originator_behind_the_same_text_is_a_different_payee() {
     assert_eq!(b.s.due_dates(d(11, 1), d(11, 30), d(11, 6)).unwrap()[0].state, DueState::Paid);
 }
 
+// Guards the other direction: the anti-spoofing above mustn't split one real payee into many.
 #[test]
 fn store_numbers_and_reference_numbers_still_group() {
     let mut b = both();
@@ -644,6 +686,7 @@ fn store_numbers_and_reference_numbers_still_group() {
     assert_eq!(keys, ["safeway", "comcast payment ref"]);
 }
 
+// Blocks: a look-alike payee hiding from review because its text contains a real bill's match text.
 #[test]
 fn a_look_alike_isnt_hidden_by_a_bill_it_merely_contains() {
     let mut b = both();
@@ -667,6 +710,7 @@ fn a_look_alike_isnt_hidden_by_a_bill_it_merely_contains() {
     assert!(b.s.bill_suggestions(d(10, 1)).unwrap().iter().any(|x| x.match_text == "possible security svc"));
 }
 
+// Blocks: an arbitrary charge, with the payee's name in the merchant field, counting as a varying bill's payment.
 #[test]
 fn a_usage_bill_keeps_its_typical_amount_and_wont_take_just_any_charge() {
     let mut b = both();
@@ -697,6 +741,7 @@ fn a_usage_bill_keeps_its_typical_amount_and_wont_take_just_any_charge() {
     assert!(matches!(b.s.create_recurring_bill(&NewRecurringBill { amount: Cents::ZERO, ..bill }), Err(tally_store::StoreError::Rule(_))));
 }
 
+// Blocks: bidi overrides, zero-width characters and homoglyphs disguising a suggested bill's name.
 #[test]
 fn suggested_names_hide_invisible_characters_and_look_alikes() {
     let mut b = both();
@@ -715,9 +760,11 @@ fn suggested_names_hide_invisible_characters_and_look_alikes() {
     assert_eq!(names, [("N?tflix.com", "nеtflix.com"), ("Qzx Holdings Llc", "qzx holdings llc"), ("Spotify", "spotify usa")]);
 }
 
+// Blocks: thousands of made-up payees flooding the suggestion list or the dismissal store.
 #[test]
 fn a_flood_of_made_up_payees_is_capped_and_can_be_waved_off() {
     let mut b = both();
+    // A distinct payee name per i: "PAYEE a", "PAYEE b", ... "PAYEE ab", ...
     let name = |i: usize| {
         let mut n = String::from("PAYEE ");
         let mut k = i;
@@ -741,6 +788,7 @@ fn a_flood_of_made_up_payees_is_capped_and_can_be_waved_off() {
     assert_eq!(left.len(), 5, "{left:?}");
 }
 
+// Blocks: an absurd amount becoming a bill, or overflowing the month's bill total.
 #[test]
 fn an_absurd_amount_never_becomes_a_bill_or_breaks_the_budget() {
     let mut b = both();
@@ -756,10 +804,11 @@ fn an_absurd_amount_never_becomes_a_bill_or_breaks_the_budget() {
     assert!(m.bills_due >= tally_store::MAX_BILL_AMOUNT);
 }
 
-/// Bill detection with a huge Review backlog. `cargo test --release -- --ignored --nocapture` to time it.
+/// Blocks: a huge Review backlog making bill detection hang. Ignored because it is slow
+/// in debug builds; `cargo test --release -- --ignored --nocapture` to time it.
 #[test]
 #[ignore]
-fn suggestions_with_a_huge_review_backlog() {
+fn bill_suggestions_stay_fast_with_a_huge_review_backlog() {
     for n in [10_000usize, 50_000, 100_000] {
         let mut b = both();
         let added = (0..n)
@@ -782,6 +831,7 @@ fn suggestions_with_a_huge_review_backlog() {
 use tally_core::insights::Band;
 use tally_store::{NewGoal, Tone};
 
+/// Opens a household savings account for goals to fill.
 fn savings(b: &Both) -> AccountId {
     b.s.create_account(&NewAccount::new("OnPoint Savings", AccountSubtype::Bank).scope(Scope::Household)).unwrap()
 }

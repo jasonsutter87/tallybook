@@ -1,8 +1,13 @@
+//! Bringing a household over from Ledger (mels-budget-app), against a
+//! database with Ledger's own schema (fixtures/ledger_schema.sql).
+//!
+//! Ledger's words map onto Tally's like this: a "sector" is a category
+//! account, a "store" is a categorization rule, an "allocation" is a person's
+//! budget line, a "month" carries the amount available, and "recurring" rows
+//! are bills. Ledger amounts are signed cents: negative is spending.
+
 // Amounts are written as dollars_cents (e.g. 1200_00), hence the grouping.
 #![allow(clippy::inconsistent_digit_grouping)]
-
-//! Bringing a household over from Ledger (mels-budget-app), against a
-//! database with Ledger's own schema.
 
 use chrono::NaiveDate;
 use rusqlite::Connection;
@@ -12,12 +17,21 @@ use tally_core::schedule::Cadence;
 use tally_core::{Cents, Flex, Scope};
 use tally_store::{BudgetTarget, Store};
 
+/// A date in 2026, the year every test here lives in.
 fn d(m: u32, day: u32) -> NaiveDate {
     NaiveDate::from_ymd_opt(2026, m, day).unwrap()
 }
 
 /// A small Ledger database: Mel and Ethan, a few sectors and stores, two
 /// months of entries, a plan, a bill, and a goal with contributions.
+/// Written to a fresh temp file named after the test, so tests can run in parallel.
+///
+/// Rows worth knowing about when reading the assertions:
+/// - "Old" is archived; Yoga and Bills have no household-chart match.
+/// - Changeability low/medium/high becomes flex Fixed/Usage/Lifestyle.
+/// - September's only allocation is a person *floor*, which Tally refuses.
+/// - The allowance is weekly on day_of_week 5; Ledger counts Sunday as 0.
+/// - e5 is a $15 return to Safeway; e6 and e8 are contributions to Hawaii.
 fn ledger(name: &str) -> PathBuf {
     let dir = std::env::temp_dir().join(format!("tally-ledger-{name}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
@@ -52,6 +66,7 @@ fn ledger(name: &str) -> PathBuf {
     path
 }
 
+/// An empty book with both sides, ready to receive an import.
 fn household() -> Store {
     let mut s = Store::open_in_memory().unwrap();
     s.add_side(Scope::Business).unwrap();
@@ -147,7 +162,7 @@ fn importing_again_adds_only_whats_new() {
 }
 
 #[test]
-fn it_needs_a_household_and_a_ledger() {
+fn importing_needs_a_household_side_and_a_real_ledger_file() {
     let mut business = Store::open_in_memory().unwrap();
     business.seed_default_chart().unwrap();
     assert!(business.import_ledger(&ledger("biz"), None).is_err());
@@ -160,10 +175,11 @@ fn it_needs_a_household_and_a_ledger() {
 }
 
 #[test]
-fn money_can_land_in_a_chosen_account() {
+fn imported_money_can_land_in_a_chosen_account_instead_of_a_new_one() {
     let mut s = household();
     let checking = s.create_account(&tally_store::NewAccount::new("Golden 1 Checking", tally_core::AccountSubtype::Bank).scope(Scope::Household)).unwrap();
     let r = s.import_ledger(&ledger("chosen"), Some(checking)).unwrap();
     assert_eq!(r.money_account_id, checking);
+    // Without a choice the importer would open a "Ledger import" account.
     assert!(s.accounts().unwrap().iter().all(|a| a.name != "Ledger import"));
 }

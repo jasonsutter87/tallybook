@@ -25,7 +25,11 @@ CREATE TABLE budget_months (
     available INTEGER CHECK (available IS NULL OR available >= 0)
 );
 
--- One line of a month's plan, for a person or for a category.
+-- One line of a month's plan, for a person or for a category, never both.
+-- Amounts here and everywhere are integer cents.
+-- direction: 'ceiling' is spend up to this; 'floor' is put in at least this.
+-- tolerance_pct: half-width of the "in range" band around the amount; 10
+-- means a $400 line is in range anywhere from $360 to $440.
 CREATE TABLE budgets (
     id            INTEGER PRIMARY KEY,
     month         TEXT NOT NULL REFERENCES budget_months(month),

@@ -10,15 +10,19 @@ import { AccountSelect, ContactSelect, ErrorBanner, Field, Modal, MoneyInput, Ta
 import { money, todayISO } from "../format";
 import type { Account, AccountSubtype, Cents, Scope } from "../types";
 
+/** Money going out (spending), coming in, or moving between two of your accounts. */
 type Way = "out" | "in" | "move";
 
 /** Accounts money physically sits in or is charged to. */
-const MONEY: AccountSubtype[] = ["bank", "credit_card", "other_current_asset"];
+export const MONEY_SUBTYPES: AccountSubtype[] = ["bank", "credit_card", "other_current_asset"];
+
+/** Names that usually mean physical cash. */
+const CASH_NAME = /cash|till|drawer|petty/i;
 
 /** A till or cash box first, then any bank account, on the given side. */
 function defaultAccount(accounts: Account[], scope: Scope): number | null {
-  const live = accounts.filter((a) => a.scope === scope && !a.archived && MONEY.includes(a.subtype));
-  const cash = live.find((a) => /cash|till|drawer|petty/i.test(a.name));
+  const live = accounts.filter((a) => a.scope === scope && !a.archived && MONEY_SUBTYPES.includes(a.subtype));
+  const cash = live.find((a) => CASH_NAME.test(a.name));
   return (cash ?? live.find((a) => a.subtype === "bank") ?? live[0])?.id ?? null;
 }
 
@@ -29,7 +33,9 @@ export default function LogMoneyModal(props: {
   scope?: Scope;
   /** Start with this account as where the money is. */
   accountId?: number | null;
+  /** Start with this person as who it was for (household only). */
   personId?: number | null;
+  /** Start on this date instead of today. */
   date?: string;
 }) {
   const toast = useToast();
@@ -70,6 +76,7 @@ export default function LogMoneyModal(props: {
     if (!ready) return;
     // Raw signs: positive is a debit. Money arriving debits the account it lands in.
     const [debit, credit] = way === "out" ? [category!, from!] : way === "in" ? [from!, category!] : [to!, from!];
+    // A memo for when no note was typed, so the register never shows a blank line.
     const fallback = { out: household ? "Spending" : "Cash expense", in: household ? "Money in" : "Cash sale", move: "Moved money" }[way];
     try {
       await post.mutateAsync({
@@ -151,11 +158,11 @@ export default function LogMoneyModal(props: {
         )}
         <div className="form-grid">
           <Field label={moving ? "From" : way === "out" ? "Paid from" : "Went into"}>
-            <AccountSelect scope={scope} value={from} onChange={setFrom} subtypes={MONEY} placeholder="e.g. Cash till" />
+            <AccountSelect scope={scope} value={from} onChange={setFrom} subtypes={MONEY_SUBTYPES} placeholder="e.g. Cash till" />
           </Field>
           {moving ? (
             <Field label="To">
-              <AccountSelect scope={scope} value={to} onChange={setTo} subtypes={MONEY} exclude={from != null ? [from] : []} placeholder="e.g. Checking" />
+              <AccountSelect scope={scope} value={to} onChange={setTo} subtypes={MONEY_SUBTYPES} exclude={from != null ? [from] : []} placeholder="e.g. Checking" />
             </Field>
           ) : (
             <Field label="When">

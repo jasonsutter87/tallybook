@@ -5,6 +5,13 @@
 //! category; a due date counts as paid when a household payment into that
 //! category lands near it, for about the right amount. The user can also
 //! mark a date paid or skipped by hand, which always wins.
+//!
+//! It also spots bills nobody has set up yet (`bill_suggestions`): the same
+//! payee paid on a schedule, in the books or in a fresh bank import. Bank
+//! text is untrusted: whoever sends or requests a payment writes its
+//! description. So that text is capped in length, stripped of invisible and
+//! direction-flipping characters, shown with look-alike letters masked, and
+//! never lets one payee's payments tick off, or hide, another's.
 
 use crate::{BadValue, PersonId, Result, Store, StoreError, Suggestion, conversion_err, rule};
 use chrono::{Days, NaiveDate};
@@ -22,7 +29,19 @@ pub type RecurringBillId = i64;
 const MATCH_DAYS: i64 = 10;
 /// Auto-pay bills get a few days' grace before they're called overdue.
 const AUTO_PAY_GRACE_DAYS: i64 = 3;
+/// Due dates are matched from this many days before the asked-for range, so
+/// a payment already claimed by last month's due date isn't counted again.
+const CLAIMED_LOOKBACK_DAYS: u64 = 45;
+/// A steady bill's payment may be off by a tenth of its amount...
+const STEADY_SLACK_DIVISOR: i64 = 10;
+/// ...or by this much, for small bills where a tenth is pennies ($5.00).
+const STEADY_MIN_SLACK: Cents = Cents(500);
 
+/// `recurring_bill_marks.status` for a due date the user marked paid or skipped.
+const MARK_PAID: &str = "paid";
+const MARK_SKIPPED: &str = "skipped";
+
+/// A household bill as the user sets it up.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct NewRecurringBill {
     pub name: String,
@@ -32,15 +51,25 @@ pub struct NewRecurringBill {
     /// The amount moves around (power, water): `amount` is the typical one.
     #[serde(default)]
     pub varies: bool,
+    /// The household spending category it's filed under; only payments into
+    /// it can tick a due date off.
     pub account_id: AccountId,
+    /// The household bank account or card it's usually paid from.
     #[serde(default)]
     pub paid_from_id: Option<AccountId>,
+    /// Who it's for, when it's one person's.
     #[serde(default)]
     pub person_id: Option<PersonId>,
+    /// Stored as JSON in `recurring_bills.cadence` (see `Cadence`).
     pub cadence: Cadence,
+    /// The first due date; the cadence counts from here.
     pub start_date: NaiveDate,
+    /// Paid automatically: just past due it's `Processing`, not `Overdue`.
     #[serde(default)]
     pub auto_pay: bool,
+    /// Bank text a payment must contain to count, e.g. `netflix.com`, as
+    /// `normalize_description` writes it, plus any long ids it must carry
+    /// (a suggestion's payee key). `None` lets any payment into the category count.
     #[serde(default)]
     pub match_text: Option<String>,
 }
@@ -50,10 +79,13 @@ pub struct RecurringBill {
     pub id: RecurringBillId,
     #[serde(flatten)]
     pub bill: NewRecurringBill,
+    /// Stopped bills keep their history but stop coming due.
     pub active: bool,
+    /// The next due date on or after today; `None` once stopped.
     pub next_due: Option<NaiveDate>,
 }
 
+/// Where one due date stands.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum DueState {
@@ -67,6 +99,7 @@ pub enum DueState {
     Upcoming,
 }
 
+/// The payment that settled a due date.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Payment {
     pub entry_id: EntryId,
@@ -76,6 +109,7 @@ pub struct Payment {
     pub manual: bool,
 }
 
+/// One time a bill comes due, with whether it's been paid.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct DueDate {
     pub bill_id: RecurringBillId,
@@ -107,6 +141,8 @@ pub struct BillSuggestion {
     pub times_seen: usize,
     /// How many of those are still waiting in Review.
     pub in_review: usize,
+    /// The payee key the payments were grouped on (`payee_key`), ready to be
+    /// the bill's `match_text` or to dismiss with "Not a bill".
     pub match_text: String,
     pub paid_from_id: Option<AccountId>,
     pub person_id: Option<PersonId>,
@@ -201,7 +237,7 @@ struct Candidate {
 /// imported amounts can sit at the edges of i64, and the difference mustn't
 /// overflow and panic.
 fn amount_close(bill: Cents, paid: Cents) -> bool {
-    let slack = (bill.0 / 10).max(500);
+    let slack = (bill.0 / STEADY_SLACK_DIVISOR).max(STEADY_MIN_SLACK.0);
     (i128::from(paid.0) - i128::from(bill.0)).abs() <= i128::from(slack)
 }
 
@@ -228,7 +264,100 @@ fn needle(match_text: Option<&str>) -> Option<(String, Vec<String>)> {
     (!base.is_empty() || !ids.is_empty()).then_some((base, ids))
 }
 
+/// The payment that ticks off a bill's due date, if one landed: into the
+/// bill's category, within `MATCH_DAYS`, about the right amount, carrying its
+/// `match_text`, and not already claimed. The closest in date wins and is
+/// claimed.
+fn find_payment(bill: &NewRecurringBill, due: NaiveDate, candidates: &[Candidate], claimed: &mut HashSet<(EntryId, AccountId)>) -> Option<Payment> {
+    let needle = needle(bill.match_text.as_deref());
+    let found = candidates
+        .iter()
+        .filter(|c| {
+            c.account_id == bill.account_id
+                && (c.date - due).num_days().abs() <= MATCH_DAYS
+                && amount_fits(bill, c.amount)
+                && needle.as_ref().is_none_or(|(text, ids)| c.text.contains(text.as_str()) && ids.iter().all(|id| c.ids.contains(id)))
+                && !claimed.contains(&(c.entry_id, c.account_id))
+        })
+        .min_by_key(|c| (c.date - due).num_days().abs())?;
+    claimed.insert((found.entry_id, found.account_id));
+    Some(Payment { entry_id: found.entry_id, date: found.date, amount: found.amount, manual: false })
+}
+
+/// A marked skip beats everything; then a payment; then the calendar.
+fn due_state(skipped: bool, paid: bool, auto_pay: bool, due: NaiveDate, today: NaiveDate) -> DueState {
+    if skipped {
+        DueState::Skipped
+    } else if paid {
+        DueState::Paid
+    } else if due == today {
+        DueState::DueToday
+    } else if due > today {
+        DueState::Upcoming
+    } else if auto_pay && (today - due).num_days() <= AUTO_PAY_GRACE_DAYS {
+        DueState::Processing
+    } else {
+        DueState::Overdue
+    }
+}
+
+/// One payment seen for a would-be bill, from the books or from Review.
+struct SeenPayment {
+    date: NaiveDate,
+    /// Money out, positive.
+    amount: Cents,
+    /// The payee as the bank or memo named it (`payee_name`), not yet tidied.
+    name: String,
+    category: Option<AccountId>,
+    paid_from: Option<AccountId>,
+    person: Option<PersonId>,
+    in_review: bool,
+}
+
+/// Payments by payee key without its ids (`payee_base`), each with the long
+/// ids it carried; `split_by_originator` sorts those out once it's known
+/// which ones repeat.
+type ByBase = HashMap<String, Vec<(Vec<String>, SeenPayment)>>;
+
+/// Payments by full payee key. An id on more than one payment names who's
+/// charging (an ACH originator), so it's part of the payee: a different
+/// originator behind the same bank text is a different payee. An id seen
+/// once is a reference number and says nothing.
+fn split_by_originator(groups: ByBase) -> HashMap<String, Vec<SeenPayment>> {
+    let mut payees: HashMap<String, Vec<SeenPayment>> = HashMap::new();
+    for (base, rows) in groups {
+        let mut counts: HashMap<String, usize> = HashMap::new();
+        for id in rows.iter().flat_map(|(ids, _)| ids) {
+            *counts.entry(id.clone()).or_default() += 1;
+        }
+        for (ids, seen) in rows {
+            let own = ids.iter().filter(|id| counts[id.as_str()] > 1).map(String::as_str);
+            payees.entry(with_ids(&base, own)).or_default().push(seen);
+        }
+    }
+    payees
+}
+
+/// Whether an existing bill already covers a suggested payee (`base`, its
+/// `ids`), so it needn't be suggested. Only a bill that would tick this
+/// payee's payments off counts: the amount must fit too, or a look-alike
+/// charging five times as much ("NETFLIX.COM-PREMIUM") hides behind Netflix.
+fn bill_covers(bill: &NewRecurringBill, base: &str, ids: &[String], amount: Cents, category: Option<AccountId>) -> bool {
+    let words = |t: &str| mentions(base, t) || mentions(t, base);
+    let text = needle(bill.match_text.as_deref());
+    amount_fits(bill, amount)
+        // A bill pointed at one originator's id covers no other.
+        && text.as_ref().is_none_or(|(_, t_ids)| t_ids.iter().all(|id| ids.contains(id)))
+        // What the user pointed at, as whole words...
+        && (text.as_ref().is_some_and(|(t, _)| words(t))
+            // ...or the bill's name ("Gas" isn't every gas station, but the amount says)...
+            || words(&base_key(&bill.name))
+            // ...or, with nothing to go on, its category.
+            || (text.is_none() && Some(bill.account_id) == category))
+}
+
 impl Store {
+    /// Every bill, active first, with its next due date as of `today`.
     pub fn recurring_bills(&self, today: NaiveDate) -> Result<Vec<RecurringBill>> {
         let mut stmt = self.conn.prepare(&format!("SELECT {BILL_COLS} FROM recurring_bills ORDER BY active DESC, name"))?;
         let rows = stmt.query_map([], bill_from_row)?.collect::<rusqlite::Result<Vec<_>>>()?;
@@ -241,6 +370,7 @@ impl Store {
             .collect())
     }
 
+    /// One bill and whether it's active, or `NotFound`.
     fn recurring_bill(&self, id: RecurringBillId) -> Result<(NewRecurringBill, bool)> {
         self.conn
             .query_row(&format!("SELECT {BILL_COLS} FROM recurring_bills WHERE id = ?1"), [id], bill_from_row)
@@ -279,6 +409,8 @@ impl Store {
         Ok(())
     }
 
+    /// Sets up a bill. It must be filed under a household spending category,
+    /// and paid (if that's said) from a household bank account or card.
     pub fn create_recurring_bill(&self, b: &NewRecurringBill) -> Result<RecurringBillId> {
         self.validate_bill(b)?;
         self.conn.execute(
@@ -300,6 +432,8 @@ impl Store {
         Ok(self.conn.last_insert_rowid())
     }
 
+    /// Changes a bill, checked as `create_recurring_bill` checks a new one.
+    /// Due dates already marked by hand keep their marks.
     pub fn update_recurring_bill(&self, id: RecurringBillId, b: &NewRecurringBill) -> Result<()> {
         self.validate_bill(b)?;
         self.recurring_bill(id)?;
@@ -345,11 +479,11 @@ impl Store {
                 self.conn.execute("DELETE FROM recurring_bill_marks WHERE bill_id = ?1 AND due_date = ?2", params![id, due])?;
             }
             Some(s @ (DueState::Paid | DueState::Skipped)) => {
-                let s = if s == DueState::Paid { "paid" } else { "skipped" };
+                let s = if s == DueState::Paid { MARK_PAID } else { MARK_SKIPPED };
                 self.conn.execute(
                     "INSERT INTO recurring_bill_marks(bill_id, due_date, status, entry_id) VALUES (?1, ?2, ?3, ?4)
                      ON CONFLICT(bill_id, due_date) DO UPDATE SET status = excluded.status, entry_id = excluded.entry_id",
-                    params![id, due, s, entry_id.filter(|_| s == "paid")],
+                    params![id, due, s, entry_id.filter(|_| s == MARK_PAID)],
                 )?;
             }
             Some(_) => return rule("a due date can only be marked paid or skipped"),
@@ -357,6 +491,9 @@ impl Store {
         Ok(())
     }
 
+    /// Every household payment into a spending category dated in `[from, to]`,
+    /// one per entry and category, oldest first. Voids and reversals are left
+    /// out: a voided payment never paid anything.
     fn candidates(&self, from: NaiveDate, to: NaiveDate) -> Result<Vec<Candidate>> {
         let mut stmt = self.conn.prepare_cached(
             "SELECT e.id, e.date, l.account_id, SUM(l.amount), e.memo || ' ' || IFNULL(bt.description, '') || ' ' || IFNULL(bt.merchant, '')
@@ -388,16 +525,21 @@ impl Store {
 
     /// Every due date of every active bill in `[from, to]`, with whether
     /// it's been paid, judged as of `today`.
+    ///
+    /// Due dates are settled oldest first, and each payment settles at most
+    /// one, so two due dates close together can't both claim the same payment.
     pub fn due_dates(&self, from: NaiveDate, to: NaiveDate, today: NaiveDate) -> Result<Vec<DueDate>> {
         let bills = self.recurring_bills(today)?;
-        // Match from a little earlier, so a payment already claimed by last
-        // month's due date isn't counted again for this one.
-        let lookback = from - Days::new(45);
+        let lookback = from - Days::new(CLAIMED_LOOKBACK_DAYS);
         let candidates = self.candidates(lookback - Days::new(MATCH_DAYS as u64), to + Days::new(MATCH_DAYS as u64))?;
+        // What the user marked by hand: (bill, due date) -> (`MARK_PAID` or
+        // `MARK_SKIPPED`, the entry that paid it).
         let marks: HashMap<(RecurringBillId, NaiveDate), (String, Option<EntryId>)> = {
             let mut stmt = self.conn.prepare("SELECT bill_id, due_date, status, entry_id FROM recurring_bill_marks")?;
             stmt.query_map([], |r| Ok(((r.get(0)?, r.get(1)?), (r.get(2)?, r.get(3)?))))?.collect::<rusqlite::Result<_>>()?
         };
+        // Payments already spoken for: first those marked by hand, then each
+        // one found as it's found.
         let mut claimed: HashSet<(EntryId, AccountId)> =
             marks.values().filter_map(|(_, e)| *e).flat_map(|e| candidates.iter().filter(move |c| c.entry_id == e).map(|c| (c.entry_id, c.account_id))).collect();
 
@@ -412,40 +554,19 @@ impl Store {
         for (b, due) in all {
             let mark = marks.get(&(b.id, due));
             let payment = match mark {
-                Some((s, entry)) if s == "paid" => Some(match entry.and_then(|e| candidates.iter().find(|c| c.entry_id == e)) {
+                Some((s, entry)) if s == MARK_PAID => Some(match entry.and_then(|e| candidates.iter().find(|c| c.entry_id == e)) {
                     Some(c) => Payment { entry_id: c.entry_id, date: c.date, amount: c.amount, manual: true },
+                    // Marked paid with no entry, or one outside the window: take the bill's word for it.
                     None => Payment { entry_id: entry.unwrap_or_default(), date: due, amount: b.bill.amount, manual: true },
                 }),
                 Some(_) => None,
-                None => {
-                    let needle = needle(b.bill.match_text.as_deref());
-                    let found = candidates
-                        .iter()
-                        .filter(|c| {
-                            c.account_id == b.bill.account_id
-                                && (c.date - due).num_days().abs() <= MATCH_DAYS
-                                && amount_fits(&b.bill, c.amount)
-                                && needle.as_ref().is_none_or(|(text, ids)| c.text.contains(text.as_str()) && ids.iter().all(|id| c.ids.contains(id)))
-                                && !claimed.contains(&(c.entry_id, c.account_id))
-                        })
-                        .min_by_key(|c| (c.date - due).num_days().abs());
-                    found.map(|c| {
-                        claimed.insert((c.entry_id, c.account_id));
-                        Payment { entry_id: c.entry_id, date: c.date, amount: c.amount, manual: false }
-                    })
-                }
+                None => find_payment(&b.bill, due, &candidates, &mut claimed),
             };
+            // Earlier due dates were only settled to claim their payments.
             if due < from {
                 continue;
             }
-            let state = match (mark.map(|m| m.0.as_str()), &payment) {
-                (Some("skipped"), _) => DueState::Skipped,
-                (_, Some(_)) => DueState::Paid,
-                _ if due == today => DueState::DueToday,
-                _ if due > today => DueState::Upcoming,
-                _ if b.bill.auto_pay && (today - due).num_days() <= AUTO_PAY_GRACE_DAYS => DueState::Processing,
-                _ => DueState::Overdue,
-            };
+            let skipped = mark.is_some_and(|m| m.0 == MARK_SKIPPED);
             out.push(DueDate {
                 bill_id: b.id,
                 name: b.bill.name.clone(),
@@ -454,7 +575,7 @@ impl Store {
                 person_id: b.bill.person_id,
                 auto_pay: b.bill.auto_pay,
                 due_date: due,
-                state,
+                state: due_state(skipped, payment.is_some(), b.bill.auto_pay, due, today),
                 payment,
             });
         }
@@ -467,116 +588,11 @@ impl Store {
     /// going. Money out that's still waiting in Review counts too, so a
     /// fresh bank import is enough to spot them.
     pub fn bill_suggestions(&self, today: NaiveDate) -> Result<Vec<BillSuggestion>> {
-        struct Seen {
-            date: NaiveDate,
-            amount: Cents,
-            name: String,
-            category: Option<AccountId>,
-            paid_from: Option<AccountId>,
-            person: Option<PersonId>,
-            in_review: bool,
-        }
         let from = today - Days::new(LOOKBACK_DAYS);
-        // Payments by payee key without its ids, each with the ids it carried
-        // (sorted out below, once it's known which ones repeat).
-        let mut groups: HashMap<String, Vec<(Vec<String>, Seen)>> = HashMap::new();
-
-        // Household spending already in the books.
-        let mut stmt = self.conn.prepare(
-            "SELECT e.date, l.account_id, l.amount, COALESCE(bt.description, e.memo), bt.merchant, bt.ledger_account_id, e.person_id
-             FROM journal_lines l
-             JOIN journal_entries e ON e.id = l.entry_id
-             JOIN accounts a ON a.id = l.account_id
-             LEFT JOIN bank_transactions bt ON bt.entry_id = e.id
-             WHERE a.scope = 'household' AND a.subtype IN ('expense', 'other_expense') AND l.amount > 0
-               AND e.date >= ?1 AND e.date <= ?2 AND e.voided_by_id IS NULL AND e.reverses_id IS NULL
-             ORDER BY e.date, e.id, l.id",
-        )?;
-        let rows = stmt.query_map(params![from, today], |r| {
-            let description: String = r.get(3)?;
-            let merchant: Option<String> = r.get(4)?;
-            Ok((
-                payee_name(&description, merchant.as_deref()),
-                description,
-                Seen {
-                    date: r.get(0)?,
-                    category: Some(r.get(1)?),
-                    amount: Cents(r.get(2)?),
-                    name: String::new(),
-                    paid_from: r.get(5)?,
-                    person: r.get(6)?,
-                    in_review: false,
-                },
-            ))
-        })?;
-        for row in rows {
-            let (name, description, seen) = row?;
-            if let Some(base) = payee_base(&description) {
-                groups.entry(base).or_default().push((digit_ids(&description), Seen { name, ..seen }));
-            }
-        }
-
-        // Money out of a household account that's still waiting in Review.
-        let accounts: HashMap<AccountId, Account> = self.accounts()?.into_iter().map(|a| (a.id, a)).collect();
-        let household = |id: AccountId| accounts.get(&id).filter(|a| a.scope == Scope::Household);
-        let rules = self.rules()?;
-        let review = self.review_money_out(from, today, MAX_REVIEW_ROWS)?;
-        let bases: Vec<Option<String>> = review.iter().map(|t| payee_base(&t.description)).collect();
-        let mut review_count: HashMap<&str, usize> = HashMap::new();
-        for base in bases.iter().flatten() {
-            *review_count.entry(base).or_default() += 1;
-        }
-        for (t, base) in review.iter().zip(&bases) {
-            let Some(base) = base else {
-                continue;
-            };
-            // Seen once, it can't be on a schedule: skip working out where it goes.
-            if groups.get(base).map_or(0, Vec::len) + review_count.get(base.as_str()).copied().unwrap_or(0) < 2 {
-                continue;
-            }
-            // Money out, as a positive amount; i64::MIN has no positive and isn't a real payment.
-            let Some(amount) = t.amount.0.checked_neg().filter(|a| *a > 0) else {
-                continue;
-            };
-            let category = match self.suggest(t, &rules)? {
-                // Already in the books, and counted above.
-                Some(Suggestion::Match { .. }) => continue,
-                Some(Suggestion::Rule { account_id, .. } | Suggestion::History { account_id }) => {
-                    if household(account_id).is_none_or(|a| a.kind() != AccountKind::Expense) {
-                        // Paying off a card or moving money, not a bill.
-                        continue;
-                    }
-                    Some(account_id)
-                }
-                None => None,
-            };
-            let seen = Seen {
-                date: t.date,
-                amount: Cents(amount),
-                name: payee_name(&t.description, t.merchant.as_deref()),
-                category,
-                paid_from: Some(t.ledger_account_id),
-                person: self.suggest_person(t, &rules)?,
-                in_review: true,
-            };
-            groups.entry(base.clone()).or_default().push((digit_ids(&t.description), seen));
-        }
-
-        // An id on more than one payment names who's charging (an ACH
-        // originator), so it's part of the payee: a different originator
-        // behind the same bank text is a different payee. An id seen once is
-        // a reference number and says nothing.
-        let mut payees: HashMap<String, Vec<Seen>> = HashMap::new();
-        for (base, rows) in groups {
-            let mut counts: HashMap<String, usize> = HashMap::new();
-            for id in rows.iter().flat_map(|(ids, _)| ids) {
-                *counts.entry(id.clone()).or_default() += 1;
-            }
-            for (ids, seen) in rows {
-                let own = ids.iter().filter(|id| counts[id.as_str()] > 1).map(String::as_str);
-                payees.entry(with_ids(&base, own)).or_default().push(seen);
-            }
-        }
+        let mut groups = ByBase::new();
+        self.gather_booked_payments(from, today, &mut groups)?;
+        self.gather_review_payments(from, today, &mut groups)?;
+        let payees = split_by_originator(groups);
 
         let dismissed: HashSet<String> = self.dismissed_bill_suggestions()?.into_iter().collect();
         let existing = self.recurring_bills(today)?;
@@ -595,23 +611,7 @@ impl Store {
             seen.sort_by_key(|s| s.date);
             let account_id = most_common(seen.iter().filter_map(|s| s.category));
             let (base, ids) = (base_key(&key), digit_ids(&key));
-            let covered = existing.iter().any(|b| {
-                // Covered only by a bill that would tick this payee's payments
-                // off: the amount must fit too, or a look-alike charging five
-                // times as much ("NETFLIX.COM-PREMIUM") hides behind Netflix.
-                let words = |t: &str| mentions(&base, t) || mentions(t, &base);
-                let text = needle(b.bill.match_text.as_deref());
-                amount_fits(&b.bill, p.amount)
-                    // A bill pointed at one originator's id covers no other.
-                    && text.as_ref().is_none_or(|(_, t_ids)| t_ids.iter().all(|id| ids.contains(id)))
-                    // What the user pointed at, as whole words...
-                    && (text.as_ref().is_some_and(|(t, _)| words(t))
-                        // ...or the bill's name ("Gas" isn't every gas station, but the amount says)...
-                        || words(&base_key(&b.bill.name))
-                        // ...or, with nothing to go on, its category.
-                        || (text.is_none() && Some(b.bill.account_id) == account_id))
-            });
-            if covered {
+            if existing.iter().any(|b| bill_covers(&b.bill, &base, &ids, p.amount, account_id)) {
                 continue;
             }
             let Some(latest) = seen.last() else {
@@ -636,6 +636,94 @@ impl Store {
         out.sort_by(|a, b| b.amount.cmp(&a.amount).then_with(|| a.name.cmp(&b.name)).then_with(|| a.match_text.cmp(&b.match_text)));
         out.truncate(MAX_SUGGESTIONS);
         Ok(out)
+    }
+
+    /// Household spending already in the books, since `from`.
+    fn gather_booked_payments(&self, from: NaiveDate, today: NaiveDate, groups: &mut ByBase) -> Result<()> {
+        let mut stmt = self.conn.prepare(
+            "SELECT e.date, l.account_id, l.amount, COALESCE(bt.description, e.memo), bt.merchant, bt.ledger_account_id, e.person_id
+             FROM journal_lines l
+             JOIN journal_entries e ON e.id = l.entry_id
+             JOIN accounts a ON a.id = l.account_id
+             LEFT JOIN bank_transactions bt ON bt.entry_id = e.id
+             WHERE a.scope = 'household' AND a.subtype IN ('expense', 'other_expense') AND l.amount > 0
+               AND e.date >= ?1 AND e.date <= ?2 AND e.voided_by_id IS NULL AND e.reverses_id IS NULL
+             ORDER BY e.date, e.id, l.id",
+        )?;
+        let rows = stmt.query_map(params![from, today], |r| {
+            let description: String = r.get(3)?;
+            let merchant: Option<String> = r.get(4)?;
+            Ok((
+                description.clone(),
+                SeenPayment {
+                    date: r.get(0)?,
+                    category: Some(r.get(1)?),
+                    amount: Cents(r.get(2)?),
+                    name: payee_name(&description, merchant.as_deref()),
+                    paid_from: r.get(5)?,
+                    person: r.get(6)?,
+                    in_review: false,
+                },
+            ))
+        })?;
+        for row in rows {
+            let (description, seen) = row?;
+            if let Some(base) = payee_base(&description) {
+                groups.entry(base).or_default().push((digit_ids(&description), seen));
+            }
+        }
+        Ok(())
+    }
+
+    /// Money out of a household account that's still waiting in Review,
+    /// since `from`, with the category and person it would probably get.
+    /// Rows that are already in the books, or aren't spending, are left out.
+    fn gather_review_payments(&self, from: NaiveDate, today: NaiveDate, groups: &mut ByBase) -> Result<()> {
+        let accounts: HashMap<AccountId, Account> = self.accounts()?.into_iter().map(|a| (a.id, a)).collect();
+        let household = |id: AccountId| accounts.get(&id).filter(|a| a.scope == Scope::Household);
+        let rules = self.rules()?;
+        let review = self.review_money_out(from, today, MAX_REVIEW_ROWS)?;
+        let bases: Vec<Option<String>> = review.iter().map(|t| payee_base(&t.description)).collect();
+        let mut review_count: HashMap<&str, usize> = HashMap::new();
+        for base in bases.iter().flatten() {
+            *review_count.entry(base).or_default() += 1;
+        }
+        for (t, base) in review.iter().zip(&bases) {
+            let Some(base) = base else {
+                continue;
+            };
+            // Seen once, it can't be on a schedule: skip working out where it goes.
+            if groups.get(base).map_or(0, Vec::len) + review_count.get(base.as_str()).copied().unwrap_or(0) < 2 {
+                continue;
+            }
+            // Money out, as a positive amount; i64::MIN has no positive and isn't a real payment.
+            let Some(amount) = t.amount.0.checked_neg().filter(|a| *a > 0) else {
+                continue;
+            };
+            let category = match self.suggest(t, &rules)? {
+                // Already in the books, and counted by `gather_booked_payments`.
+                Some(Suggestion::Match { .. }) => continue,
+                Some(Suggestion::Rule { account_id, .. } | Suggestion::History { account_id }) => {
+                    if household(account_id).is_none_or(|a| a.kind() != AccountKind::Expense) {
+                        // Paying off a card or moving money, not a bill.
+                        continue;
+                    }
+                    Some(account_id)
+                }
+                None => None,
+            };
+            let seen = SeenPayment {
+                date: t.date,
+                amount: Cents(amount),
+                name: payee_name(&t.description, t.merchant.as_deref()),
+                category,
+                paid_from: Some(t.ledger_account_id),
+                person: self.suggest_person(t, &rules)?,
+                in_review: true,
+            };
+            groups.entry(base.clone()).or_default().push((digit_ids(&t.description), seen));
+        }
+        Ok(())
     }
 
     /// Waved-off payees, oldest first.
@@ -753,6 +841,8 @@ fn display_name(raw: &str) -> String {
     truncate_chars(&readable(&visible(raw)), MAX_NAME_CHARS)
 }
 
+/// Words without digits or `#` (store numbers, references), title-cased
+/// when the bank was shouting, each `unmask`ed.
 fn readable(raw: &str) -> String {
     let words: Vec<&str> = raw
         .split(|c: char| c.is_whitespace() || c == '*')
@@ -788,6 +878,7 @@ fn mentions(text: &str, name: &str) -> bool {
         && text.match_indices(name).any(|(i, m)| word_edge(text[..i].chars().next_back()) && word_edge(text[i + m.len()..].chars().next()))
 }
 
+/// The value seen most often, if any.
 fn most_common<T: Copy + Eq + std::hash::Hash>(xs: impl Iterator<Item = T>) -> Option<T> {
     let mut counts: HashMap<T, usize> = HashMap::new();
     let mut best: Option<(T, usize)> = None;

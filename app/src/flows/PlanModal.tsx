@@ -3,13 +3,16 @@
 
 import { Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
-import { call, queryClient } from "../api";
+import { call, queryClient, useApi } from "../api";
 import { monthName, usePeople } from "../components/household";
 import { AccountSelect, ErrorBanner, Field, Modal, MoneyInput, Tabs, useAccountNames, useToast } from "../components/ui";
 import { FLEX_LABEL } from "../format";
 import type { Account, BudgetDirection, BudgetTarget, Cents, MonthBudget } from "../types";
-import { useApi } from "../api";
 
+/** A new line's "in range" band, ±10%. Matches the backend's default. */
+const DEFAULT_TOLERANCE_PCT = 10;
+
+/** A budget line being edited; `amount` is null until typed. */
 interface Draft {
   target: BudgetTarget;
   amount: Cents | null;
@@ -17,7 +20,17 @@ interface Draft {
   tolerance_pct: number;
 }
 
-const key = (t: BudgetTarget) => `${t.kind}:${t.id}`;
+/** One line per target: "person:3" or "account:12". */
+const targetKey = (t: BudgetTarget) => `${t.kind}:${t.id}`;
+
+/** The small words under a line's name: what kind of thing it budgets. */
+function lineKind(target: BudgetTarget, account: Account | undefined): string {
+  if (target.kind === "person") return "Everything for them";
+  if (account?.flex) return FLEX_LABEL[account.flex];
+  if (account?.kind === "income") return "Income";
+  if (account?.kind === "asset") return "Savings";
+  return "Spending";
+}
 
 export default function PlanModal(props: { open: boolean; onClose: () => void; month: MonthBudget }) {
   const toast = useToast();
@@ -41,10 +54,10 @@ export default function PlanModal(props: { open: boolean; onClose: () => void; m
   const accountOf = (id: number) => accounts.data?.find((a) => a.id === id);
   const set = (i: number, patch: Partial<Draft>) => setLines((ls) => ls.map((l, j) => (j === i ? { ...l, ...patch } : l)));
   const add = (target: BudgetTarget) => {
-    if (lines.some((l) => key(l.target) === key(target))) return;
+    if (lines.some((l) => targetKey(l.target) === targetKey(target))) return;
     // Savings accounts and income are goals to reach; spending is a limit.
     const kind = target.kind === "account" ? accountOf(target.id)?.kind : "expense";
-    setLines((ls) => [...ls, { target, amount: null, direction: kind === "expense" ? "ceiling" : "floor", tolerance_pct: 10 }]);
+    setLines((ls) => [...ls, { target, amount: null, direction: kind === "expense" ? "ceiling" : "floor", tolerance_pct: DEFAULT_TOLERANCE_PCT }]);
   };
 
   const save = async () => {
@@ -52,12 +65,15 @@ export default function PlanModal(props: { open: boolean; onClose: () => void; m
     setError(null);
     const month = props.month.month;
     try {
+      // A carried-forward plan belongs to an earlier month; writing "available"
+      // gives this month a plan of its own before its lines are saved.
       if (available !== props.month.available || props.month.plan_from) {
         await call("budget.set_available", { month, amount: available });
       }
-      const kept = new Set(lines.map((l) => key(l.target)));
+      // Remove lines that were deleted here, then write every line that's left.
+      const kept = new Set(lines.map((l) => targetKey(l.target)));
       for (const l of props.month.lines) {
-        if (!kept.has(key(l.target))) await call("budget.remove", { month, target: l.target });
+        if (!kept.has(targetKey(l.target))) await call("budget.remove", { month, target: l.target });
       }
       for (const l of lines) {
         await call("budget.set", { month, line: { target: l.target, amount: l.amount ?? 0, direction: l.direction, tolerance_pct: l.tolerance_pct } });
@@ -72,7 +88,7 @@ export default function PlanModal(props: { open: boolean; onClose: () => void; m
     }
   };
 
-  const used = new Set(lines.map((l) => key(l.target)));
+  const used = new Set(lines.map((l) => targetKey(l.target)));
   return (
     <Modal
       open={props.open}
@@ -103,11 +119,11 @@ export default function PlanModal(props: { open: boolean; onClose: () => void; m
           {lines.map((l, i) => {
             const acct = l.target.kind === "account" ? accountOf(l.target.id) : undefined;
             return (
-              <div key={key(l.target)} className="plan-line">
+              <div key={targetKey(l.target)} className="plan-line">
                 <div className="grow" style={{ minWidth: 0 }}>
                   <div className="bold truncate">{nameOf(l.target)}</div>
                   <div className="subtle small">
-                    {l.target.kind === "person" ? "Everything for them" : acct?.flex ? FLEX_LABEL[acct.flex] : acct?.kind === "income" ? "Income" : acct?.kind === "asset" ? "Savings" : "Spending"}
+                    {lineKind(l.target, acct)}
                   </div>
                 </div>
                 <select
@@ -153,7 +169,7 @@ export default function PlanModal(props: { open: boolean; onClose: () => void; m
           ) : people.length ? (
             <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
               {people.map((p) => (
-                <button key={p.id} className="btn btn-secondary btn-sm" disabled={used.has(`person:${p.id}`)} onClick={() => add({ kind: "person", id: p.id })}>
+                <button key={p.id} className="btn btn-secondary btn-sm" disabled={used.has(targetKey({ kind: "person", id: p.id }))} onClick={() => add({ kind: "person", id: p.id })}>
                   + {p.name}
                 </button>
               ))}

@@ -8,6 +8,11 @@
 //! sum to zero. Reports convert to each account's "natural" sign (assets
 //! and expenses grow with debits; liabilities, equity and income grow with
 //! credits) only at the edge.
+//!
+//! A book may keep a business, a household, or both (see
+//! [`account::Scope`]). The household side adds `budget` (time-aware plan
+//! status), `schedule` (recurring bills and finding them in bank history)
+//! and `insights` (goal projections and the budget score).
 
 pub mod account;
 pub mod bank;

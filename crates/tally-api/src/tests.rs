@@ -262,8 +262,10 @@ async fn cloud_copies_are_encrypted_pruned_and_pushed() {
     assert!(status["last"].is_string() && status["last_error"].is_null());
 }
 
+/// The household mode's book-level methods, as the UI calls them: sides,
+/// scoped accounts, and scoped reports and dashboard. Amounts are cents.
 #[tokio::test]
-async fn household_books_through_the_dispatcher() {
+async fn a_household_book_and_its_sides_work_through_the_dispatcher() {
     let (app, dir) = app("household");
     app.call("book.create", json!({ "path": dir.join("h.tallybook"), "company_name": "The Rivera household", "sides": ["household"] }))
         .await
@@ -305,8 +307,10 @@ async fn household_books_through_the_dispatcher() {
     assert_eq!(home_dash["cash"], 350000);
 }
 
+/// Cash on the business side: "entries.post" with a `payee_id` (for 1099s).
+/// 4000 is Sales and 6150 Contractors in the default chart.
 #[tokio::test]
-async fn cash_from_the_till_with_a_payee() {
+async fn cash_paid_from_the_till_keeps_its_payee_and_moves_the_balance() {
     let (app, dir) = app("till");
     app.call("book.create", json!({ "path": dir.join("t.tallybook"), "company_name": "Shop" })).await.unwrap();
     let till = app.call("accounts.create", json!({ "name": "Cash till", "subtype": "bank", "opening_balance": 20000, "opening_date": "2026-01-01" })).await.unwrap();

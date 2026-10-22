@@ -36,7 +36,7 @@ import {
   useToast,
 } from "../components/ui";
 import JournalEntryModal from "../flows/JournalEntryModal";
-import LogMoneyModal from "../flows/LogMoneyModal";
+import LogMoneyModal, { MONEY_SUBTYPES } from "../flows/LogMoneyModal";
 import { SUBTYPE_LABEL, date, money, plural, shortDate, todayISO } from "../format";
 import type { Account, Cleared, Connection, Contact, Entry, RegisterRow } from "../types";
 import "./accounts.css";
@@ -145,7 +145,7 @@ export default function Register() {
     );
 
   // Cash, bank and card accounts get the plain-words form; the journal entry stays in the menu.
-  const moneyAccount = ["bank", "credit_card", "other_current_asset"].includes(account.subtype);
+  const moneyAccount = MONEY_SUBTYPES.includes(account.subtype);
   const cols = columnsFor(account);
   const showCleared = account.kind === "asset" || account.kind === "liability";
   const link = account.link;

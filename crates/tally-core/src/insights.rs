@@ -1,5 +1,9 @@
 //! Household insights: when a savings goal will be reached, and a budget
 //! score that sums up how the household is doing.
+//!
+//! Only the pure arithmetic lives here. The insights that need the book
+//! itself (alerts, opportunity gaps, wins) are gathered in `tally-store`,
+//! which also builds the inputs below from real entries.
 
 use crate::money::Cents;
 use chrono::{Datelike, Months, NaiveDate};
@@ -7,8 +11,10 @@ use serde::Serialize;
 
 // ---------------------------------------------------------------- goals
 
+/// Where a savings goal stands and when it will be reached.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Projection {
+    /// Still to save; never negative.
     pub remaining: Cents,
     /// 0..=1000, per mille. An overfunded goal reads as complete, not 120%.
     pub permille: u32,
@@ -16,6 +22,7 @@ pub struct Projection {
     pub monthly_rate: Cents,
     /// First of the month she gets there at that rate; `None` with no rate yet.
     pub projected: Option<NaiveDate>,
+    /// Whole months from this one to `projected`, rounded up.
     pub months_remaining: Option<u32>,
     /// With a target date: is the current rate enough?
     pub on_track: Option<bool>,
@@ -23,6 +30,7 @@ pub struct Projection {
     pub required_monthly: Option<Cents>,
 }
 
+/// Calendar months from `from`'s month to `to`'s; the days don't matter.
 fn months_between(from: NaiveDate, to: NaiveDate) -> i64 {
     i64::from(to.year() - from.year()) * 12 + i64::from(to.month()) - i64::from(from.month())
 }
@@ -33,6 +41,9 @@ fn months_between(from: NaiveDate, to: NaiveDate) -> i64 {
 /// goal's rate is averaged over the whole months that saw a contribution, so
 /// one generous month doesn't promise Hawaii by Christmas and one skipped
 /// month doesn't push it to never.
+///
+/// Months are counted whole and rounded up: $10 short at $200 a month is
+/// still one more month, never "0.05 months".
 ///
 /// `saved` is everything in the goal so far; `contributed` is the part put in
 /// month by month, which is what the rate is judged on (money that was
@@ -91,15 +102,18 @@ pub struct MonthTotals {
     pub planned: Cents,
 }
 
+/// Everything the budget score looks at, gathered by the caller.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ScoreInput {
     /// Recent months, oldest first; the last is the month being scored.
     pub months: Vec<MonthTotals>,
     /// Bills whose due date has passed this month, and how many of those are unpaid.
     pub bills_due: u32,
+    /// How many of `bills_due` are still unpaid.
     pub bills_unpaid: u32,
     /// Put toward goals or savings this month.
     pub set_aside: Cents,
+    /// 1-based day of the month being scored.
     pub day_of_month: u32,
     pub days_in_month: u32,
     /// The month's projected spending, when the caller knows better than a
@@ -107,6 +121,7 @@ pub struct ScoreInput {
     pub pace: Option<Cents>,
 }
 
+/// The score's named range, as on a credit report. See [`band_for`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Band {
@@ -117,9 +132,13 @@ pub enum Band {
     Excellent,
 }
 
+/// One part of the score, with what it earned and a sentence about why.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct ScoreFactor {
+    /// Stable identifier the UI keys on: `within_income`, `bills`, `pace`,
+    /// `aside` or `steady`.
     pub key: &'static str,
+    /// Shown to the user.
     pub label: &'static str,
     /// Share of the score, out of 100.
     pub weight: u32,
@@ -127,9 +146,11 @@ pub struct ScoreFactor {
     pub fraction: f64,
     /// What it contributed, out of `weight`.
     pub points: f64,
+    /// A plain sentence for the UI, e.g. "$7,200 more out than in over 6 months".
     pub summary: String,
 }
 
+/// The household's budget score: 300 to 850, its band, and how it was earned.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct BudgetScore {
     pub score: u32,
@@ -137,6 +158,43 @@ pub struct BudgetScore {
     pub factors: Vec<ScoreFactor>,
 }
 
+// The score's range and bands copy the familiar US credit-score scale
+// (FICO's 300 to 850 and its usual band edges), so a number like 720 already
+// means something to her. Points earned out of 100 map linearly onto it.
+const SCORE_MIN: f64 = 300.0;
+const SCORE_MAX: f64 = 850.0;
+
+// Each factor's share of the score, out of 100. Why this order is on `score`.
+const WEIGHT_WITHIN_INCOME: u32 = 35;
+const WEIGHT_BILLS: u32 = 25;
+const WEIGHT_PACE: u32 = 20;
+const WEIGHT_ASIDE: u32 = 10;
+const WEIGHT_STEADY: u32 = 10;
+
+// Each factor scales linearly from zero at one bound to full marks at the other.
+
+/// Money in over money out: 80% (spending a quarter more than comes in)
+/// scores nothing; 15% to spare is full marks.
+const WITHIN_INCOME_ZERO_AT: f64 = 0.8;
+const WITHIN_INCOME_FULL_AT: f64 = 1.15;
+/// Projected spending over the plan: 25% over scores nothing; 10% under is
+/// full marks, leaving room for the end of the month.
+const PACE_ZERO_AT: f64 = 1.25;
+const PACE_FULL_AT: f64 = 0.9;
+/// Setting aside a tenth of a typical month's income is full marks, the
+/// old "save 10%" rule of thumb.
+const ASIDE_FULL_SHARE: f64 = 0.1;
+/// Income's month-to-month swing (coefficient of variation: standard
+/// deviation over mean). A salary sits near 0; freelance work often near 1.
+const STEADY_ZERO_AT: f64 = 0.8;
+const STEADY_FULL_AT: f64 = 0.15;
+/// Below this swing, the summary calls income even.
+const STEADY_EVEN_BELOW: f64 = 0.25;
+/// A factor with nothing to judge yet (no plan, one month of history) sits
+/// halfway: an open question, neither a pass nor a fail.
+const NEUTRAL: f64 = 0.5;
+
+/// The named band for a score, using credit-score band edges.
 pub fn band_for(score: u32) -> Band {
     match score {
         ..580 => Band::Poor,
@@ -181,6 +239,10 @@ pub fn dollars(c: Cents) -> String {
 /// late check doesn't swing it. Bills come next: those failures have
 /// consequences. Pace and saving are real but recoverable. Steady income is
 /// last and small, because freelance money arrives when it arrives.
+///
+/// Factors: living within income 35, bills paid 25, spending to plan 20,
+/// putting money aside 10, steady income 10. The weights and bounds are
+/// judgement calls, named as constants above `band_for`.
 pub fn score(input: &ScoreInput) -> BudgetScore {
     let current = input.months.last().copied().unwrap_or(MonthTotals { income: Cents::ZERO, spending: Cents::ZERO, planned: Cents::ZERO });
     let total_in: i64 = input.months.iter().map(|m| m.income.0).sum();
@@ -188,12 +250,14 @@ pub fn score(input: &ScoreInput) -> BudgetScore {
     let n = input.months.len();
     let mut factors = Vec::new();
 
+    // Nothing spent: with income that's past full marks (2.0 stands in for
+    // "infinitely within"); with no money either way it's even (1.0).
     let ratio = if total_out == 0 { if total_in > 0 { 2.0 } else { 1.0 } } else { total_in as f64 / total_out as f64 };
     factors.push(ScoreFactor {
         key: "within_income",
         label: "Living within your income",
-        weight: 35,
-        fraction: scale(ratio, 0.8, 1.15),
+        weight: WEIGHT_WITHIN_INCOME,
+        fraction: scale(ratio, WITHIN_INCOME_ZERO_AT, WITHIN_INCOME_FULL_AT),
         points: 0.0,
         summary: if total_in >= total_out {
             format!("{} more in than out over {n} months", dollars(Cents(total_in - total_out)))
@@ -206,12 +270,13 @@ pub fn score(input: &ScoreInput) -> BudgetScore {
     factors.push(ScoreFactor {
         key: "bills",
         label: "Bills paid on time",
-        weight: 25,
+        weight: WEIGHT_BILLS,
         fraction: if input.bills_due == 0 { 1.0 } else { clamp01(f64::from(paid) / f64::from(input.bills_due)) },
         points: 0.0,
         summary: if input.bills_due == 0 { "nothing due yet this month".into() } else { format!("{paid} of {} due so far are paid", input.bills_due) },
     });
 
+    // Floored at 1% so a day-0 input can't divide by zero.
     let elapsed = (f64::from(input.day_of_month) / f64::from(input.days_in_month.max(1))).clamp(0.01, 1.0);
     let paced = match input.pace {
         Some(p) => p.0.max(0) as f64,
@@ -221,9 +286,9 @@ pub fn score(input: &ScoreInput) -> BudgetScore {
     factors.push(ScoreFactor {
         key: "pace",
         label: "Spending to plan",
-        weight: 20,
+        weight: WEIGHT_PACE,
         // No plan is an unanswered question, not an overspend: neutral.
-        fraction: if plan <= 0.0 { 0.5 } else { scale(paced / plan, 1.25, 0.9) },
+        fraction: if plan <= 0.0 { NEUTRAL } else { scale(paced / plan, PACE_ZERO_AT, PACE_FULL_AT) },
         points: 0.0,
         summary: if plan <= 0.0 {
             "no plan for this month".into()
@@ -232,13 +297,14 @@ pub fn score(input: &ScoreInput) -> BudgetScore {
         },
     });
 
-    // A tenth of what came in this window, per month, is the full mark.
+    // Judged against the window's average month, so one big check doesn't
+    // raise the bar.
     let monthly_in = total_in as f64 / n.max(1) as f64;
     factors.push(ScoreFactor {
         key: "aside",
         label: "Putting money aside",
-        weight: 10,
-        fraction: if monthly_in > 0.0 { clamp01(input.set_aside.0 as f64 / (monthly_in * 0.1)) } else { 0.0 },
+        weight: WEIGHT_ASIDE,
+        fraction: if monthly_in > 0.0 { clamp01(input.set_aside.0 as f64 / (monthly_in * ASIDE_FULL_SHARE)) } else { 0.0 },
         points: 0.0,
         summary: if input.set_aside.0 > 0 { format!("{} set aside this month", dollars(input.set_aside)) } else { "nothing set aside yet this month".into() },
     });
@@ -246,16 +312,17 @@ pub fn score(input: &ScoreInput) -> BudgetScore {
     let incomes: Vec<f64> = input.months.iter().map(|m| m.income.0 as f64).collect();
     let mean = incomes.iter().sum::<f64>() / incomes.len().max(1) as f64;
     let variance = incomes.iter().map(|v| (v - mean).powi(2)).sum::<f64>() / incomes.len().max(1) as f64;
+    // No income at all counts as maximally uneven.
     let cv = if mean > 0.0 { variance.sqrt() / mean } else { 1.0 };
     factors.push(ScoreFactor {
         key: "steady",
         label: "Steady income",
-        weight: 10,
-        fraction: if incomes.len() < 2 { 0.5 } else { scale(cv, 0.8, 0.15) },
+        weight: WEIGHT_STEADY,
+        fraction: if incomes.len() < 2 { NEUTRAL } else { scale(cv, STEADY_ZERO_AT, STEADY_FULL_AT) },
         points: 0.0,
         summary: if incomes.len() < 2 {
             "not enough history yet".into()
-        } else if cv < 0.25 {
+        } else if cv < STEADY_EVEN_BELOW {
             "arrives at a fairly even rate".into()
         } else {
             "arrives unevenly, which is worth planning around".into()
@@ -266,7 +333,7 @@ pub fn score(input: &ScoreInput) -> BudgetScore {
         f.points = f.fraction * f64::from(f.weight);
     }
     let earned: f64 = factors.iter().map(|f| f.points).sum();
-    let score = (300.0 + 550.0 * earned / 100.0).round() as u32;
+    let score = (SCORE_MIN + (SCORE_MAX - SCORE_MIN) * earned / 100.0).round() as u32;
     BudgetScore { score, band: band_for(score), factors }
 }
 

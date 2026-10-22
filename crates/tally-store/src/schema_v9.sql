@@ -5,6 +5,7 @@ CREATE TABLE import_links (
     source      TEXT NOT NULL,      -- e.g. 'ledger'
     kind        TEXT NOT NULL,      -- 'entry', 'person', 'goal', ...
     external_id TEXT NOT NULL,
+    -- The row this became here; which table depends on kind.
     local_id    INTEGER NOT NULL,
     PRIMARY KEY (source, kind, external_id)
 );

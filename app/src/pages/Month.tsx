@@ -16,9 +16,14 @@ import { FLEX_LABEL, money, todayISO } from "../format";
 import type { BudgetLineView, DueDate, MonthBudget } from "../types";
 import "./Month.css";
 
+/** "Where it went" lists this many of the biggest categories. */
+const CATEGORIES_SHOWN = 8;
+
+/** Routes: /month is the current month; /month/YYYY-MM is any other. */
 export default function Month() {
   const params = useParams();
   const navigate = useNavigate();
+  // A malformed month in the URL falls back to this month rather than erroring.
   const month = params.month && /^\d{4}-\d{2}$/.test(params.month) ? params.month : thisMonth();
   const { data, error, isLoading } = useApi<MonthBudget>("budget.month", { month });
   const due = useApi<DueDate[]>("recurring.due");
@@ -37,15 +42,16 @@ export default function Month() {
     );
 
   const net = data.income - data.spending;
+  // With a plan's "available" amount, the headline is what's left of it;
+  // without one, it's simply in versus out.
   const left = data.available != null ? data.available - data.spending : null;
   const spendingLines = data.lines.filter((l) => l.direction === "ceiling");
   const goalLines = data.lines.filter((l) => l.direction === "floor");
+  // The biggest bar in each list fills the width; at least 1 to never divide by zero.
   const maxCategory = Math.max(1, ...data.categories.map((c) => c.spending));
   const maxPerson = Math.max(1, ...data.people.map((p) => p.spending));
-  const soon = (() => {
-    const g = groupDue(due.data ?? [], todayISO());
-    return [...g.now, ...g.week];
-  })();
+  const dueGroups = groupDue(due.data ?? [], todayISO());
+  const dueSoon = [...dueGroups.now, ...dueGroups.week];
 
   return (
     <div className="page">
@@ -63,6 +69,7 @@ export default function Month() {
         }
         subtitle={
           <>
+            {/* A past month is judged at its last day; a future one hasn't started. */}
             {data.is_current ? `Day ${data.day_of_month} of ${data.days_in_month}` : data.day_of_month === data.days_in_month ? "Finished" : "Coming up"}
             {data.plan_from && ` · plan carried forward from ${monthName(data.plan_from, false)}`}
             {!data.is_current && (
@@ -109,7 +116,7 @@ export default function Month() {
 
         {data.is_current && (due.data?.length ?? 0) > 0 && (
           <Card title="Due today & this week" action={<Link to="/due" className="small bold">All bills</Link>}>
-            <DueList items={soon} empty="Nothing due this week." />
+            <DueList items={dueSoon} empty="Nothing due this week." />
           </Card>
         )}
 
@@ -158,6 +165,7 @@ export default function Month() {
               </button>
             }
           >
+            {/* One row is only "Shared": nobody has been added yet. */}
             {data.people.length <= 1 ? (
               <div className="muted small">
                 Add the people in your household to see what each of you costs.{" "}
@@ -187,7 +195,7 @@ export default function Month() {
               <div className="muted small">Nothing spent yet this month.</div>
             ) : (
               <div className="stack" style={{ gap: 12 }}>
-                {data.categories.slice(0, 8).map((c) => (
+                {data.categories.slice(0, CATEGORIES_SHOWN).map((c) => (
                   <Link key={c.account_id} to={`/accounts/${c.account_id}`} className="month-category">
                     <div className="row-between" style={{ marginBottom: 6 }}>
                       <span className="row" style={{ gap: 8, minWidth: 0 }}>
@@ -221,6 +229,7 @@ export default function Month() {
   );
 }
 
+/** One labeled whole-dollar figure beside the hero. */
 function Figure(props: { label: string; cents: number }) {
   return (
     <div>
@@ -230,6 +239,7 @@ function Figure(props: { label: string; cents: number }) {
   );
 }
 
+/** A budget line: its name, status pill, meter, and caption. */
 function LineRow({ line }: { line: BudgetLineView }) {
   const tone = SENTIMENT_TONE[line.status.sentiment];
   return (

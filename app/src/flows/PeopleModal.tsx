@@ -41,6 +41,7 @@ export default function PeopleModal(props: { open: boolean; onClose: () => void 
         <div className="stack-sm">
           {people.map((p) => (
             <div key={p.id} className={`row ${p.archived ? "muted" : ""}`} style={{ gap: 8 }}>
+              {/* A rename saves when the field loses focus. */}
               <input
                 className="input grow"
                 defaultValue={p.name}

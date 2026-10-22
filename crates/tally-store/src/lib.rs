@@ -3,6 +3,11 @@
 //! Business rules that need the database live here (accounts exist, lock
 //! date, void-by-reversal, reconciliation state). Pure accounting rules live
 //! in `tally-core`; the schema's triggers are the last line of defense.
+//!
+//! A book keeps a business side, a household side, or both (`Store::sides`).
+//! Every account sits on one side, and every entry balances within each side
+//! on its own: an entry that crosses sides gets owner's-draw lines added when
+//! it's posted (`bridge_lines`).
 
 use chrono::{Datelike, NaiveDate};
 use rusqlite::types::Type;
@@ -33,7 +38,31 @@ pub use tax::*;
 pub type LineId = i64;
 pub type ReconciliationId = i64;
 
+/// The schema, step by step: (the `PRAGMA user_version` a step brings a book
+/// to, its SQL). Each file says in its header what it adds. Steps run in
+/// order, each in its own transaction, so a failed upgrade leaves the book at
+/// the last version that finished. Steps are only ever appended.
+const MIGRATIONS: &[(i64, &str)] = &[
+    (1, include_str!("schema.sql")),
+    (2, include_str!("schema_v2.sql")),  // bank feeds
+    (3, include_str!("schema_v3.sql")),  // customers, vendors, invoices, bills
+    (4, include_str!("schema_v4.sql")),  // tax center
+    (5, include_str!("schema_v5.sql")),  // household side: account scope, flex
+    (6, include_str!("schema_v6.sql")),  // people and monthly budgets
+    (7, include_str!("schema_v7.sql")),  // recurring household bills
+    (8, include_str!("schema_v8.sql")),  // savings goals
+    (9, include_str!("schema_v9.sql")),  // import_links, for re-importing
+    (10, include_str!("schema_v10.sql")), // bills whose amount varies
+];
+
+/// The newest schema this build knows: the last step of `MIGRATIONS`.
 const SCHEMA_VERSION: i64 = 10;
+const _: () = assert!(MIGRATIONS[MIGRATIONS.len() - 1].0 == SCHEMA_VERSION);
+
+/// Settings key for the sides this book keeps: `Scope` names joined by
+/// commas, business first, e.g. `business,household`. Missing means a book
+/// from before household support, which is business-only.
+const SIDES_KEY: &str = "book.sides";
 
 #[derive(Debug, thiserror::Error)]
 pub enum StoreError {
@@ -75,11 +104,13 @@ impl NewAccount {
         NewAccount { code: None, name: name.into(), subtype, parent_id: None, scope: Scope::Business, flex: None }
     }
 
+    /// Gives it a chart code ("6100", "H6200").
     pub fn code(mut self, code: impl Into<String>) -> NewAccount {
         self.code = Some(code.into());
         self
     }
 
+    /// Puts it on the given side of the book.
     pub fn scope(mut self, scope: Scope) -> NewAccount {
         self.scope = scope;
         self
@@ -289,65 +320,13 @@ impl Store {
                 "this book was created by a newer Tallybook (schema {version}); please upgrade"
             ));
         }
-        if version < 1 {
-            let tx = self.conn.transaction()?;
-            tx.execute_batch(include_str!("schema.sql"))?;
-            tx.pragma_update(None, "user_version", 1)?;
-            tx.commit()?;
-        }
-        if version < 2 {
-            let tx = self.conn.transaction()?;
-            tx.execute_batch(include_str!("schema_v2.sql"))?;
-            tx.pragma_update(None, "user_version", 2)?;
-            tx.commit()?;
-        }
-        if version < 3 {
-            let tx = self.conn.transaction()?;
-            tx.execute_batch(include_str!("schema_v3.sql"))?;
-            tx.pragma_update(None, "user_version", 3)?;
-            tx.commit()?;
-        }
-        if version < 4 {
-            let tx = self.conn.transaction()?;
-            tx.execute_batch(include_str!("schema_v4.sql"))?;
-            tx.pragma_update(None, "user_version", 4)?;
-            tx.commit()?;
-        }
-        if version < 5 {
-            let tx = self.conn.transaction()?;
-            tx.execute_batch(include_str!("schema_v5.sql"))?;
-            tx.pragma_update(None, "user_version", 5)?;
-            tx.commit()?;
-        }
-        if version < 6 {
-            let tx = self.conn.transaction()?;
-            tx.execute_batch(include_str!("schema_v6.sql"))?;
-            tx.pragma_update(None, "user_version", 6)?;
-            tx.commit()?;
-        }
-        if version < 7 {
-            let tx = self.conn.transaction()?;
-            tx.execute_batch(include_str!("schema_v7.sql"))?;
-            tx.pragma_update(None, "user_version", 7)?;
-            tx.commit()?;
-        }
-        if version < 8 {
-            let tx = self.conn.transaction()?;
-            tx.execute_batch(include_str!("schema_v8.sql"))?;
-            tx.pragma_update(None, "user_version", 8)?;
-            tx.commit()?;
-        }
-        if version < 9 {
-            let tx = self.conn.transaction()?;
-            tx.execute_batch(include_str!("schema_v9.sql"))?;
-            tx.pragma_update(None, "user_version", 9)?;
-            tx.commit()?;
-        }
-        if version < 10 {
-            let tx = self.conn.transaction()?;
-            tx.execute_batch(include_str!("schema_v10.sql"))?;
-            tx.pragma_update(None, "user_version", 10)?;
-            tx.commit()?;
+        for &(step, sql) in MIGRATIONS {
+            if version < step {
+                let tx = self.conn.transaction()?;
+                tx.execute_batch(sql)?;
+                tx.pragma_update(None, "user_version", step)?;
+                tx.commit()?;
+            }
         }
         Ok(())
     }
@@ -447,12 +426,12 @@ impl Store {
     /// The sides this book keeps, business first. Books from before
     /// household support are business-only.
     pub fn sides(&self) -> Result<Vec<Scope>> {
-        let Some(raw) = setting(&self.conn, "book.sides")? else {
+        let Some(raw) = setting(&self.conn, SIDES_KEY)? else {
             return Ok(vec![Scope::Business]);
         };
         let mut sides = raw
             .split(',')
-            .map(|s| s.parse::<Scope>().map_err(|_| StoreError::Rule(format!("corrupt book.sides setting: {raw:?}"))))
+            .map(|s| s.parse::<Scope>().map_err(|_| StoreError::Rule(format!("corrupt {SIDES_KEY} setting: {raw:?}"))))
             .collect::<Result<Vec<_>>>()?;
         sides.sort_by_key(|s| *s as u8);
         sides.dedup();
@@ -463,7 +442,7 @@ impl Store {
     /// codes that already exist) and records the side. A brand-new book that
     /// gets only a household side becomes household-only.
     pub fn add_side(&mut self, scope: Scope) -> Result<()> {
-        let fresh = setting(&self.conn, "book.sides")?.is_none()
+        let fresh = setting(&self.conn, SIDES_KEY)?.is_none()
             && self.conn.query_row("SELECT COUNT(*) FROM accounts", [], |r| r.get::<_, i64>(0))? == 0;
         let mut sides = if fresh { vec![] } else { self.sides()? };
         if !sides.contains(&scope) {
@@ -479,7 +458,7 @@ impl Store {
             )?;
         }
         let joined = sides.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(",");
-        set_setting(&tx, "book.sides", Some(&joined))?;
+        set_setting(&tx, SIDES_KEY, Some(&joined))?;
         tx.commit()?;
         Ok(())
     }
@@ -493,6 +472,8 @@ impl Store {
         Ok(all)
     }
 
+    /// How far a household spending category can bend (fixed, usage,
+    /// lifestyle); `None` clears it. Only those categories carry one.
     pub fn set_flex(&self, id: AccountId, flex: Option<Flex>) -> Result<()> {
         let account = self.account(id)?;
         if flex.is_some() && !(account.scope == Scope::Household && account.kind() == tally_core::AccountKind::Expense) {
@@ -689,6 +670,7 @@ impl Store {
         self.profit_and_loss_in(from, to, None)
     }
 
+    /// Profit and loss for one side of the book, or the whole book with `None`.
     pub fn profit_and_loss_in(&self, from: NaiveDate, to: NaiveDate, scope: Option<Scope>) -> Result<ProfitAndLoss> {
         Ok(report::profit_and_loss(&self.accounts_in(scope)?, &self.balances(Some(from), to)?))
     }
@@ -703,6 +685,7 @@ impl Store {
         self.balance_sheet_in(as_of, None)
     }
 
+    /// The balance sheet for one side of the book, or the whole book with `None`.
     pub fn balance_sheet_in(&self, as_of: NaiveDate, scope: Option<Scope>) -> Result<BalanceSheet> {
         let fy_start = self.fiscal_year_start(as_of)?;
         let before = match fy_start.pred_opt() {
@@ -916,9 +899,13 @@ impl Store {
 
 // ---------------------------------------------------------------- shared helpers
 
+/// Writes a validated entry inside `tx`, the one place every posting goes
+/// through. Its lines must name live accounts; when they cross sides of the
+/// book, `bridge_lines` are added so each side still balances on its own.
 fn post_in(tx: &Transaction, entry: &NewEntry, source: &str, reverses: Option<EntryId>) -> Result<EntryId> {
     entry.validate()?;
     check_not_locked(tx, entry.date)?;
+    // Sum of the business lines; checked, since imported amounts can be huge.
     let mut business = Cents::ZERO;
     for line in &entry.lines {
         let found: Option<(String, bool, String)> = tx

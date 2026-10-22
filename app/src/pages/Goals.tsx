@@ -6,21 +6,18 @@ import { Pencil, PiggyBank, Plus, Target } from "lucide-react";
 import { useEffect, useState } from "react";
 import { call, queryClient, useAction, useApi } from "../api";
 import { AccountSelect, Card, EmptyState, ErrorBanner, Field, Loading, Modal, MoneyInput, PageHeader, Tabs, useAccountNames, useToast } from "../components/ui";
+import { monthName } from "../components/household";
 import { celebrate } from "../confetti";
 import { date, money, todayISO } from "../format";
 import type { Account, Cents, Goal, NewGoal } from "../types";
 import "./Goals.css";
 
-function monthYear(iso: string) {
-  const [y, m] = iso.split("-").map(Number);
-  return new Date(y, m - 1, 1).toLocaleDateString("en-US", { month: "long", year: "numeric" });
-}
-
 /** "On track for March 2027", "Needs $250 a month to make June", and so on. */
 function outlook(g: Goal): string {
+  // achieved_at is a date, but slicing keeps a full timestamp readable too.
   if (g.achieved_at) return `Reached ${date(g.achieved_at.slice(0, 10))}`;
   if (g.monthly_rate <= 0) return g.required_monthly ? `Needs ${money(g.required_monthly, { whole: true })} a month to make ${date(g.target_date)}` : "Nothing put aside yet";
-  const when = g.projected ? monthYear(g.projected) : "";
+  const when = g.projected ? monthName(g.projected) : "";
   if (g.on_track === false && g.required_monthly) return `At ${money(g.monthly_rate, { whole: true })} a month you'd get there ${when}; ${date(g.target_date)} needs ${money(g.required_monthly, { whole: true })}`;
   return `At ${money(g.monthly_rate, { whole: true })} a month, you'll get there ${when}`;
 }
@@ -40,6 +37,7 @@ export default function Goals() {
         <ErrorBanner error={error} />
       </div>
     );
+  // Reached goals stay on the board until someone puts them away (archives them).
   const live = data.filter((g) => !g.archived);
 
   return (
@@ -85,6 +83,7 @@ export default function Goals() {
               <div className="goal-amount num">
                 {money(g.saved, { whole: true })} <span className="subtle">of {money(g.target, { whole: true })}</span>
               </div>
+              {/* permille is thousandths; a tenth of it is a percent. */}
               <div className="progress goal-progress" role="progressbar" aria-valuenow={g.permille / 10} aria-valuemin={0} aria-valuemax={100} aria-label={`${g.name} progress`}>
                 <div style={{ width: `${g.permille / 10}%` }} />
               </div>
@@ -111,6 +110,7 @@ export default function Goals() {
   );
 }
 
+/** Create a goal (`"new"`) or edit one; `null` keeps the modal closed. */
 function GoalModal(props: { goal: Goal | null | "new"; onClose: () => void }) {
   const toast = useToast();
   const accounts = useApi<Account[]>("accounts.list");
@@ -211,6 +211,11 @@ function GoalModal(props: { goal: Goal | null | "new"; onClose: () => void }) {
   );
 }
 
+/**
+ * Put money toward a goal, or take some back: a transfer between a bank
+ * account and the goal's account. The backend says when this one reached the
+ * target, which is the only time confetti fires.
+ */
 function ContributeModal(props: { goal: Goal | null; onClose: () => void }) {
   const toast = useToast();
   const accounts = useApi<Account[]>("accounts.list");
@@ -226,6 +231,7 @@ function ContributeModal(props: { goal: Goal | null; onClose: () => void }) {
     setAmount(null);
     setWay("in");
     setError(null);
+    // Default to the first household bank account that isn't the goal's own.
     const checking = (accounts.data ?? []).find((a) => a.scope === "household" && a.subtype === "bank" && a.id !== g.account_id && !a.archived);
     setFrom(checking?.id ?? null);
     // eslint-disable-next-line react-hooks/exhaustive-deps

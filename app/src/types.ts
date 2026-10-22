@@ -36,7 +36,11 @@ export interface BankLink {
 /** Which side of the book an account belongs to. Each side balances on its own. */
 export type Scope = "business" | "household";
 
-/** How far a household spending category can bend. */
+/**
+ * How far a household spending category can bend: `fixed` is hard to change
+ * (rent), `usage` moves with use (power, groceries), `lifestyle` is a choice
+ * (eating out). Null on an account means nobody has said.
+ */
 export type Flex = "fixed" | "usage" | "lifestyle";
 
 export interface Account {
@@ -47,6 +51,7 @@ export interface Account {
   parent_id: number | null;
   archived: boolean;
   scope: Scope;
+  /** Household spending categories only; null elsewhere or when unsorted. */
   flex: Flex | null;
   kind: AccountKind;
   /** Natural sign: what you have (assets), owe (liabilities), earned/spent. */
@@ -761,30 +766,45 @@ export interface ContactTaxInput {
 }
 
 // ------------------------------------------------------------- household budgets
+// Household books only. Mirrors crates/tally-store/src/budget.rs and
+// crates/tally-core/src/budget.rs. A "month" is a "YYYY-MM" string.
 
+/** Someone in the household that money can be tagged as being for. */
 export interface Person {
   id: number;
   name: string;
+  /** A CSS color, for telling people apart at a glance. */
   color: string;
   sort_order: number;
+  /** Hidden from pickers; their past entries keep the tag. */
   archived: boolean;
 }
 
 /** Spend up to this (ceiling), or get at least this much in (floor). */
 export type BudgetDirection = "ceiling" | "floor";
+/**
+ * Where a line stands against its target, the same for both directions:
+ * "under" always means below target, not "doing well". `trending_over`
+ * means not over yet, but on pace to finish past the tolerance band.
+ */
 export type Zone = "under" | "in_range" | "trending_over" | "over";
+/** How to feel about the zone, which depends on the direction. */
 export type Sentiment = "good" | "caution" | "alarm";
 
+/** What a budget line is measured against: a person, or one account (category). */
 export type BudgetTarget = { kind: "person"; id: number } | { kind: "account"; id: number };
 
+/** A line's standing, judged by how far into the month it is. */
 export interface BudgetStatus {
   zone: Zone;
   sentiment: Sentiment;
-  /** Projected end-of-month total. */
+  /** Projected end-of-month total at the pace so far. */
   pace: Cents;
-  /** 0..1 of the month gone. */
+  /** Fraction of the month gone, 0..1. 1 for a finished month. */
   elapsed: number;
+  /** Target minus progress. Negative means past the target. */
   remaining: Cents;
+  /** Half-width of the "in range" band around the target. */
   band: Cents;
 }
 
@@ -792,19 +812,26 @@ export interface BudgetLineView {
   id: number;
   target: BudgetTarget;
   name: string;
+  /** Set only for account lines whose category has a flex. */
   flex: Flex | null;
+  /** The target for the month. */
   amount: Cents;
   direction: BudgetDirection;
+  /** Half-width of the "in range" band, in whole percent of `amount` (10 = ±10%). */
   tolerance_pct: number;
+  /** Spent so far for a ceiling; put in or earned so far for a floor. */
   progress: Cents;
   status: BudgetStatus;
+  /** Whole percent of `amount` used. Ceilings only: null for a floor or a zero amount. */
   percent_used: number | null;
 }
 
 export interface PersonSpend {
+  /** null is the "Shared" row: spending nobody was tagged on. Always present, last. */
   person_id: number | null;
   name: string;
   spending: Cents;
+  /** How many entries make up `spending`. */
   entries: number;
 }
 
@@ -815,21 +842,28 @@ export interface CategorySpend {
   spending: Cents;
 }
 
+/** Everything the Month page shows for one month. */
 export interface MonthBudget {
   month: string;
+  /** First and last day of the month. */
   from: ISODate;
   to: ISODate;
+  /** The day statuses are judged at: today for the current month, the last day for a past one. */
   day_of_month: number;
   days_in_month: number;
   is_current: boolean;
+  /** The "YYYY-MM" this plan was set in, when it was carried forward unchanged; null when set this month. */
   plan_from: string | null;
+  /** What there is to work with this month; null when nobody said. */
   available: Cents | null;
   income: Cents;
   spending: Cents;
+  /** Spending against `available`; null when `available` is. */
   overall: BudgetStatus | null;
   lines: BudgetLineView[];
   planned_for_people: Cents;
   planned_for_categories: Cents;
+  /** Recurring bills paid this month, and still to come this month. */
   bills_paid: Cents;
   bills_due: Cents;
   people: PersonSpend[];
@@ -837,7 +871,13 @@ export interface MonthBudget {
 }
 
 // ------------------------------------------------------------- recurring bills
+// Mirrors crates/tally-core/src/schedule.rs and crates/tally-store/src/recurring.rs.
 
+/**
+ * When a bill comes around. `day` is 1..31, moved back to the month's last
+ * day when the month is short. "months" counts from the bill's start month
+ * (12 is yearly); "week" repeats every 7 days from the start date.
+ */
 export type Cadence = { every: "month"; day: number } | { every: "months"; months: number; day: number } | { every: "week" };
 
 export interface NewRecurringBill {
@@ -846,23 +886,31 @@ export interface NewRecurringBill {
   amount: Cents;
   /** The amount moves around (power, water): `amount` is the typical one. */
   varies: boolean;
+  /** The spending category it's filed under. */
   account_id: number;
+  /** The bank or card it's paid from; null for any. */
   paid_from_id: number | null;
+  /** Who it's for; null is shared. */
   person_id: number | null;
   cadence: Cadence;
   start_date: ISODate;
+  /** Pays itself, so a just-missed due date reads "processing", not "overdue". */
   auto_pay: boolean;
+  /** Text the bank description must contain to count as this bill; null matches on category alone. */
   match_text: string | null;
 }
 
 export interface RecurringBill extends NewRecurringBill {
   id: number;
+  /** false once stopped; a stopped bill makes no due dates. */
   active: boolean;
   next_due: ISODate | null;
 }
 
+/** `processing`: auto-pay, just past due, payment probably on its way. */
 export type DueState = "paid" | "skipped" | "overdue" | "processing" | "due_today" | "upcoming";
 
+/** One occurrence of a bill. */
 export interface DueDate {
   bill_id: number;
   name: string;
@@ -872,9 +920,11 @@ export interface DueDate {
   auto_pay: boolean;
   due_date: ISODate;
   state: DueState;
+  /** The payment that ticked it off; `manual` when marked by hand rather than found. Null while unpaid. */
   payment: { entry_id: number; date: ISODate; amount: Cents; manual: boolean } | null;
 }
 
+/** A repeat payment that looks like a bill nobody has set up yet. */
 export interface BillSuggestion {
   name: string;
   /** null when it's only been seen in Review, uncategorized. */
@@ -888,69 +938,95 @@ export interface BillSuggestion {
   times_seen: number;
   /** How many are still waiting in Review. */
   in_review: number;
+  /** Also the suggestion's identity: dismissing one sends this back. */
   match_text: string;
   paid_from_id: number | null;
   person_id: number | null;
 }
 
 // ------------------------------------------------------------- goals & insights
+// Mirrors crates/tally-store/src/insights.rs and crates/tally-core/src/insights.rs.
 
 export interface NewGoal {
   name: string;
   target: Cents;
+  /** null for "someday". */
   target_date: ISODate | null;
+  /** The real account the goal's money sits in. */
   account_id: number;
+  /** Already saved before the goal was set up. */
   starting: Cents;
   note: string;
 }
 
 export interface Goal extends NewGoal {
   id: number;
+  /** "YYYY-MM-DD" the target was first reached; null while it hasn't been. */
   achieved_at: string | null;
   archived: boolean;
   saved: Cents;
+  /** How many contributions so far. */
   contributions: number;
   remaining: Cents;
+  /** Progress in thousandths, 0..1000 (divide by 10 for percent). Capped, so overfunded reads as complete. */
   permille: number;
+  /** Average put in per month that saw a contribution. */
   monthly_rate: Cents;
+  /** First of the month it's reached at `monthly_rate`; null with no rate yet. */
   projected: ISODate | null;
   months_remaining: number | null;
+  /** With a target date: is the current rate enough? null without one. */
   on_track: boolean | null;
+  /** With a target date: what it takes per month from here. null without one. */
   required_monthly: Cents | null;
 }
 
+/** Something worth interrupting for, on the Month page. */
 export interface HouseholdAlert {
   tone: "info" | "caution" | "alarm";
   title: string;
   body: string;
+  /** The budget line it's about, if any. */
   target: BudgetTarget | null;
+  /** The bill it's about, if any. */
   bill_id: number | null;
 }
 
+/** Spending for one flex, this month and usually. */
 export interface FlexTier {
+  /** null is categories nobody has sorted yet. */
   flex: Flex | null;
   spending: Cents;
+  /** Average of the three months before. */
   usual: Cents;
 }
 
+/** Where there's room to save: spending split by how far it can bend. */
 export interface Opportunities {
   month: string;
   income: Cents;
   spending: Cents;
+  /** Income minus spending; negative is the gap to close. */
   gap: Cents;
   tiers: FlexTier[];
+  /** Biggest first; `usual` is the average of the three months before. */
   categories: { account_id: number; name: string; flex: Flex | null; spending: Cents; usual: Cents }[];
+  /** What trimming "your choice" (lifestyle) spending by a fifth would free up. */
   lifestyle_fifth: Cents;
 }
 
+/** Bands of the budget score, cut like a credit score's (see insights.tsx). */
 export type ScoreBand = "poor" | "fair" | "good" | "very_good" | "excellent";
 
+/** A 300..850 number shaped like a credit score. Not one, and never shared. */
 export interface BudgetScore {
   score: number;
   band: ScoreBand;
+  /** `weight` is the factor's share out of 100; `fraction` is 0..1 how well it's going; `points` = weight × fraction. */
   factors: { key: string; label: string; weight: number; fraction: number; points: number; summary: string }[];
 }
 
+/** Good news worth saying out loud. `kind` is a stable tag, not shown. */
 export interface Win {
   kind: string;
   title: string;
@@ -958,27 +1034,35 @@ export interface Win {
 }
 
 // ------------------------------------------------------------- moving from Ledger
+// Ledger is mels-budget-app, the household budgeting app this mode replaces.
 
+/** What's in a Ledger database, counted before bringing it in. */
 export interface LedgerPreview {
   people: number;
   entries: number;
+  /** Months that had a plan. */
   months: number;
   goals: number;
   bills: number;
   stores: number;
+  /** Earliest and latest entry dates; null for an empty database. */
   first: ISODate | null;
   last: ISODate | null;
 }
 
+/** What an import brought over. */
 export interface LedgerImport {
   people: number;
   categories_created: number;
   entries: number;
+  /** Already brought in by an earlier import. */
   entries_skipped: number;
   goals: number;
   bills: number;
   rules: number;
   months: number;
+  /** The stand-in "Ledger import" account every imported entry moves money through. */
   money_account_id: number;
+  /** Plain-words remarks about anything that needed a judgment call. */
   notes: string[];
 }

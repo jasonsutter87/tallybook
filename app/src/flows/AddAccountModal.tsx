@@ -36,7 +36,10 @@ const GROUP_LABEL: Record<AccountKind, string> = {
   expense: "Expenses",
 };
 
-/** A household has no customers, vendors on account, or inventory. */
+/**
+ * A household has no customers, vendors on account, or inventory. Retained
+ * earnings is never picked by hand on either side; the books keep it.
+ */
 const BUSINESS_ONLY: AccountSubtype[] = ["accounts_receivable", "accounts_payable", "cost_of_goods_sold", "retained_earnings"];
 
 const FLEX_HELP: Record<Flex, string> = {
@@ -101,8 +104,10 @@ export default function AddAccountModal(props: {
       items: list.filter((s) => s.kind === k && !hidden.includes(s.value)),
     }));
   }, [subtypes.data, scope]);
+  // Only household spending categories say how far they can bend (flex).
   const spending = scope === "household" && (subtype === "expense" || subtype === "other_expense");
 
+  // Switching to the household side drops a business-only choice.
   useEffect(() => {
     if (scope === "household" && BUSINESS_ONLY.includes(subtype)) setSubtype("bank");
   }, [scope, subtype]);

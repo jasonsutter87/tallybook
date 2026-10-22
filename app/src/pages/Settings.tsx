@@ -12,6 +12,7 @@ import DeleteBookModal from "../flows/DeleteBookModal";
 
 // ------------------------------------------------------------- page
 
+/** Settings sections, in page order. `business` / `household` mark ones shown only when the book keeps that side. */
 const ALL_SECTIONS = [
   { id: "business", label: "Profile", icon: <Building2 size={16} /> },
   { id: "sides", label: "Business & household", icon: <Home size={16} /> },
@@ -515,8 +516,9 @@ function UpdatesCard() {
   );
 }
 
-// ------------------------------------------------------------- backup & data
+// ------------------------------------------------------------- book sides
 
+/** Why someone would add the side their book doesn't keep yet. */
 const SIDE_PITCH: Record<Scope, string> = {
   business: "Invoices, bills, business reports and tax prep, kept apart from the household's numbers.",
   household: "A monthly budget, bills coming up, and goals, kept apart from the business's numbers.",
@@ -584,6 +586,8 @@ function SidesCard() {
     </SettingsCard>
   );
 }
+
+// ------------------------------------------------------------- backup & data
 
 function BackupCard() {
   const toast = useToast();
@@ -906,6 +910,7 @@ function SecurityCard() {
 
 // ------------------------------------------------------------- moving from Ledger
 
+/** Native file picker for Ledger's database; null in a browser or when cancelled. */
 async function pickLedgerFile(): Promise<string | null> {
   if (!isTauri) return null;
   const { open } = await import("@tauri-apps/plugin-dialog");
@@ -913,7 +918,10 @@ async function pickLedgerFile(): Promise<string | null> {
   return typeof r === "string" ? r : null;
 }
 
-/** Brings a household over from Ledger (mels-budget-app). Safe to run again. */
+/**
+ * Brings a household over from Ledger (mels-budget-app): pick its SQLite file,
+ * see what's inside, then bring it over. Safe to run again; only new entries come in.
+ */
 function LedgerCard() {
   const toast = useToast();
   const [path, setPath] = useState("");

@@ -379,6 +379,7 @@ impl App {
         // General ledger for the year.
         let mut out = String::from("entry,date,memo,account,debit,credit,line_memo\n");
         for e in s.entries(from, to)? {
+            // Business lines only; a crossing entry's household half is left out.
             for l in e.lines.iter().filter(|l| names.contains_key(&l.account_id)) {
                 let (dr, cr) = if l.amount.0 > 0 { (dollars(l.amount), String::new()) } else { (String::new(), dollars(-l.amount)) };
                 let _ = writeln!(

@@ -19,6 +19,10 @@ import { NavLink } from "react-router-dom";
 import { useAction, useApi } from "../api";
 import { useSides } from "../book";
 
+type NavItem = { to: string; label: string; icon: typeof Home; end?: boolean; badge?: boolean };
+
+// Household links show only when the book keeps a household side; the
+// business links only when it keeps a business one.
 const MONTH: NavItem = { to: "/month", label: "This month", icon: CalendarDays };
 const HOUSEHOLD: NavItem[] = [
   { to: "/due", label: "Bills & due dates", icon: CalendarClock },
@@ -30,8 +34,6 @@ const MAIN: NavItem[] = [
   { to: "/review", label: "Review", icon: Inbox, badge: true },
   { to: "/accounts", label: "Accounts", icon: Landmark },
 ];
-
-type NavItem = { to: string; label: string; icon: typeof Home; end?: boolean; badge?: boolean };
 
 const MONEY: NavItem[] = [
   { to: "/invoices", label: "Invoices", icon: FileText },
@@ -82,6 +84,7 @@ export default function Sidebar({ companyName }: { companyName: string }) {
       {business && (
         <>
           <div className="nav-section">{household ? "Business" : "Money in & out"}</div>
+          {/* Beside household bills, the business ones need their own name. */}
           {MONEY.map((n) => item(household && n.to === "/bills" ? { ...n, label: "Vendor bills" } : n))}
         </>
       )}

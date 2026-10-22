@@ -6,17 +6,12 @@ import { Link } from "react-router-dom";
 import { useAction, useApi } from "../api";
 import { useSides } from "../book";
 import type { BillDraft } from "../flows/RecurringBillModal";
-import { money, plural, shortDate } from "../format";
-import type { BillSuggestion, Cadence } from "../types";
+import { cadenceLabel, money, plural, shortDate } from "../format";
+import type { BillSuggestion } from "../types";
 import { Card, useAccountNames, useToast } from "./ui";
 
-const nth = (n: number) => `${n}${n % 10 === 1 && n !== 11 ? "st" : n % 10 === 2 && n !== 12 ? "nd" : n % 10 === 3 && n !== 13 ? "rd" : "th"}`;
-
-export function cadenceLabel(c: Cadence): string {
-  if (c.every === "week") return "Weekly";
-  if (c.every === "months") return c.months === 12 ? `Yearly on the ${nth(c.day)}` : `Every ${c.months} months on the ${nth(c.day)}`;
-  return `Monthly on the ${nth(c.day)}`;
-}
+/** The Review nudge names this many suggestions, then says "and N more". */
+const NUDGE_NAMES_SHOWN = 3;
 
 /** A new bill filled in from what was seen. A usage bill keeps its typical
  * amount, so only a payment near it ticks the bill off. */
@@ -34,6 +29,7 @@ export function suggestionDraft(s: BillSuggestion): BillDraft {
   };
 }
 
+/** Suggestions for a household book; always empty for a business-only one. */
 function useSuggestions() {
   const sides = useSides();
   const q = useApi<BillSuggestion[]>("recurring.suggestions", undefined, { enabled: sides.household });
@@ -89,7 +85,7 @@ export function BillSuggestions(props: { onAdd: (draft: BillDraft) => void }) {
 export function ReviewBillNudge() {
   const fresh = useSuggestions().filter((s) => s.in_review > 0);
   if (!fresh.length) return null;
-  const names = fresh.slice(0, 3).map((s) => s.name);
+  const names = fresh.slice(0, NUDGE_NAMES_SHOWN).map((s) => s.name);
   const more = fresh.length - names.length;
 
   return (

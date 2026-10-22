@@ -5,6 +5,9 @@
 //! from the pace so far. And there are three states, not two: a tolerance
 //! band in the middle says variance is normal, which matters most in a year
 //! whose costs nobody knows yet.
+//!
+//! Plans themselves (one per month, carried forward until changed) are
+//! stored by `tally-store`; this module only judges a line against its plan.
 
 use crate::money::Cents;
 use serde::{Deserialize, Serialize};
@@ -21,6 +24,7 @@ pub enum Direction {
 }
 
 impl Direction {
+    /// The name stored in `budgets.direction`.
     pub fn as_str(self) -> &'static str {
         match self {
             Direction::Ceiling => "ceiling",
@@ -28,6 +32,7 @@ impl Direction {
         }
     }
 
+    /// Inverse of [`Direction::as_str`].
     pub fn parse(s: &str) -> Option<Direction> {
         match s {
             "ceiling" => Some(Direction::Ceiling),
@@ -42,9 +47,13 @@ impl Direction {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Zone {
+    /// On pace to finish below the band.
     Under,
+    /// On pace to finish within the band either side of the target.
     InRange,
+    /// Not past the target yet, but on pace to finish above the band.
     TrendingOver,
+    /// Already past the target.
     Over,
 }
 
@@ -58,8 +67,10 @@ pub enum Sentiment {
     Alarm,
 }
 
+/// One budget line on one day, as [`status`] needs it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct StatusInput {
+    /// The plan's amount for the month.
     pub allocated: Cents,
     /// Progress toward the target as a positive amount: spent for a
     /// ceiling, put in for a floor.
@@ -78,11 +89,13 @@ pub struct StatusInput {
 }
 
 impl StatusInput {
+    /// A line with no scheduled bills, so all of `progress` is projected.
     pub fn new(allocated: Cents, progress: Cents, direction: Direction, tolerance_pct: u32, day_of_month: u32, days_in_month: u32) -> Self {
         StatusInput { allocated, progress, direction, tolerance_pct, day_of_month, days_in_month, scheduled_paid: Cents::ZERO, scheduled_due: Cents::ZERO }
     }
 }
 
+/// The verdict on one line: where it stands and how to feel about it.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
 pub struct Status {
     pub zone: Zone,
@@ -103,6 +116,8 @@ fn round_div(n: i128, d: i128) -> i64 {
     (2 * n + d).div_euclid(2 * d) as i64
 }
 
+/// Judges a line: projects the month's end from the pace so far, places it
+/// in a [`Zone`], and gives the [`Sentiment`] for its direction.
 pub fn status(input: &StatusInput) -> Status {
     let days = input.days_in_month.max(1);
     let day = input.day_of_month.clamp(1, days);

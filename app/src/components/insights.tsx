@@ -11,12 +11,18 @@ import "./insights.css";
 
 const ALERT_ICON = { alarm: AlertCircle, caution: AlertTriangle, info: Info };
 
+/** Alerts past this many collapse into "And N more", so the month stays readable. */
+const ALERTS_SHOWN = 4;
+/** "Biggest that can bend" lists this many categories. */
+const MOVABLE_SHOWN = 4;
+
+/** What needs attention this month, most urgent first (the backend sorts them). */
 export function Alerts({ month }: { month: string }) {
   const { data } = useApi<HouseholdAlert[]>("household.alerts", { month });
   if (!data?.length) return null;
   return (
     <div className="hh-alerts" role="status">
-      {data.slice(0, 4).map((a, i) => {
+      {data.slice(0, ALERTS_SHOWN).map((a, i) => {
         const Icon = ALERT_ICON[a.tone];
         return (
           <div key={i} className={`hh-alert hh-alert-${a.tone}`}>
@@ -28,10 +34,15 @@ export function Alerts({ month }: { month: string }) {
           </div>
         );
       })}
-      {data.length > 4 && <div className="subtle small">And {data.length - 4} more.</div>}
+      {data.length > ALERTS_SHOWN && <div className="subtle small">And {data.length - ALERTS_SHOWN} more.</div>}
     </div>
   );
 }
+
+// The score runs 300..850, like a US credit score. The band cut-offs below
+// must match band_for() in crates/tally-core/src/insights.rs.
+const SCORE_MIN = 300;
+const SCORE_MAX = 850;
 
 const BAND_LABEL: Record<ScoreBand, string> = { poor: "Poor", fair: "Fair", good: "Good", very_good: "Very good", excellent: "Excellent" };
 const BAND_TONE: Record<ScoreBand, string> = { poor: "neg", fair: "warn", good: "brand", very_good: "pos", excellent: "pos" };
@@ -51,7 +62,8 @@ export function ScoreCard({ month }: { month: string }) {
   const { data } = useApi<BudgetScore>("household.score", { month });
   const [about, setAbout] = useState(false);
   if (!data) return null;
-  const position = ((data.score - 300) / 550) * 100;
+  // Where the dot sits on the scale, as a percent from the left.
+  const position = ((data.score - SCORE_MIN) / (SCORE_MAX - SCORE_MIN)) * 100;
   return (
     <Card
       title={
@@ -132,9 +144,11 @@ export function ScoreCard({ month }: { month: string }) {
 export function OpportunityCard({ month }: { month: string }) {
   const { data } = useApi<Opportunities>("household.opportunities", { month });
   if (!data || data.spending <= 0) return null;
+  // Sum of the tiers, for sizing the stacked bar; at least 1 to never divide by zero.
   const total = Math.max(1, data.tiers.reduce((n, t) => n + Math.max(0, t.spending), 0));
   const short = data.gap < 0;
-  const movable = data.categories.filter((c) => c.flex !== "fixed").slice(0, 4);
+  // Anything not fixed can bend, including categories nobody has sorted yet.
+  const movable = data.categories.filter((c) => c.flex !== "fixed").slice(0, MOVABLE_SHOWN);
   return (
     <Card title="Where there's room">
       <p className="small" style={{ marginBottom: 12 }}>
@@ -193,6 +207,7 @@ export function OpportunityCard({ month }: { month: string }) {
   );
 }
 
+/** Good news from the month, said out loud. Hidden when there's none. */
 export function WinsCard({ month }: { month: string }) {
   const { data } = useApi<Win[]>("household.wins", { month });
   if (!data?.length) return null;

@@ -3,11 +3,12 @@
 
 import { Check, RotateCcw, SkipForward } from "lucide-react";
 import { useAction } from "../api";
-import { date, money, shortDate } from "../format";
-import type { DueDate, DueState } from "../types";
+import { addDays, date, money, shortDate } from "../format";
+import type { DueDate, DueState, ISODate } from "../types";
 import { useAccountNames, useToast } from "./ui";
 import "./DueList.css";
 
+/** Each state's pill: its words and its color class ("" for plain). */
 const STATE: Record<DueState, { label: string; tone: string }> = {
   paid: { label: "Paid", tone: "pos" },
   skipped: { label: "Skipped", tone: "" },
@@ -17,24 +18,29 @@ const STATE: Record<DueState, { label: string; tone: string }> = {
   upcoming: { label: "Coming up", tone: "" },
 };
 
+/** Still needs paying: neither paid nor skipped. */
+const isOpen = (d: DueDate) => d.state !== "paid" && d.state !== "skipped";
+
 export function DueRow({ due }: { due: DueDate }) {
   const toast = useToast();
-  const name = useAccountNames();
+  const accountName = useAccountNames();
   const mark = useAction<null, { bill_id: number; due_date: string; status: DueState | null }>("recurring.mark");
   const set = (status: DueState | null, text: string) =>
     mark
       .mutateAsync({ bill_id: due.bill_id, due_date: due.due_date, status })
       .then(() => toast({ text }))
       .catch((e) => toast.error(e));
-  const [m, d] = shortDate(due.due_date).split(" ");
-  const s = STATE[due.state];
-  const open = due.state !== "paid" && due.state !== "skipped";
+  // The calendar-leaf date: "Mar" over "4".
+  const [monthText, dayText] = shortDate(due.due_date).split(" ");
+  const pill = STATE[due.state];
+  const open = isOpen(due);
+  // Anything set by hand can be undone, handing the date back to the bank feed.
   const manual = due.state === "skipped" || !!due.payment?.manual;
   return (
     <div className={`due-row due-${due.state}`}>
       <div className="due-date" title={date(due.due_date)}>
-        <span className="due-date-m">{m}</span>
-        <span className="due-date-d">{d}</span>
+        <span className="due-date-m">{monthText}</span>
+        <span className="due-date-d">{dayText}</span>
       </div>
       <div className="grow" style={{ minWidth: 0 }}>
         <div className="row" style={{ gap: 8, minWidth: 0 }}>
@@ -42,12 +48,12 @@ export function DueRow({ due }: { due: DueDate }) {
           {due.auto_pay && <span className="pill">Auto-pay</span>}
         </div>
         <div className="subtle small truncate">
-          {name(due.account_id)}
+          {accountName(due.account_id)}
           {due.payment && !due.payment.manual && ` · paid ${shortDate(due.payment.date)}`}
         </div>
       </div>
       <span className="num bold">{due.payment ? money(due.payment.amount) : due.amount ? money(due.amount) : "Varies"}</span>
-      <span className={`pill ${s.tone ? `pill-${s.tone}` : ""}`}>{s.label}</span>
+      <span className={`pill ${pill.tone ? `pill-${pill.tone}` : ""}`}>{pill.label}</span>
       <div className="due-actions">
         {open && (
           <>
@@ -69,6 +75,7 @@ export function DueRow({ due }: { due: DueDate }) {
   );
 }
 
+/** A list of due dates, or `empty` (a sentence) when there are none. */
 export function DueList({ items, empty }: { items: DueDate[]; empty?: string }) {
   if (!items.length) return <div className="muted small">{empty ?? "Nothing due."}</div>;
   return (
@@ -80,16 +87,17 @@ export function DueList({ items, empty }: { items: DueDate[]; empty?: string }) 
   );
 }
 
-/** Splits due dates into the groups people think in. */
-export function groupDue(items: DueDate[], today: string) {
-  const week = new Date(`${today}T00:00:00`);
-  week.setDate(week.getDate() + 7);
-  const weekEnd = `${week.getFullYear()}-${String(week.getMonth() + 1).padStart(2, "0")}-${String(week.getDate()).padStart(2, "0")}`;
-  const open = (d: DueDate) => d.state !== "paid" && d.state !== "skipped";
+/**
+ * Splits due dates into the groups people think in: due now (today or
+ * overdue), the next 7 days, later, and done (newest first). ISO dates
+ * compare correctly as strings.
+ */
+export function groupDue(items: DueDate[], today: ISODate) {
+  const weekEnd = addDays(today, 7);
   return {
-    now: items.filter((d) => open(d) && d.due_date <= today),
-    week: items.filter((d) => open(d) && d.due_date > today && d.due_date <= weekEnd),
-    later: items.filter((d) => open(d) && d.due_date > weekEnd),
-    done: items.filter((d) => !open(d)).reverse(),
+    now: items.filter((d) => isOpen(d) && d.due_date <= today),
+    week: items.filter((d) => isOpen(d) && d.due_date > today && d.due_date <= weekEnd),
+    later: items.filter((d) => isOpen(d) && d.due_date > weekEnd),
+    done: items.filter((d) => !isOpen(d)).reverse(),
   };
 }

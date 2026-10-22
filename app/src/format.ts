@@ -1,7 +1,7 @@
 // Formatting and parsing at the UI edge. The backend only ever sees cents
 // and ISO dates.
 
-import type { AccountKind, AccountSubtype, Cents, ISODate, Scope, Flex } from "./types";
+import type { AccountKind, AccountSubtype, Cadence, Cents, Flex, ISODate, Scope } from "./types";
 
 const usd = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
 const usdWhole = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
@@ -157,6 +157,23 @@ export const FLEX_LABEL: Record<Flex, string> = {
   usage: "Moves with use",
   lifestyle: "Your choice",
 };
+
+const ORDINAL_SUFFIX: Record<number, string> = { 1: "st", 2: "nd", 3: "rd" };
+
+/** 1 → "1st", 2 → "2nd", 11 → "11th", 23 → "23rd". */
+export function ordinal(n: number): string {
+  const lastTwo = n % 100;
+  // 11th, 12th and 13th break the pattern of their last digit.
+  if (lastTwo >= 11 && lastTwo <= 13) return `${n}th`;
+  return `${n}${ORDINAL_SUFFIX[n % 10] ?? "th"}`;
+}
+
+/** How often a bill comes around, in words: "Monthly on the 3rd", "Yearly on the 15th", "Weekly". */
+export function cadenceLabel(c: Cadence): string {
+  if (c.every === "week") return "Weekly";
+  if (c.every === "months") return c.months === 12 ? `Yearly on the ${ordinal(c.day)}` : `Every ${c.months} months on the ${ordinal(c.day)}`;
+  return `Monthly on the ${ordinal(c.day)}`;
+}
 
 export function plural(n: number, one: string, many = `${one}s`): string {
   return `${n} ${n === 1 ? one : many}`;

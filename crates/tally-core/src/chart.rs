@@ -1,19 +1,30 @@
 //! Starter charts of accounts: one for a small US business, one for a
 //! household. Household codes start with `H` so both fit in one book.
+//!
+//! The two sides meet through a bridge. When one payment mixes business and
+//! household money (the business card buys groceries), the store adds
+//! balancing lines so each side still sums to zero: an owner's draw on the
+//! business (`3100`) paired with "From the Business" at home (`H4800`), or
+//! for money going the other way, owner's equity (`3000`) paired with
+//! "Into the Business" (`H6800`).
 
 use crate::account::{AccountSubtype, Flex, Scope};
 
+/// One account a new book starts with.
 pub struct ChartTemplate {
     pub code: &'static str,
     pub name: &'static str,
     pub subtype: AccountSubtype,
+    /// Set on household spending categories; `None` elsewhere.
     pub flex: Option<Flex>,
 }
 
+/// A template with no flex: business accounts and non-spending household ones.
 const fn t(code: &'static str, name: &'static str, subtype: AccountSubtype) -> ChartTemplate {
     ChartTemplate { code, name, subtype, flex: None }
 }
 
+/// A household spending category and how far it bends.
 const fn h(code: &'static str, name: &'static str, flex: Flex) -> ChartTemplate {
     ChartTemplate { code, name, subtype: AccountSubtype::Expense, flex: Some(flex) }
 }
@@ -26,7 +37,8 @@ pub fn chart_for(scope: Scope) -> &'static [ChartTemplate] {
     }
 }
 
-/// Codes that other parts of the app look up by convention.
+/// Codes that other parts of the app look up by convention. Changing one
+/// orphans the account in every existing book, so these are permanent.
 pub mod codes {
     pub const ACCOUNTS_RECEIVABLE: &str = "1100";
     pub const UNDEPOSITED_FUNDS: &str = "1200";
@@ -64,6 +76,9 @@ pub fn uncategorized_expense_code(scope: Scope) -> &'static str {
     }
 }
 
+/// The business starter chart. Codes follow the common US small-business
+/// numbering: 1xxx assets, 2xxx liabilities, 3xxx equity, 4xxx income,
+/// 5xxx cost of goods, 6xxx-7xxx expenses.
 pub const DEFAULT_CHART: &[ChartTemplate] = {
     use AccountSubtype::*;
     &[
@@ -99,7 +114,8 @@ pub const DEFAULT_CHART: &[ChartTemplate] = {
 
 /// Drawn from real household budgets: the categories a family actually
 /// tracks, each with how far it can bend. Bank and card accounts are added by
-/// the user, as in the business chart.
+/// the user, as in the business chart. Same numbering as the business chart,
+/// prefixed with `H`.
 pub const HOUSEHOLD_CHART: &[ChartTemplate] = {
     use AccountSubtype::*;
     use Flex::*;
@@ -182,8 +198,9 @@ mod tests {
 
     #[test]
     fn spending_categories_say_how_far_they_bend() {
-        let bridges = [codes::INTO_THE_BUSINESS, codes::HOUSEHOLD_UNCATEGORIZED_EXPENSE];
-        for t in HOUSEHOLD_CHART.iter().filter(|t| t.subtype == AccountSubtype::Expense && !bridges.contains(&t.code)) {
+        // The bridge and the catch-all aren't choices anyone can bend.
+        let not_categories = [codes::INTO_THE_BUSINESS, codes::HOUSEHOLD_UNCATEGORIZED_EXPENSE];
+        for t in HOUSEHOLD_CHART.iter().filter(|t| t.subtype == AccountSubtype::Expense && !not_categories.contains(&t.code)) {
             assert!(t.flex.is_some(), "{} has no flex", t.name);
         }
     }

@@ -11,11 +11,14 @@ CREATE TABLE recurring_bills (
     amount       INTEGER NOT NULL DEFAULT 0 CHECK (amount >= 0),
     -- The spending category it's paid into, which is what a payment matches on.
     account_id   INTEGER NOT NULL REFERENCES accounts(id),
+    -- The bank or card account it usually comes out of. Optional.
     paid_from_id INTEGER REFERENCES accounts(id),
     person_id    INTEGER REFERENCES people(id),
     -- tally_core::schedule::Cadence as JSON.
     cadence      TEXT NOT NULL,
+    -- YYYY-MM-DD. Repeats count from here; nothing is due before it.
     start_date   TEXT NOT NULL,
+    -- The bank pays it without anyone acting; a label for the user.
     auto_pay     INTEGER NOT NULL DEFAULT 0 CHECK (auto_pay IN (0, 1)),
     -- Text a payment's description must contain, e.g. "VERIZON". Optional.
     match_text   TEXT,

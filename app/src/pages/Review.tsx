@@ -412,6 +412,8 @@ function RowEditor({ item, onDone }: { item: InboxItem; onDone: (id: number, tex
   const accountsList = useApi<Account[]>("accounts.list");
   const { people } = usePeople();
   const scopeOf = (id: number | null) => accountsList.data?.find((a) => a.id === id)?.scope;
+  // Ask "who was it for?" only on household money, and only once there are people:
+  // the category picked decides, or before one is picked, the bank account's side.
   const householdMoney = people.length > 0 && (scopeOf(accountId) === "household" || (accountId == null && scopeOf(item.ledger_account_id) === "household"));
   const total = Math.abs(item.amount);
   const sign = item.amount < 0 ? -1 : 1;
