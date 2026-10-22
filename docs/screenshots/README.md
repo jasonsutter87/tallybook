@@ -16,8 +16,9 @@ broken links.
 
 Tips:
 
-- Use **Explore with sample data** (Northwind Studio) so no real numbers
-  appear.
+- Use the Northwind Studio sample book so no real numbers appear. The app
+  no longer offers it on the welcome screen; create it from the dev server
+  (see [DEVELOPMENT.md](../DEVELOPMENT.md)).
 - About 1440×900 looks good. Keep the same window size for every shot.
 - On macOS, <kbd>⌘</kbd><kbd>⇧</kbd><kbd>4</kbd> then <kbd>Space</kbd>
   captures one window. Hold <kbd>⌥</kbd> while clicking to leave out the

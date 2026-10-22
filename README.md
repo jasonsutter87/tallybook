@@ -4,13 +4,13 @@
 
 # Tallybook
 
-**Bookkeeping for small businesses, on your own computer.**
+**Bookkeeping for small businesses, and a budget for the home, on your own computer.**
 
-Bank feeds, invoices, bills, reports and tax prep, with your books in one
-file that you own. Free and open source.
+Bank feeds, invoices, bills, reports and tax prep for the business. Budgets,
+bills and savings goals for the household. All of it in one file that you
+own. Free and open source.
 
-<!-- TODO: replace with the release link once v0.1.0 is published -->
-[**Download**](https://github.com/jasonsutter87/tallybook/releases/latest) · [See it in action](#a-quick-tour) · [Questions](#questions)
+[**Download**](https://github.com/jasonsutter87/tallybook/releases/latest) · [See it in action](#a-quick-tour) · [Household budget](#your-household-budget) · [Questions](#questions)
 
 <br />
 
@@ -37,6 +37,11 @@ accounting your accountant will recognize. On screen it says "Money in,"
 **Tax time without the dread.** A Schedule C worksheet built from your books,
 a quarterly estimated-tax plan, and 1099 tracking for your contractors.
 
+**The business and the home, kept apart.** Run a household budget on its
+own, or next to your business in the same book. Taxes only ever see the
+business side, and when business money pays for something at home,
+Tallybook records it as an owner's draw.
+
 ---
 
 ## A quick tour
@@ -51,6 +56,10 @@ of things that need you.
 New bank transactions land here with a suggestion: a match to something you
 already entered, a rule you set up, or what you picked last time. Accept one
 at a time or all at once. Every action can be undone.
+
+Cash from the till, a check, anything the bank will never see? **Log cash**
+records it in a few taps, and cash paid to a contractor still counts toward
+their 1099.
 
 ![Review inbox](docs/screenshots/review.png)
 
@@ -90,29 +99,62 @@ For sole proprietors and single-member LLCs:
 > files anything for you. Have a tax professional review before you file.
 > [What it does and doesn't cover →](docs/TAXES.md)
 
-### Your household, too
-Keep a household budget in its own book, or alongside your business in the
-same one. Each side keeps its own numbers. When business money pays for
-something at home, Tallybook records the owner's draw for you.
-
-- **A month at a glance.** A plan per category or per person (who the money
-  was for), with a meter that knows how far into the month you are. Rent on
-  the 1st isn't overspending.
-- **Bills and due dates.** What's due today and this week. Bills tick
-  themselves off when the payment shows up from your bank.
-- **Goals.** Savings that build up month after month, with when you'll get
-  there at the rate you're going.
-- **Where there's room.** Spending split into fixed, moves-with-use, and
-  your-choice, so you know what can actually change.
-- **A budget score and wins.** A number to watch (it isn't a credit score),
-  and credit when you come in under or put money aside.
-- **Moving from Ledger.** Bring a household over from the Ledger budgeting
-  app in Settings.
-
 ### Light or dark
 Follows your system, or pick one in Settings.
 
 ![Dark mode](docs/screenshots/dark-mode.png)
+
+---
+
+## Your household budget
+
+For the money at home: a household-only book, or a household side on your
+business book. Each side keeps its own accounts, categories and numbers.
+
+### Month: the plan against what's real
+Plan each month by category (groceries, rent, kids), by person (who the money
+was for), or both. Every line has a meter that knows how far into the month
+you are, so rent paid on the 1st isn't overspending and a slow start isn't a
+false alarm.
+
+- **Spend up to, or get at least.** Most lines are a ceiling. Some, like
+  savings or income, are a floor you want to reach.
+- **The plan carries forward.** Set it once and next month starts from it.
+- **Alerts that matter.** A heads-up when a line runs hot or goes over,
+  when a goal line falls behind, or when a bill is due or looks unpaid. Not
+  a wall of red.
+
+### Bills and due dates
+What's due today, this week and later, with weekly, monthly, quarterly and
+yearly bills. A bill ticks itself off when the payment shows up from your
+bank, and bills that change month to month (power, water) still match.
+
+**Tallybook spots them for you.** Import a few months of bank history and it
+finds the payments that repeat, like rent, insurance, subscriptions and a
+weekly allowance, and offers each as a bill in one click. Not a bill? Wave it
+off and it won't ask again.
+
+### Goals: saving toward something
+A new car, an emergency fund, a trip. Money for a goal sits in a real
+account, so the progress is real too. Goals build up month after month, and
+Tallybook tells you when you'll get there at the rate you're going, or what
+it takes each month to hit your date.
+
+### Where there's room
+Spending sorted into fixed (rent, loan), moves-with-use (gas, power) and
+your-choice (eating out), so you can see what can actually change. Plus a
+budget score to watch (300 to 850, and no, it isn't a credit score) and
+credit for the wins: coming in under, or putting money aside.
+
+### Cash and everything else
+**Log money** records cash spending, money in, or money moved between your
+accounts, and who it was for.
+
+### Moving from Ledger
+Already budgeting in the Ledger app? **Settings → Move from Ledger**
+brings over your people, categories, monthly plans, history, bills and
+goals, and turns your saved stores into rules. Run it again later and it
+adds only what's new.
 
 ---
 
@@ -122,12 +164,14 @@ Follows your system, or pick one in Settings.
    [latest release](https://github.com/jasonsutter87/tallybook/releases/latest).
 2. **Open Tallybook** and create a book for your business, your household,
    or both.
-3. **Bring in your transactions**, either way:
+3. **Bring in your transactions**, any of these ways:
    - **Connect your bank** through Plaid or SimpleFIN. See the
      [bank connection guide](docs/BANK_FEEDS.md).
    - **Import a statement**: download a CSV or OFX/QFX file from your bank's
      website and drop it into Review.
-4. **Review** your transactions, and you're bookkeeping.
+   - **Log cash** by hand for anything the bank won't see.
+4. **Review** your transactions, and you're bookkeeping. For a household,
+   set this month's plan in **Month** and add the bills Tallybook spotted.
 
 <details>
 <summary><b>"Tallybook can't be opened" on Mac, or "Windows protected your PC"</b></summary>
@@ -178,6 +222,10 @@ Yes. Tallybook is open source under the [AGPL-3.0](LICENSE) license. Bank
 connections use your own Plaid or SimpleFIN account; SimpleFIN costs about
 $15/year, Plaid is free for personal use, and file import is always free.
 
+**Can I use it just for my household?**
+Yes. Pick **A household** when you create a book and you get budgets, bills and
+goals without any of the business screens. You can add a business side later in **Settings → Business & household**.
+
 **Can I move from QuickBooks?**
 Start fresh with your current balances: add your accounts with an opening
 balance, then import recent bank statements. A direct QuickBooks import is on
@@ -201,7 +249,7 @@ on Windows or Linux.
 
 <div align="center">
 
-Built with care for freelancers and small businesses.
+Built with care for freelancers, small businesses, and the households behind them.
 Want to contribute? See the [developer guide](docs/DEVELOPMENT.md).
 
 </div>
