@@ -340,14 +340,25 @@ impl App {
     // ------------------------------------------------------------ syncing
 
     /// `bank.sync`: one connection, or every connection that has a provider.
+    ///
+    /// Syncing everything never stops at a failure: a connection that can't be
+    /// synced (a credential missing from the keychain, say) gets a report with
+    /// `ok: false` and the reason, and the rest carry on. Naming one connection
+    /// returns its error as an error.
     async fn sync(&self, p: MaybeConnection) -> ApiResult<Value> {
-        let ids: Vec<ConnectionId> = match p.connection_id {
-            Some(id) => vec![id],
-            None => self.run(|s| Ok(s.connections()?.into_iter().filter(|c| c.provider != Provider::File).map(|c| c.id).collect()))?,
-        };
+        if let Some(id) = p.connection_id {
+            return ok(vec![self.sync_one(id).await?]);
+        }
+        let all: Vec<(ConnectionId, String)> =
+            self.run(|s| Ok(s.connections()?.into_iter().filter(|c| c.provider != Provider::File).map(|c| (c.id, c.institution)).collect()))?;
         let mut reports = Vec::new();
-        for id in ids {
-            reports.push(self.sync_one(id).await?);
+        for (id, institution) in all {
+            match self.sync_one(id).await {
+                Ok(report) => reports.push(report),
+                // Nothing else can work without a book; don't report that once per connection.
+                Err(e) if e.code == "no_book" => return Err(e),
+                Err(e) => reports.push(SyncReport { connection_id: id, institution, ok: false, error: Some(e.message), imported: ImportSummary::default() }),
+            }
         }
         ok(reports)
     }
