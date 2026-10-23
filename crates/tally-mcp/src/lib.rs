@@ -14,8 +14,12 @@
 //! - **Read-only unless asked.** Tools that change the book exist only when
 //!   the server is started with `--write`.
 //! - **Some things are never an agent's job.** Deleting books, encryption
-//!   and recovery keys, licenses, cloud destinations and bank credentials are
-//!   refused outright, whatever the mode.
+//!   and recovery keys, licenses, cloud destinations, bank credentials and
+//!   the lock date that closes past periods are refused outright, whatever
+//!   the mode.
+//! - **The desktop app's files stay as they are.** An agent opens only
+//!   `.tallybook` files, and opening one doesn't change the app's
+//!   recent-books list.
 
 use serde_json::{Value, json};
 use std::path::PathBuf;
@@ -52,7 +56,7 @@ pub fn desktop_config_dir() -> PathBuf {
 
 /// Methods that only read. Everything else changes something.
 const READ: &[&str] = &[
-    "book.status", "book.recent", "book.default_dir", "book.open", "book.close",
+    "book.status", "book.recent", "book.default_dir", "book.open",
     "settings.get", "dashboard",
     "reports.pnl", "reports.balance_sheet", "reports.trial_balance", "reports.ar_aging", "reports.ap_aging",
     "accounts.list", "accounts.subtypes", "accounts.register", "entries.get", "entries.list",
@@ -73,7 +77,7 @@ const READ: &[&str] = &[
 /// into READ, WRITE or NEVER on purpose (the `every_dispatched_method_is_in_exactly_one_list` test).
 #[cfg(test)]
 const WRITE: &[&str] = &[
-    "book.create", "book.create_demo", "book.forget", "book.backup", "book.add_side", "settings.set",
+    "book.create", "book.create_demo", "book.close", "book.forget", "book.backup", "book.add_side", "settings.set",
     "accounts.create", "accounts.rename", "accounts.archive", "accounts.set_flex", "accounts.opening_balance",
     "entries.post", "entries.void", "entries.set_person", "entries.set_goal", "people.create",
     "people.update", "people.archive", "budget.set", "budget.remove", "budget.set_available",
@@ -140,7 +144,7 @@ fn tools() -> Vec<Tool> {
         Tool {
             name: "open_book",
             write: false,
-            description: "Open another .tallybook file, by path (see recent_books from book_status). Encrypted books open only if this computer's keychain holds their key.",
+            description: "Open another .tallybook file (only .tallybook files), by path (see recent_books from book_status). Encrypted books open only if this computer's keychain holds their key.",
             schema: || obj(json!({ "path": { "type": "string", "description": "Path to a .tallybook file." } }), &["path"]),
         },
         Tool {
@@ -414,6 +418,21 @@ async fn run_tool(app: &App, write: bool, name: &str, a: &Value) -> Result<Value
     }
 }
 
+/// Params an agent may not pass to a method it may otherwise call.
+fn check_params(method: &str, params: &Value) -> Result<(), String> {
+    match method {
+        // Closing (or reopening) past periods is the user's decision.
+        "settings.set" if params.get("lock_date").is_some() => {
+            Err("the lock date isn't available to agents; close or reopen periods in the Tallybook app".into())
+        }
+        "book.open" => match params.get("path").and_then(Value::as_str) {
+            Some(p) if std::path::Path::new(p).extension().is_some_and(|e| e.eq_ignore_ascii_case("tallybook")) => Ok(()),
+            _ => Err("agents can open only .tallybook files".into()),
+        },
+        _ => Ok(()),
+    }
+}
+
 /// [`App::call`], behind the access policy.
 async fn api(app: &App, write: bool, method: &str, params: Value) -> Result<Value, String> {
     match access(method) {
@@ -423,6 +442,7 @@ async fn api(app: &App, write: bool, method: &str, params: Value) -> Result<Valu
         }
         _ => {}
     }
+    check_params(method, &params)?;
     app.call(method, params).await.map_err(|e| format!("{} ({})", e.message, e.code))
 }
 
@@ -499,6 +519,9 @@ where
     R: AsyncBufRead + Unpin,
     W: AsyncWrite + Unpin,
 {
+    // The recent-books list belongs to the desktop app: an agent reads it to
+    // find the book, but never reorders it.
+    app.set_update_recent(false);
     let path = match &opts.book {
         Some(p) => Some(json!(p)),
         None => app.call("book.recent", Value::Null).await.ok().and_then(|r| r.get(0).map(|b| b["path"].clone())),
@@ -608,6 +631,79 @@ mod tests {
         assert_eq!(r[1]["result"]["isError"], true, "double-entry still has to balance: {}", r[1]);
         let names: Vec<&str> = r[2]["result"]["tools"].as_array().unwrap().iter().map(|t| t["name"].as_str().unwrap()).collect();
         assert!(names.contains(&"categorize") && names.contains(&"record_entry"));
+    }
+
+    async fn run(app: Arc<App>, write: bool, messages: &[Value]) -> Vec<Value> {
+        let input: String = messages.iter().map(|m| format!("{m}\n")).collect();
+        let mut out = Vec::new();
+        serve(app, Options { write, book: None }, input.as_bytes(), &mut out).await.unwrap();
+        String::from_utf8(out).unwrap().lines().map(|l| serde_json::from_str(l).unwrap()).collect()
+    }
+
+    fn text(reply: &Value) -> &str {
+        reply["result"]["content"][0]["text"].as_str().unwrap()
+    }
+
+    /// Even with --write, an agent can't reach cloud copy settings or the
+    /// lock date through settings.set.
+    #[tokio::test]
+    async fn settings_set_is_limited_for_agents() {
+        let dir = std::env::temp_dir().join(format!("tally-mcp-settings-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let app = Arc::new(App::new(Arc::new(MemorySecrets::default()), dir.join("config")));
+        app.call("book.create_demo", json!({ "path": dir.join("demo.tallybook") })).await.unwrap();
+        app.call("settings.set", json!({ "lock_date": "2020-12-31" })).await.unwrap();
+        let call = |id, method: &str, params: Value| tool(id, "call", json!({ "method": method, "params": params }));
+        let r = run(
+            app.clone(),
+            true,
+            &[
+                call(1, "settings.set", json!({ "prefs": { "cloud.folder": "/tmp/elsewhere" } })),
+                call(2, "settings.set", json!({ "prefs": { "cloud.auto": "1", "cloud.keep": "0" } })),
+                call(3, "settings.set", json!({ "lock_date": null })),
+                call(4, "settings.set", json!({ "prefs": { "company.phone": "555-0100" } })),
+            ],
+        )
+        .await;
+        for reply in &r[..3] {
+            assert_eq!(reply["result"]["isError"], true, "{reply}");
+        }
+        assert!(text(&r[2]).contains("lock date"));
+        assert_eq!(r[3]["result"]["isError"], false, "ordinary preferences still work: {}", r[3]);
+        let settings = app.call("settings.get", Value::Null).await.unwrap();
+        assert_eq!(settings["lock_date"], "2020-12-31");
+        assert!(settings["prefs"].get("cloud.folder").is_none() && settings["prefs"].get("cloud.auto").is_none());
+    }
+
+    /// A read-only agent changes no files: opening a book leaves the desktop
+    /// app's recent list byte-identical, and only .tallybook files open.
+    #[tokio::test]
+    async fn a_read_only_agent_leaves_the_recent_list_alone() {
+        let dir = std::env::temp_dir().join(format!("tally-mcp-recent-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let app = Arc::new(App::new(Arc::new(MemorySecrets::default()), dir.join("config")));
+        let other = dir.join("other.tallybook");
+        app.call("book.create_demo", json!({ "path": other })).await.unwrap();
+        app.call("book.create_demo", json!({ "path": dir.join("demo.tallybook") })).await.unwrap();
+        let recent = std::fs::read(dir.join("config/recent.json")).unwrap();
+        let notes = dir.join("notes.db");
+        std::fs::write(&notes, b"not a book").unwrap();
+        let r = run(
+            app.clone(),
+            false,
+            &[
+                tool(1, "open_book", json!({ "path": other })),
+                tool(2, "open_book", json!({ "path": notes })),
+                tool(3, "call", json!({ "method": "book.close" })),
+            ],
+        )
+        .await;
+        assert_eq!(r[0]["result"]["isError"], false, "{}", r[0]);
+        assert_eq!(r[1]["result"]["isError"], true);
+        assert!(text(&r[1]).contains(".tallybook"));
+        assert_eq!(r[2]["result"]["isError"], true, "closing the book is a change");
+        assert_eq!(std::fs::read(dir.join("config/recent.json")).unwrap(), recent, "recent.json untouched");
+        assert_eq!(std::fs::read(&notes).unwrap(), b"not a book");
     }
 
     #[test]
