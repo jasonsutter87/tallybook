@@ -292,6 +292,11 @@ impl Store {
     /// ones brought in: entries need people, sectors and goals; bills and
     /// rules need people and sectors.
     pub fn import_ledger(&mut self, path: &Path, money_account: Option<AccountId>) -> Result<LedgerImport> {
+        // All of it or none of it, so an error never leaves half an import.
+        self.atomically(|s| s.import_ledger_steps(path, money_account))
+    }
+
+    fn import_ledger_steps(&mut self, path: &Path, money_account: Option<AccountId>) -> Result<LedgerImport> {
         if !self.sides()?.contains(&Scope::Household) {
             return rule("add a household side to this book first (Settings → Business & household)");
         }
@@ -511,7 +516,7 @@ impl Store {
             let lines = alloc
                 .query_map([&month], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?, r.get::<_, String>(2)?)))?
                 .collect::<rusqlite::Result<Vec<_>>>()?;
-            let tx = self.conn.transaction()?;
+            let tx = self.conn.savepoint()?;
             tx.execute("INSERT INTO budget_months(month, available) VALUES (?1, ?2)", params![month, (allocated > 0).then_some(allocated)])?;
             for (person, amount, direction) in lines {
                 let Some(p) = people.get(&person) else { continue };
