@@ -271,8 +271,13 @@ fn build_estimate(s: &Store, year: i32, ty: &'static TaxYear) -> ApiResult<Estim
     })
 }
 
+/// A text cell (a name, label or memo) for the CSV files. Text that a
+/// spreadsheet would read as a formula (starting with `=`, `+`, `-`, `@`, a
+/// tab or a carriage return) gets a leading `'`, so it shows as typed. Money
+/// is written by [`dollars`], never through here, so amounts stay numbers.
 fn csv_cell(s: &str) -> String {
-    if s.contains([',', '"', '\n']) { format!("\"{}\"", s.replace('"', "\"\"")) } else { s.to_string() }
+    let s = if s.starts_with(['=', '+', '-', '@', '\t', '\r']) { format!("'{s}") } else { s.to_string() };
+    if s.contains([',', '"', '\n', '\r']) { format!("\"{}\"", s.replace('"', "\"\"")) } else { s }
 }
 
 /// Cents as plain dollars for the CSV files: `1234.50`, `-3.07`. No `$`,
@@ -580,4 +585,25 @@ fn gather_export(s: &Store, book_path: &std::path::Path, year: i32, ty: &'static
     let book_path = book_path.to_path_buf();
     let book_file = book_path.file_name().map_or_else(String::new, |n| n.to_string_lossy().into_owned());
     Ok(ExportData { book_path, book_file, company, range, names, est, sc, entries, r, pnl })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn csv_text_cells_never_start_a_formula() {
+        assert_eq!(csv_cell("=1+1"), "'=1+1");
+        assert_eq!(csv_cell("@SUM(A1)"), "'@SUM(A1)");
+        assert_eq!(csv_cell("-2+3"), "'-2+3");
+        assert_eq!(csv_cell("+1"), "'+1");
+        assert_eq!(csv_cell("\tx"), "'\tx");
+        assert_eq!(csv_cell("\rx"), "\"'\rx\"");
+        assert_eq!(csv_cell("a\rb"), "\"a\rb\"", "a bare CR is quoted so it can't start a row");
+        assert_eq!(csv_cell("=HYPERLINK(\"x\")"), "\"'=HYPERLINK(\"\"x\"\")\"");
+        assert_eq!(csv_cell("Office, rent"), "\"Office, rent\"");
+        assert_eq!(csv_cell("Plain"), "Plain");
+        // Amounts don't go through csv_cell and keep their minus sign.
+        assert_eq!(dollars(Cents(-1250)), "-12.50");
+    }
 }
