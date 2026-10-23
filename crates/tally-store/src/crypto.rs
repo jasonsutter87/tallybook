@@ -34,8 +34,24 @@ pub fn is_encrypted_file(path: &Path) -> std::io::Result<bool> {
     Ok(n == 16 && &header != SQLITE_HEADER)
 }
 
-fn hex(key: &BookKey) -> String {
+/// A key as 64 lowercase hex digits: how it's stored in the keychain and
+/// written into SQLCipher's raw-key literal.
+pub fn hex(key: &BookKey) -> String {
     key.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+/// The key `hex` wrote; `None` for anything else.
+pub fn unhex(s: &str) -> Option<BookKey> {
+    // Checked up front: slicing a non-ASCII string below would panic, and
+    // `from_str_radix` would accept a leading "+".
+    if s.len() != 64 || !s.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return None;
+    }
+    let mut key = [0u8; 32];
+    for (i, k) in key.iter_mut().enumerate() {
+        *k = u8::from_str_radix(&s[i * 2..i * 2 + 2], 16).ok()?;
+    }
+    Some(key)
 }
 
 /// SQLCipher's raw-key literal.
@@ -184,6 +200,15 @@ impl Store {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn unhex_round_trips_and_rejects_junk() {
+        let key: BookKey = std::array::from_fn(|i| i as u8 * 7);
+        assert_eq!(unhex(&hex(&key)), Some(key));
+        assert_eq!(unhex(&"é".repeat(32)), None, "64 bytes but not hex must not panic");
+        assert_eq!(unhex(&format!("+1{}", "00".repeat(31))), None);
+        assert_eq!(unhex("abcd"), None);
+    }
 
     #[test]
     fn recovery_keys_round_trip_and_catch_typos() {
