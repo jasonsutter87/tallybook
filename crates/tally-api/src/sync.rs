@@ -16,6 +16,16 @@ use std::result::Result;
 
 const PLAID_CREDS: &str = "plaid.credentials";
 
+/// History fetched when a SimpleFIN connection is first made: only enough to
+/// list the accounts and their balances. The real history comes on the first
+/// sync, from each linked account's start date.
+const SIMPLEFIN_CONNECT_DAYS: u64 = 30;
+
+/// How far back a SimpleFIN sync reaches at most. SimpleFIN Bridge serves
+/// about 90 days per request; one day less stays inside that whatever the
+/// time zones.
+const SIMPLEFIN_MAX_HISTORY_DAYS: u64 = 89;
+
 #[derive(Deserialize)]
 struct ConnectionParam {
     connection_id: ConnectionId,
@@ -232,7 +242,7 @@ impl App {
             "bank.simplefin_connect" => {
                 let p: SetupToken = params(p)?;
                 let access_url = simplefin::claim(&p.setup_token).await.map_err(sfin_err)?;
-                let since = today() - Days::new(30);
+                let since = today() - Days::new(SIMPLEFIN_CONNECT_DAYS);
                 let accounts = simplefin::fetch(&access_url, since).await.map_err(sfin_err)?;
                 let secret_ref = format!("simplefin:{}", uuid::Uuid::new_v4());
                 self.secrets.set(&secret_ref, &access_url).map_err(|e| ApiError::new("keychain", e))?;
@@ -369,7 +379,7 @@ impl App {
                 }
             }
             Provider::Simplefin => {
-                let since = links.iter().map(|l| l.start_date).min().unwrap_or_else(today).max(today() - Days::new(89));
+                let since = links.iter().map(|l| l.start_date).min().unwrap_or_else(today).max(today() - Days::new(SIMPLEFIN_MAX_HISTORY_DAYS));
                 match simplefin::fetch(&secret, since).await {
                     Err(e) => Err((
                         if matches!(e, simplefin::SimpleFinError::Unauthorized(_)) { ConnectionStatus::NeedsRelink } else { ConnectionStatus::Error },
