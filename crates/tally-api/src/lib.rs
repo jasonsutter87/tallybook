@@ -5,6 +5,15 @@
 //! (Tauri) and the browser dev server both just forward to it, so the two can
 //! never drift apart.
 //!
+//! The full method reference (params, results, errors, which methods change
+//! the book) is `docs/API.md`; [`METHODS`] lists every method, and a test keeps
+//! the list, the routers and the MCP access lists in step.
+//!
+//! Errors are [`ApiError`]s whose `code` is one of: `bad_params`, `rule`,
+//! `not_found`, `no_book`, `locked`, `license`, `unsupported_year`,
+//! `unknown_method`, `io`, `keychain`, `bank`, `plaid_not_configured`,
+//! `offline`, `internal` (each explained in `docs/API.md`).
+//!
 //! Money crosses the boundary as integer cents; dates as `YYYY-MM-DD`;
 //! budget months as `YYYY-MM`.
 //!
