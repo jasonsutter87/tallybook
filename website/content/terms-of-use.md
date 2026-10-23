@@ -67,5 +67,6 @@ You may use this website for any lawful purpose. Don't try to disrupt it.
 
 ## Changes and contact
 
-We may update these terms; the date at the top shows when. Questions:
-[{{< param supportEmail >}}](mailto:{{< param supportEmail >}}).
+We may update these terms; the date at the top shows when. Questions: open an
+issue on [GitHub]({{< param github >}}/issues), or reply to your purchase
+receipt for anything private.
