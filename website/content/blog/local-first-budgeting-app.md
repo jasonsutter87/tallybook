@@ -47,7 +47,7 @@ to a new computer. Hand it to your accountant at tax time.
 ## "But what about my bank feed?"
 
 Local-first doesn't mean manual-only. A local app can still connect to your bank
-through services like **SimpleFIN** or **Plaid**, directly from your computer,
+through a service like **SimpleFIN**, directly from your computer,
 with the access token kept in your system's keychain rather than on a server.
 Your bank password only ever goes to your bank's own sign-in page.
 

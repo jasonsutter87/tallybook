@@ -33,8 +33,8 @@
 - q: How do I bring in my transactions?
   a: >-
     Import a CSV or OFX/QFX statement from your bank's website (always free), or
-    connect your bank through SimpleFIN (about $15 a year, paid to SimpleFIN) or
-    Plaid using your own account. Cash and anything else the bank won't see can
+    connect your bank through SimpleFIN (about $15 a year, paid to SimpleFIN).
+    Cash and anything else the bank won't see can
     be logged by hand in a few taps.
 
 - q: Does it file my taxes or run payroll?
