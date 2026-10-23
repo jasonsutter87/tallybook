@@ -37,7 +37,8 @@ export default function Invoices() {
   const [paying, setPaying] = useState(false);
   const today = todayISO();
 
-  const invoices = data ?? [];
+  // Keeps its identity while the data is unchanged, so the tables below don't recompute every render.
+  const invoices = useMemo(() => data ?? [], [data]);
   const received = useApi<PaymentSummary[]>("payments.list", { kind: "received", from: addDays(today, -30) });
 
   const stats = useMemo(() => {
