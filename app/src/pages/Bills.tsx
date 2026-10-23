@@ -117,6 +117,7 @@ export default function Bills() {
           {rows.length === 0 ? (
             <Empty tab={tab} searching={!!query.trim()} hasAny={bills.length > 0} onNew={() => navigate("/bills/new")} />
           ) : (
+            <div className="table-scroll" role="region" aria-label="Bills" tabIndex={0}>
             <table className="table">
               <thead>
                 <tr>
@@ -176,6 +177,7 @@ export default function Bills() {
                 </tfoot>
               )}
             </table>
+            </div>
           )}
         </div>
       </div>
