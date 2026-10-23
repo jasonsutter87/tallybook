@@ -170,11 +170,23 @@ export default function BillEditor() {
           </div>
           {lines.map((l) => (
             <div key={l.key} className="bk-lines">
-              <input className="input" placeholder="e.g. October design work" value={l.description} onChange={(e) => setLine(l.key, { description: e.target.value })} />
+              <input
+                className="input"
+                aria-label="Description"
+                placeholder="e.g. October design work"
+                value={l.description}
+                onChange={(e) => setLine(l.key, { description: e.target.value })}
+              />
               <div className="bk-line-account">
-                <AccountSelect value={l.account_id} onChange={(id) => setLine(l.key, { account_id: id })} kinds={EXPENSE_KINDS} subtypes={EXPENSE_SUBTYPES} />
+                <AccountSelect
+                  value={l.account_id}
+                  onChange={(id) => setLine(l.key, { account_id: id })}
+                  kinds={EXPENSE_KINDS}
+                  subtypes={EXPENSE_SUBTYPES}
+                  aria-label="Category"
+                />
               </div>
-              <MoneyInput value={l.amount} onChange={(c) => setLine(l.key, { amount: c })} />
+              <MoneyInput value={l.amount} onChange={(c) => setLine(l.key, { amount: c })} aria-label="Amount" />
               <button
                 className="btn btn-ghost btn-icon"
                 type="button"

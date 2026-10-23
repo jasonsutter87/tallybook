@@ -1,6 +1,6 @@
 import { AlertCircle, CalendarClock, CheckCircle2, Plus, Receipt, Search, Wallet } from "lucide-react";
 import { useMemo, useState, type ReactNode } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useApi } from "../api";
 import { Avatar, EmptyState, ErrorBanner, Loading, Money, PageHeader, StatusPill, Tabs } from "../components/ui";
 import { addDays, date, money, plural, startOfMonth } from "../format";
@@ -135,7 +135,14 @@ export default function Bills() {
                       <div className="row" style={{ gap: 12 }}>
                         <Avatar name={b.vendor_name} />
                         <div style={{ minWidth: 0 }}>
-                          <div className="bold truncate">{b.vendor_name}</div>
+                          <Link
+                            to={`/bills/${b.id}`}
+                            className="row-link bold truncate"
+                            style={{ display: "block" }}
+                            aria-label={`Bill from ${b.vendor_name}${b.number ? ` #${b.number}` : ""}`}
+                          >
+                            {b.vendor_name}
+                          </Link>
                           {b.memo && <div className="small subtle truncate" style={{ maxWidth: 240 }}>{b.memo}</div>}
                         </div>
                       </div>

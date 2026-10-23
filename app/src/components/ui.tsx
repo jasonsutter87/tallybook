@@ -205,6 +205,10 @@ export function Modal(props: {
   footer?: ReactNode;
   width?: number;
 }) {
+  // Name the dialog by its title (and describe it by its subtitle), so screen
+  // readers announce "Import complete, dialog" rather than just "dialog".
+  const titleId = useId();
+  const subtitleId = useId();
   useEffect(() => {
     if (!props.open) return;
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && props.onClose();
@@ -214,11 +218,24 @@ export function Modal(props: {
   if (!props.open) return null;
   return (
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && props.onClose()}>
-      <div className="modal" style={{ maxWidth: props.width ?? 520 }} role="dialog" aria-modal="true">
+      <div
+        className="modal"
+        style={{ maxWidth: props.width ?? 520 }}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        aria-describedby={props.subtitle ? subtitleId : undefined}
+      >
         <div className="modal-header">
           <div>
-            <div className="modal-title">{props.title}</div>
-            {props.subtitle && <div className="muted" style={{ marginTop: 4 }}>{props.subtitle}</div>}
+            <div className="modal-title" id={titleId}>
+              {props.title}
+            </div>
+            {props.subtitle && (
+              <div className="muted" id={subtitleId} style={{ marginTop: 4 }}>
+                {props.subtitle}
+              </div>
+            )}
           </div>
           <button className="btn btn-ghost btn-icon" onClick={props.onClose} aria-label="Close">
             <X size={18} />
@@ -276,11 +293,21 @@ export function ConfirmModal(props: {
 
 // ------------------------------------------------------------- inputs
 
+/**
+ * The id of the enclosing Field's label text. A wrapping <label> names its
+ * input by all of its text, which for a combobox includes the open menu's
+ * options; pickers point at just the label text instead.
+ */
+const FieldLabelContext = createContext<string | undefined>(undefined);
+
 export function Field(props: { label: ReactNode; hint?: ReactNode; children: ReactNode; className?: string }) {
+  const labelId = useId();
   return (
     <label className={`field ${props.className ?? ""}`}>
-      <span className="label">{props.label}</span>
-      {props.children}
+      <span className="label" id={labelId}>
+        {props.label}
+      </span>
+      <FieldLabelContext.Provider value={labelId}>{props.children}</FieldLabelContext.Provider>
       {props.hint && <span className="hint">{props.hint}</span>}
     </label>
   );
@@ -365,8 +392,11 @@ export function Combobox(props: {
   placeholder?: string;
   autoFocus?: boolean;
   footer?: ReactNode;
+  /** For pickers without a visible label (inside a table row, say). */
+  "aria-label"?: string;
 }) {
   const id = useId();
+  const fieldLabelId = useContext(FieldLabelContext);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
@@ -403,6 +433,8 @@ export function Combobox(props: {
         id={id}
         className="input"
         autoFocus={props.autoFocus}
+        aria-label={props["aria-label"]}
+        aria-labelledby={props["aria-label"] ? undefined : fieldLabelId}
         placeholder={selected ? selected.label : (props.placeholder ?? "Choose…")}
         value={open ? query : (selected?.label ?? "")}
         onFocus={() => {
@@ -479,6 +511,7 @@ export function AccountSelect(props: {
   autoFocus?: boolean;
   /** Only one side of the book. */
   scope?: Scope;
+  "aria-label"?: string;
 }) {
   const { data } = useApi<Account[]>("accounts.list");
   const { both, sides } = useSides();
@@ -503,7 +536,16 @@ export function AccountSelect(props: {
       ),
     );
   }, [data, props.kinds, props.subtypes, props.exclude, props.prefer, props.scope, both, sides]);
-  return <Combobox options={options} value={props.value} onChange={props.onChange} placeholder={props.placeholder ?? "Choose a category"} autoFocus={props.autoFocus} />;
+  return (
+    <Combobox
+      options={options}
+      value={props.value}
+      onChange={props.onChange}
+      placeholder={props.placeholder ?? "Choose a category"}
+      autoFocus={props.autoFocus}
+      aria-label={props["aria-label"]}
+    />
+  );
 }
 
 export function ContactSelect(props: { value: number | null; onChange: (id: number | null) => void; kind: ContactKind; placeholder?: string }) {
