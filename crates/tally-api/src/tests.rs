@@ -4,6 +4,7 @@
 //! `crates/tally-api/tests/`.
 
 use chrono::Datelike;
+use tally_core::AccountSubtype;
 use super::*;
 use serde_json::json;
 
@@ -474,4 +475,144 @@ async fn cash_paid_from_the_till_keeps_its_payee_and_moves_the_balance() {
     assert_eq!(app.call("entries.get", json!({ "id": paid })).await.unwrap()["payee_id"], pat);
     let till_now = app.call("accounts.list", Value::Null).await.unwrap().as_array().unwrap().iter().find(|a| a["id"] == till).unwrap()["balance"].clone();
     assert_eq!(till_now, 35000);
+}
+
+// ---------------------------------------------------------------- API pass
+
+/// `bank.sync` with no connection named syncs them all, and a connection that
+/// can't sync (its credential is gone from the keychain) is reported with
+/// `ok: false` instead of discarding the rest.
+#[tokio::test]
+async fn sync_all_reports_a_failing_connection_and_carries_on() {
+    let (app, dir) = app("sync-all");
+    app.call("book.create", json!({ "path": dir.join("s.tallybook"), "company_name": "Shop" })).await.unwrap();
+    let account = app
+        .run(|s| s.create_account(&NewAccount { code: None, name: "Checking".into(), subtype: AccountSubtype::Bank, parent_id: None, scope: Scope::Business, flex: None }))
+        .unwrap();
+    // The first connection has a link but its secret was never stored; the second has no links, so it syncs trivially.
+    let (broken, fine) = app
+        .run(|s| {
+            let broken = s.create_connection(Provider::Simplefin, "Broken CU", None, Some("simplefin:missing"))?;
+            s.link_account(broken, "ext-1", account, "Checking", None, today())?;
+            let fine = s.create_connection(Provider::Simplefin, "Fine CU", None, Some("simplefin:fine"))?;
+            Ok((broken, fine))
+        })
+        .unwrap();
+
+    let reports = app.call("bank.sync", json!({})).await.unwrap();
+    let reports = reports.as_array().unwrap();
+    assert_eq!(reports.len(), 2, "{reports:?}");
+    assert_eq!(reports[0]["connection_id"], broken);
+    assert_eq!(reports[0]["institution"], "Broken CU");
+    assert_eq!(reports[0]["ok"], false);
+    assert!(reports[0]["error"].as_str().unwrap().contains("keychain"), "{reports:?}");
+    assert_eq!(reports[1]["connection_id"], fine);
+    assert_eq!(reports[1]["ok"], true);
+
+    // Naming the broken connection still returns its error as an error.
+    assert_eq!(app.call("bank.sync", json!({ "connection_id": broken })).await.unwrap_err().code, "rule");
+}
+
+/// A/R and A/P exist only on the business side, so `scope` is honored by
+/// emptying the report for any other side.
+#[tokio::test]
+async fn aging_reports_honor_scope() {
+    let (app, dir) = app("aging");
+    app.call("book.create", json!({ "path": dir.join("a.tallybook"), "company_name": "Shop" })).await.unwrap();
+    let accounts = app.call("accounts.list", Value::Null).await.unwrap();
+    let sales = accounts.as_array().unwrap().iter().find(|a| a["code"] == "4000").unwrap()["id"].clone();
+    let customer = app.call("contacts.create", json!({ "kind": "customer", "name": "Acme" })).await.unwrap();
+    let due = today() - chrono::Days::new(40);
+    let invoice = app
+        .call("invoices.create", json!({
+            "customer_id": customer, "issue_date": due, "due_date": due, "memo": "", "tax_rate_bp": 0,
+            "lines": [{ "description": "Work", "quantity_milli": 1000, "unit_price": 50000, "account_id": sales, "taxable": false }]
+        }))
+        .await
+        .unwrap();
+    app.call("invoices.finalize", json!({ "id": invoice })).await.unwrap();
+
+    for method in ["reports.ar_aging", "reports.ap_aging"] {
+        let all = app.call(method, json!({})).await.unwrap();
+        let business = app.call(method, json!({ "scope": "business" })).await.unwrap();
+        let household = app.call(method, json!({ "scope": "household" })).await.unwrap();
+        assert_eq!(all, business, "{method}: business is the default");
+        assert!(household["rows"].as_array().unwrap().is_empty(), "{method}: {household}");
+        assert!(household["totals"].as_object().unwrap().values().all(|v| v == 0), "{method}: {household}");
+    }
+    let ar = app.call("reports.ar_aging", json!({})).await.unwrap();
+    assert_eq!(ar["rows"].as_array().unwrap().len(), 1, "{ar}");
+    assert_eq!(ar["totals"]["days_31_60"], 50000, "{ar}");
+    let household = app.call("reports.ar_aging", json!({ "scope": "household" })).await.unwrap();
+    assert!(household["rows"].as_array().unwrap().is_empty(), "household has no invoices: {household}");
+}
+
+/// A `tax_year` too big for an i32 is refused up front; it must not wrap into
+/// a real year and pass or fail the license gate as that year.
+#[tokio::test]
+async fn record_payment_refuses_a_tax_year_that_would_wrap() {
+    let (app, dir) = app("wrap");
+    app.call("book.create", json!({ "path": dir.join("w.tallybook"), "company_name": "Shop" })).await.unwrap();
+    // License one supported year; the gate would say "license" if the number wrapped to another.
+    let years = tally_core::tax::supported_years();
+    let license = crate::license::License {
+        tier: crate::license::Tier::Tax,
+        key: "K".into(),
+        instance_id: "i".into(),
+        email: None,
+        activated_on: today(),
+        tax_years: vec![years[0]],
+        earlier: vec![],
+    };
+    crate::license::save(&dir.join("config"), &license).unwrap();
+    let year = years.into_iter().find(|y| app.require_tax_year(*y).is_err()).expect("a supported year the license doesn't cover");
+    let wrapped = i64::from(year) + (1_i64 << 32);
+    let e = app
+        .call("tax.record_payment", json!({ "tax_year": wrapped, "quarter": 1, "jurisdiction": "federal", "date": "2026-04-15", "amount": 100, "account_id": 1 }))
+        .await
+        .unwrap_err();
+    assert_eq!(e.code, "bad_params", "{e:?}");
+    assert!(e.message.contains("out of range"), "{e:?}");
+}
+
+/// `recurring.due`'s default window runs to the end of next month, across a year end too.
+#[test]
+fn recurring_due_default_window_is_the_past_week_through_next_month() {
+    let d = |y, m, day| NaiveDate::from_ymd_opt(y, m, day).unwrap();
+    assert_eq!(crate::recurring::default_due_window(d(2026, 3, 10)).unwrap(), (d(2026, 3, 3), d(2026, 4, 30)));
+    assert_eq!(crate::recurring::default_due_window(d(2026, 12, 31)).unwrap(), (d(2026, 12, 24), d(2027, 1, 31)));
+    assert_eq!(crate::recurring::default_due_window(d(2027, 1, 31)).unwrap(), (d(2027, 1, 24), d(2027, 2, 28)));
+}
+
+/// `METHODS` lists exactly what the routers dispatch: every entry is routed
+/// (never `unknown_method`), and every method literal in a router is listed.
+#[tokio::test]
+async fn the_method_list_matches_the_routers() {
+    let (app, _dir) = free_app("methods");
+    for m in METHODS {
+        // No book is open and no params are sent, so nothing here does any work.
+        let e = app.call(m, Value::Null).await.err();
+        assert!(e.is_none_or(|e| e.code != "unknown_method"), "{m} is listed but not routed");
+    }
+    assert_eq!(app.call("nope.nothing", Value::Null).await.unwrap_err().code, "unknown_method");
+    let mut seen = std::collections::BTreeSet::new();
+    for src in [
+        include_str!("session.rs"), include_str!("books.rs"), include_str!("settings.rs"), include_str!("reports.rs"), include_str!("accounts.rs"),
+        include_str!("people.rs"), include_str!("recurring.rs"), include_str!("goals.rs"), include_str!("inbox.rs"), include_str!("import.rs"),
+        include_str!("rules.rs"), include_str!("reconcile.rs"), include_str!("contacts.rs"), include_str!("invoices.rs"), include_str!("bills.rs"),
+        include_str!("tax_api.rs"), include_str!("sync.rs"), include_str!("license.rs"), include_str!("cloud.rs"),
+    ] {
+        for line in src.lines().map(str::trim).filter(|l| l.starts_with('"') && l.contains("=>")) {
+            let arms = line.split("=>").next().unwrap();
+            for lit in arms.split('|').map(|a| a.trim().trim_matches('"')) {
+                if lit.contains('.') || lit == "dashboard" {
+                    seen.insert(lit.to_string());
+                }
+            }
+        }
+    }
+    for m in &seen {
+        assert!(METHODS.contains(&m.as_str()), "{m} is routed but missing from METHODS");
+    }
+    assert!(seen.len() > 100, "the scan found only {} arms", seen.len());
 }
