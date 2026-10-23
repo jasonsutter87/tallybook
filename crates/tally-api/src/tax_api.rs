@@ -379,23 +379,14 @@ fn export_readme(year: i32, ty: &TaxYear, book_file: &str, (from, to): (NaiveDat
     )
 }
 
+/// The year a request is about: the current one when absent.
+fn year_of(p: Value) -> ApiResult<i32> {
+    Ok(params::<Year>(p)?.year.unwrap_or_else(|| today().year()))
+}
+
 impl App {
     pub(crate) async fn tax(&self, method: &str, p: Value) -> ApiResult<Value> {
-        let year_of = |p: Value| -> ApiResult<i32> { Ok(params::<Year>(p)?.year.unwrap_or_else(|| today().year())) };
-        // Contractor details and payees are everyday bookkeeping; the rest is tax prep.
-        if !matches!(method, "tax.years" | "tax.lines" | "tax.set_payee" | "tax.set_contact") {
-            self.require(crate::license::Tier::Tax)?;
-        }
-        // Business + Tax is bought per tax season, so a year's figures need that year
-        // licensed. A year with no tables at all gets that (truer) error from the method.
-        let year = match method {
-            "tax.schedule_c" | "tax.confirm_all" | "tax.estimate" | "tax.1099" | "tax.export" => Some(year_of(p.clone())?),
-            "tax.record_payment" => p.get("tax_year").and_then(Value::as_i64).map(|y| y as i32),
-            _ => None,
-        };
-        if let Some(year) = year.filter(|y| tax::tax_year(*y).is_some()) {
-            self.require_tax_year(year)?;
-        }
+        self.check_license(method, &p)?;
         match method {
             "tax.years" => ok(YearsView {
                 supported: tax::supported_years(),
@@ -408,44 +399,13 @@ impl App {
                 .map(|l| LineView { line: l.line, number: l.number, label: l.label, help: l.help })
                 .collect::<Vec<_>>()),
             "tax.profile" => self.with(|s| load_profile(s)),
-            "tax.set_profile" => {
-                let profile: TaxProfile = params(p)?;
-                if !matches!(profile.method.as_str(), "safe_harbor" | "current_year") {
-                    return Err(ApiError::new("bad_params", "method must be safe_harbor or current_year"));
-                }
-                if !(0..=MAX_STATE_RATE_BP).contains(&profile.state_rate_bp) {
-                    return Err(ApiError::new("rule", "state rate looks wrong (0–20%)"));
-                }
-                let json = serde_json::to_string(&profile).map_err(|e| ApiError::new("internal", e.to_string()))?;
-                self.with(|s| s.set_pref("tax.profile", Some(&json)))
-            }
-            "tax.schedule_c" => {
-                let year = year_of(p)?;
-                require_year(year)?;
-                self.with_api(|s| {
-                    let profile = load_profile(s)?;
-                    let probe = s.schedule_c(year, Cents::ZERO)?;
-                    let home = tax::simplified_home_office(profile.home_office_sqft, probe.schedule.line29_tentative_profit);
-                    let report = s.schedule_c(year, home)?;
-                    Ok(json!({ "report": report, "home_office_sqft": profile.home_office_sqft, "disclaimer": DISCLAIMER }))
-                })
-            }
+            "tax.set_profile" => self.set_profile(params(p)?),
+            "tax.schedule_c" => self.schedule_c(year_of(p)?),
             "tax.set_line" => {
                 let p: SetLine = params(p)?;
                 self.with(|s| s.set_tax_line(p.account_id, p.line))
             }
-            "tax.confirm_all" => {
-                // Accept every current suggestion as confirmed.
-                let year = year_of(p)?;
-                require_year(year)?;
-                self.with(|s| {
-                    let r = s.schedule_c(year, Cents::ZERO)?;
-                    for row in r.rows.iter().filter(|r| !r.confirmed) {
-                        s.set_tax_line(row.account_id, Some(row.line))?;
-                    }
-                    Ok(())
-                })
-            }
+            "tax.confirm_all" => self.confirm_all(year_of(p)?),
             "tax.estimate" => {
                 let year = year_of(p)?;
                 let ty = require_year(year)?;
@@ -479,6 +439,61 @@ impl App {
             }
             _ => Err(ApiError::new("unknown_method", format!("no such method: {method}"))),
         }
+    }
+
+    /// Tax prep needs the Tax license, and a year's figures need that year
+    /// licensed too.
+    fn check_license(&self, method: &str, p: &Value) -> ApiResult<()> {
+        // Contractor details and payees are everyday bookkeeping; the rest is tax prep.
+        if !matches!(method, "tax.years" | "tax.lines" | "tax.set_payee" | "tax.set_contact") {
+            self.require(crate::license::Tier::Tax)?;
+        }
+        // Business + Tax is bought per tax season, so a year's figures need that year
+        // licensed. A year with no tables at all gets that (truer) error from the method.
+        let year = match method {
+            "tax.schedule_c" | "tax.confirm_all" | "tax.estimate" | "tax.1099" | "tax.export" => Some(year_of(p.clone())?),
+            "tax.record_payment" => p.get("tax_year").and_then(Value::as_i64).map(|y| y as i32),
+            _ => None,
+        };
+        if let Some(year) = year.filter(|y| tax::tax_year(*y).is_some()) {
+            self.require_tax_year(year)?;
+        }
+        Ok(())
+    }
+
+    fn set_profile(&self, profile: TaxProfile) -> ApiResult<Value> {
+        if !matches!(profile.method.as_str(), "safe_harbor" | "current_year") {
+            return Err(ApiError::new("bad_params", "method must be safe_harbor or current_year"));
+        }
+        if !(0..=MAX_STATE_RATE_BP).contains(&profile.state_rate_bp) {
+            return Err(ApiError::new("rule", "state rate looks wrong (0–20%)"));
+        }
+        let json = serde_json::to_string(&profile).map_err(|e| ApiError::new("internal", e.to_string()))?;
+        self.with(|s| s.set_pref("tax.profile", Some(&json)))
+    }
+
+    /// The Schedule C worksheet, with the simplified home-office deduction worked out from the profile.
+    fn schedule_c(&self, year: i32) -> ApiResult<Value> {
+        require_year(year)?;
+        self.with_api(|s| {
+            let profile = load_profile(s)?;
+            let probe = s.schedule_c(year, Cents::ZERO)?;
+            let home = tax::simplified_home_office(profile.home_office_sqft, probe.schedule.line29_tentative_profit);
+            let report = s.schedule_c(year, home)?;
+            Ok(json!({ "report": report, "home_office_sqft": profile.home_office_sqft, "disclaimer": DISCLAIMER }))
+        })
+    }
+
+    /// Accepts every current suggestion as confirmed.
+    fn confirm_all(&self, year: i32) -> ApiResult<Value> {
+        require_year(year)?;
+        self.with(|s| {
+            let r = s.schedule_c(year, Cents::ZERO)?;
+            for row in r.rows.iter().filter(|r| !r.confirmed) {
+                s.set_tax_line(row.account_id, Some(row.line))?;
+            }
+            Ok(())
+        })
     }
 
     /// Writes an accountant package to "<book folder>/Tax <year>/".
