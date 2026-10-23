@@ -166,7 +166,7 @@ adds only what's new.
 2. **Open Tallybook** and create a book for your business, your household,
    or both.
 3. **Bring in your transactions**, any of these ways:
-   - **Connect your bank** through Plaid or SimpleFIN. See the
+   - **Connect your bank** through SimpleFIN. See the
      [bank connection guide](https://tallybook.app/help/bank-connections/).
    - **Import a statement**: download a CSV or OFX/QFX file from your bank's
      website and drop it into Review.
@@ -218,7 +218,7 @@ otherwise. [Set it up →](docs/AGENTS.md)
   Git repository. Only encrypted books can leave your computer.
 - **Bank logins stay secret.** Bank access is stored in your computer's
   keychain, never in the book file. Your bank password is only ever typed
-  into your bank's (or Plaid's) own page.
+  into your bank's own page.
 - **Nothing is quietly changed.** Mistakes are fixed by voiding, which keeps
   a record, rather than by deleting history. Lock past periods once you've
   filed taxes.
@@ -234,8 +234,8 @@ reports and encryption. Keeping a business is a one-time $19.99, yours for
 good. Business plus tax prep is $49.99 a tax season (it covers the year you buy
 it in and the one before), and returning customers renew for $29.99. Nothing
 renews by itself, and there's no account. Bank
-connections use your own Plaid or SimpleFIN account; SimpleFIN costs about
-$15/year, Plaid is free for personal use, and file import is always free.
+connections use your own SimpleFIN account, which costs about $15/year, and
+file import is always free.
 
 **Can I use it just for my household?**
 Yes. Pick **A household** when you create a book and you get budgets, bills and

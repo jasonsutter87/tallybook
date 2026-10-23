@@ -1,5 +1,6 @@
-// Bank connections: connect via Plaid (Hosted Link in the system browser) or
-// SimpleFIN Bridge, link provider accounts to ledger accounts, sync, unlink.
+// Bank connections: connect via SimpleFIN Bridge (Plaid, via Hosted Link in the
+// system browser, is hidden behind PLAID_ENABLED), link provider accounts to
+// ledger accounts, sync, unlink.
 
 import {
   ArrowRight,
@@ -68,6 +69,12 @@ const KIND_LABEL: Record<FeedAccountKind, string> = {
 
 const PROVIDER_LABEL: Record<string, string> = { plaid: "Plaid", simplefin: "SimpleFIN", file: "File" };
 
+/** New Plaid connections are hidden: bring-your-own Plaid keys cost users more
+ *  than SimpleFIN and need developer approval. Existing Plaid connections keep
+ *  syncing and reconnecting; the backend is untouched. */
+const PLAID_ENABLED = false;
+const CONNECT_START = PLAID_ENABLED ? "choose" : "simplefin";
+
 /** A pending link-step: which connection, which provider accounts. */
 interface LinkTarget {
   connection_id: number;
@@ -117,7 +124,7 @@ export default function Banking() {
               <RefreshCw size={16} className={sync.isPending ? "spin" : ""} /> {sync.isPending ? "Syncing…" : "Sync all"}
             </button>
           )}
-          <button className="btn btn-primary" onClick={() => setConnectOpen("choose")}>
+          <button className="btn btn-primary" onClick={() => setConnectOpen(CONNECT_START)}>
             <Plus size={16} /> Connect a bank
           </button>
         </div>
@@ -135,7 +142,7 @@ export default function Banking() {
                 body="Connect your bank once and new transactions show up in For Review every time you sync — no more downloading statements."
                 action={
                   <div className="row" style={{ justifyContent: "center" }}>
-                    <button className="btn btn-primary" onClick={() => setConnectOpen("choose")}>
+                    <button className="btn btn-primary" onClick={() => setConnectOpen(CONNECT_START)}>
                       <Plus size={16} /> Connect a bank
                     </button>
                     <button className="btn btn-secondary" onClick={() => setImportOpen(true)}>
@@ -184,7 +191,7 @@ export default function Banking() {
               <div className="grow">
                 <div className="bold">Your credentials stay with you</div>
                 <div className="muted small" style={{ marginTop: 4 }}>
-                  Bank access tokens are stored in your computer's keychain, never in the book file. Tallybook talks directly to Plaid or SimpleFIN —
+                  Bank access tokens are stored in your computer's keychain, never in the book file. Tallybook talks directly to SimpleFIN —
                   there's no Tallybook server in the middle.
                 </div>
               </div>
@@ -450,7 +457,7 @@ function Waiting(props: { onCancel: () => void; url: string }) {
 type ConnectStep = "choose" | "plaid_setup" | "plaid_wait" | "plaid_exited" | "simplefin";
 
 function ConnectModal(props: { initial: "choose" | "simplefin"; onClose: () => void; onLinked: (t: LinkTarget) => void }) {
-  const config = useApi<PlaidConfig>("bank.plaid_config_get");
+  const config = useApi<PlaidConfig>("bank.plaid_config_get", undefined, { enabled: PLAID_ENABLED });
   const [step, setStep] = useState<ConnectStep>(props.initial);
   const [error, setError] = useState<Error | null>(null);
   const [busy, setBusy] = useState(false);
