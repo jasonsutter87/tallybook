@@ -900,6 +900,23 @@ textarea {
   background: var(--surface-2);
 }
 
+/* A button that reads as an inline link, for actions inside running text. */
+.link-button {
+  border: 0;
+  background: none;
+  padding: 0;
+  color: var(--brand-strong);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.link-button:focus-visible {
+  outline: none;
+  box-shadow: var(--focus);
+}
+
 /* The real link or button inside a clickable row: what keyboard and screen
    reader users reach. It looks like the text around it until focused. */
 .row-link,
