@@ -48,7 +48,7 @@ mod sync;
 mod tax_api;
 mod tax_pdf;
 
-use chrono::{Local, NaiveDate};
+use chrono::{Datelike, Local, NaiveDate};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -114,6 +114,12 @@ pub fn today() -> NaiveDate {
     Local::now().date_naive()
 }
 
+/// January 1st of the current year: where "this year so far" reports begin.
+pub fn year_start() -> NaiveDate {
+    let t = today();
+    NaiveDate::from_ymd_opt(t.year(), 1, 1).unwrap_or(t)
+}
+
 pub(crate) struct OpenBook {
     pub(crate) store: Store,
     pub(crate) path: PathBuf,
@@ -140,6 +146,66 @@ fn file_id(path: &Path) -> Option<(u64, u64)> {
 fn file_id(_path: &Path) -> Option<(u64, u64)> {
     None
 }
+
+/// Every method [`App::call`] dispatches, by area. Kept honest by a test that
+/// calls each one and by a scan of the routers' `match` arms; the MCP server's
+/// access lists are checked against it too. `docs/API.md` documents them all.
+pub const METHODS: &[&str] = &[
+    // book (session.rs, books.rs)
+    "book.status", "book.recent", "book.default_dir", "book.create", "book.create_demo", "book.open",
+    "book.close", "book.forget", "book.backup", "book.add_side", "book.delete", "book.unlock", "book.encrypt",
+    "book.decrypt", "book.recovery_key", "book.delete_plain_backups",
+    // settings
+    "settings.get", "settings.set",
+    // reports
+    "dashboard", "reports.pnl", "reports.balance_sheet", "reports.trial_balance", "reports.ar_aging",
+    "reports.ap_aging",
+    // accounts, entries
+    "accounts.list", "accounts.subtypes", "accounts.create", "accounts.rename", "accounts.archive",
+    "accounts.set_flex", "accounts.opening_balance", "accounts.register", "entries.get", "entries.list",
+    "entries.post", "entries.void", "entries.set_person", "entries.set_goal",
+    // people, budget
+    "people.list", "people.create", "people.update", "people.archive", "budget.month", "budget.set",
+    "budget.remove", "budget.set_available",
+    // recurring
+    "recurring.list", "recurring.create", "recurring.update", "recurring.set_active", "recurring.due",
+    "recurring.mark", "recurring.suggestions", "recurring.dismiss_suggestion",
+    // goals, household
+    "goals.list", "goals.create", "goals.update", "goals.archive", "goals.contribute", "household.alerts",
+    "household.opportunities", "household.score", "household.wins",
+    // inbox
+    "inbox.list", "inbox.reviewed", "inbox.count", "inbox.candidates", "inbox.accept",
+    "inbox.accept_suggested", "inbox.split", "inbox.match", "inbox.exclude", "inbox.undo",
+    // import
+    "import.csv_preview", "import.csv", "import.ofx_preview", "import.ofx", "import.ledger_preview",
+    "import.ledger",
+    // rules
+    "rules.list", "rules.create", "rules.update", "rules.delete",
+    // reconcile
+    "reconcile.active", "reconcile.history", "reconcile.candidates", "reconcile.summary", "reconcile.start",
+    "reconcile.toggle", "reconcile.toggle_many", "reconcile.undo_last", "reconcile.finish",
+    "reconcile.cancel",
+    // contacts
+    "contacts.list", "contacts.get", "contacts.create", "contacts.update", "contacts.archive",
+    // invoices
+    "invoices.list", "invoices.get", "invoices.create", "invoices.update", "invoices.finalize",
+    "invoices.void", "invoices.delete",
+    // bills, payments
+    "bills.list", "bills.get", "bills.create", "bills.void", "payments.list", "payments.receive",
+    "payments.pay", "payments.void",
+    // tax
+    "tax.years", "tax.lines", "tax.profile", "tax.set_profile", "tax.schedule_c", "tax.set_line",
+    "tax.confirm_all", "tax.estimate", "tax.record_payment", "tax.void_payment", "tax.1099", "tax.set_payee",
+    "tax.set_contact", "tax.export",
+    // bank
+    "bank.connections", "bank.plaid_config_get", "bank.plaid_config_set", "bank.plaid_start",
+    "bank.plaid_relink_start", "bank.plaid_poll", "bank.simplefin_connect", "bank.simplefin_reconnect",
+    "bank.feed_accounts", "bank.link", "bank.unlink", "bank.disconnect", "bank.sync", "bank.suggest_opening",
+    // license
+    "license.status", "license.activate", "license.deactivate",
+    // cloud
+    "cloud.status", "cloud.set", "cloud.backup_now",
+];
 
 pub struct App {
     book: Mutex<Option<OpenBook>>,
