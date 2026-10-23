@@ -212,6 +212,27 @@ async fn tax_center_end_to_end() {
 }
 
 #[tokio::test]
+async fn tax_export_csv_shows_formula_like_memos_as_text() {
+    let (app, dir) = app("tax-csv");
+    app.call("book.create", json!({ "path": dir.join("Shop.tallybook"), "company_name": "Shop" })).await.unwrap();
+    let accounts = app.call("accounts.list", Value::Null).await.unwrap();
+    let id = |code: &str| accounts.as_array().unwrap().iter().find(|a| a["code"] == code).unwrap()["id"].clone();
+    let date = NaiveDate::from_ymd_opt(today().year(), 1, 2).unwrap();
+    app.call("entries.post", json!({ "date": date, "memo": "=HYPERLINK(\"https://example.com\")", "lines": [
+        { "account_id": id("6500"), "amount": 1250, "memo": "@SUM(A1)" },
+        { "account_id": id("4000"), "amount": -1250 }
+    ] }))
+    .await
+    .unwrap();
+    let out = PathBuf::from(app.call("tax.export", json!({ "year": today().year() })).await.unwrap().as_str().unwrap().to_string());
+    let csv = std::fs::read_to_string(out.join("General ledger.csv")).unwrap();
+    assert!(csv.contains("\"'=HYPERLINK("), "{csv}");
+    assert!(csv.contains(",'@SUM(A1)"), "{csv}");
+    assert!(!csv.contains(",=") && !csv.contains(",@"), "{csv}");
+    assert!(csv.contains(",12.50,"), "amounts stay plain numbers: {csv}");
+}
+
+#[tokio::test]
 async fn delete_book_tears_everything_down() {
     let (app, dir) = app("delete");
     let path = dir.join("Gone.tallybook");
