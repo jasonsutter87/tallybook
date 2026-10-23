@@ -16,7 +16,8 @@ export function money(cents: Cents, opts: { signed?: boolean; whole?: boolean } 
 export function moneyCompact(cents: Cents): string {
   const v = cents / 100;
   const abs = Math.abs(v);
-  if (abs >= 1_000_000) return `${v < 0 ? "-" : ""}$${(abs / 1_000_000).toFixed(1)}M`;
+  // 999,500 and up rounds to 1000k, so it's already in millions' territory.
+  if (abs >= 999_500) return `${v < 0 ? "-" : ""}$${(abs / 1_000_000).toFixed(1)}M`;
   if (abs >= 10_000) return `${v < 0 ? "-" : ""}$${Math.round(abs / 1000)}k`;
   if (abs >= 1_000) return `${v < 0 ? "-" : ""}$${(abs / 1000).toFixed(1)}k`;
   return `${v < 0 ? "-" : ""}$${Math.round(abs)}`;
