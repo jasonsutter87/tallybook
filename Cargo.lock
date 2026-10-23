@@ -4264,6 +4264,7 @@ version = "0.2.0"
 dependencies = [
  "chrono",
  "keyring",
+ "reqwest 0.12.28",
  "serde",
  "serde_json",
  "tally-core",
@@ -4309,6 +4310,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "tally-mcp"
+version = "0.2.0"
+dependencies = [
+ "serde_json",
+ "tally-api",
+ "tokio",
+]
+
+[[package]]
 name = "tally-store"
 version = "0.2.0"
 dependencies = [
@@ -4329,6 +4339,7 @@ version = "0.2.0"
 dependencies = [
  "serde_json",
  "tally-api",
+ "tally-mcp",
  "tauri",
  "tauri-build",
  "tauri-plugin-dialog",

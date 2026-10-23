@@ -125,6 +125,9 @@ impl Store {
         let conn = Connection::open(path)?;
         unlock(&conn, key)?;
         conn.query_row("PRAGMA journal_mode = WAL", [], |_| Ok(()))?;
+        // The desktop app and an agent (tally-mcp) may have the same book open;
+        // wait out the other's write instead of failing with "database is locked".
+        conn.busy_timeout(std::time::Duration::from_secs(5))?;
         Store::init(conn, Some(*key))
     }
 
