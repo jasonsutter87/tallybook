@@ -293,11 +293,21 @@ export function ConfirmModal(props: {
 
 // ------------------------------------------------------------- inputs
 
+/**
+ * The id of the enclosing Field's label text. A wrapping <label> names its
+ * input by all of its text, which for a combobox includes the open menu's
+ * options; pickers point at just the label text instead.
+ */
+const FieldLabelContext = createContext<string | undefined>(undefined);
+
 export function Field(props: { label: ReactNode; hint?: ReactNode; children: ReactNode; className?: string }) {
+  const labelId = useId();
   return (
     <label className={`field ${props.className ?? ""}`}>
-      <span className="label">{props.label}</span>
-      {props.children}
+      <span className="label" id={labelId}>
+        {props.label}
+      </span>
+      <FieldLabelContext.Provider value={labelId}>{props.children}</FieldLabelContext.Provider>
       {props.hint && <span className="hint">{props.hint}</span>}
     </label>
   );
@@ -386,6 +396,7 @@ export function Combobox(props: {
   "aria-label"?: string;
 }) {
   const id = useId();
+  const fieldLabelId = useContext(FieldLabelContext);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
@@ -423,6 +434,7 @@ export function Combobox(props: {
         className="input"
         autoFocus={props.autoFocus}
         aria-label={props["aria-label"]}
+        aria-labelledby={props["aria-label"] ? undefined : fieldLabelId}
         placeholder={selected ? selected.label : (props.placeholder ?? "Choose…")}
         value={open ? query : (selected?.label ?? "")}
         onFocus={() => {
