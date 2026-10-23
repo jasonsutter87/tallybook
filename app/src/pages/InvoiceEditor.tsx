@@ -1,3 +1,6 @@
+// Creating or editing a draft invoice. Totals here are a preview; the
+// backend recomputes them in integer cents when the invoice is saved.
+
 import { Plus, Send, Trash2, UserPlus } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Navigate, useNavigate, useParams } from "react-router-dom";
