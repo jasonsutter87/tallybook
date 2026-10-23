@@ -1,3 +1,6 @@
+// Taxes → Overview: a checklist of what tax prep still needs, and a summary
+// of the year's estimates and 1099s.
+
 import { ArrowRight, CalendarClock, Check, CircleSlash, FileSpreadsheet, ListChecks, PiggyBank, UserCog, Users } from "lucide-react";
 import type { ReactNode } from "react";
 import { useApi } from "../../api";
