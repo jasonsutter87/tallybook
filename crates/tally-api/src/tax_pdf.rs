@@ -40,7 +40,15 @@ pub(crate) fn summary(company: &str, year: i32, prepared: NaiveDate, sc: &Schedu
     ]);
     d.note("Before you file", DISCLAIMER, WARN_SOFT, WARN);
 
-    // Schedule C, as the form lays it out.
+    schedule_c_section(&mut d, c);
+    mapping_section(&mut d, sc);
+    contractors_section(&mut d, r);
+    payments_section(&mut d, year, payments, paid);
+    d.finish()
+}
+
+/// Schedule C, as the form lays it out.
+fn schedule_c_section(d: &mut Doc, c: &tax::ScheduleC) {
     d.heading(
         "Schedule C worksheet",
         Some("Profit or loss from business, line by line. Meals are already limited to 50%, and expense lines with nothing on them are left out."),
@@ -69,8 +77,10 @@ pub(crate) fn summary(company: &str, year: i32, prepared: NaiveDate, sc: &Schedu
         rows.push(line("", "Meals not deductible (the other 50%)", c.meals_disallowed, Style::Muted));
     }
     d.table(&[Col::left("Line", 44.0), Col::left("Description", 340.0), Col::right("Amount", 120.0)], &rows, true);
+}
 
-    // The account behind each number.
+/// The account behind each number.
+fn mapping_section(d: &mut Doc, sc: &ScheduleCReport) {
     d.heading(
         "Where each number comes from",
         Some("Every business account with activity this year and the Schedule C line it feeds. “Suggested” means Tallybook picked the line and nobody has confirmed it yet."),
@@ -94,8 +104,10 @@ pub(crate) fn summary(company: &str, year: i32, prepared: NaiveDate, sc: &Schedu
             true,
         );
     }
+}
 
-    // Contractors.
+/// Contractors and who needs a 1099-NEC.
+fn contractors_section(d: &mut Doc, r: &Report1099) {
     d.heading(
         "1099 summary",
         Some(&format!(
@@ -141,8 +153,10 @@ pub(crate) fn summary(company: &str, year: i32, prepared: NaiveDate, sc: &Schedu
             true,
         );
     }
+}
 
-    // Estimated payments.
+/// Estimated payments made so far, with the total of the ones not voided.
+fn payments_section(d: &mut Doc, year: i32, payments: &[TaxPayment], paid: Cents) {
     d.heading(
         "Estimated tax payments",
         Some(&format!("What you've paid toward {year} estimates. Voided payments are greyed out and left out of the total.")),
@@ -165,7 +179,6 @@ pub(crate) fn summary(company: &str, year: i32, prepared: NaiveDate, sc: &Schedu
             true,
         );
     }
-    d.finish()
 }
 
 /// Every business-side entry in the period, each followed by its lines.
