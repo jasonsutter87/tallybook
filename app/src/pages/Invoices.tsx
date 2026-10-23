@@ -191,7 +191,11 @@ export default function Invoices() {
                     const hint = dueHint(inv, today);
                     return (
                       <tr key={inv.id} className="clickable" onClick={() => navigate(`/invoices/${inv.id}`)}>
-                        <td className="num bold">#{inv.number}</td>
+                        <td className="num bold">
+                          <Link to={`/invoices/${inv.id}`} className="row-link" aria-label={`Invoice #${inv.number} for ${inv.customer_name}`}>
+                            #{inv.number}
+                          </Link>
+                        </td>
                         <td>
                           <div className="row" style={{ gap: 12 }}>
                             <Avatar name={inv.customer_name} />
