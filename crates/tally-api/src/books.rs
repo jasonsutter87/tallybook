@@ -85,6 +85,21 @@ fn sibling(path: &Path, suffix: &str) -> PathBuf {
     PathBuf::from(s)
 }
 
+/// Removes what an interrupted encrypt or decrypt can leave beside a book:
+/// `<book>.converting` (the copy being written) and `<book>.previous` (the
+/// original, after the swap). Either may be a plain-text copy of the book.
+/// Called when the book itself opens, which proves the conversion either
+/// finished or never replaced it. Removed outright, not moved to the Trash.
+pub(crate) fn remove_conversion_leftovers(path: &Path) {
+    for leftover in [sibling(path, ".converting"), sibling(path, ".previous")] {
+        if leftover.exists() {
+            for f in book_files(&leftover) {
+                let _ = std::fs::remove_file(f);
+            }
+        }
+    }
+}
+
 impl App {
     // ------------------------------------------------------------ key registry
     //
