@@ -205,6 +205,10 @@ export function Modal(props: {
   footer?: ReactNode;
   width?: number;
 }) {
+  // Name the dialog by its title (and describe it by its subtitle), so screen
+  // readers announce "Import complete, dialog" rather than just "dialog".
+  const titleId = useId();
+  const subtitleId = useId();
   useEffect(() => {
     if (!props.open) return;
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && props.onClose();
@@ -214,11 +218,24 @@ export function Modal(props: {
   if (!props.open) return null;
   return (
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && props.onClose()}>
-      <div className="modal" style={{ maxWidth: props.width ?? 520 }} role="dialog" aria-modal="true">
+      <div
+        className="modal"
+        style={{ maxWidth: props.width ?? 520 }}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        aria-describedby={props.subtitle ? subtitleId : undefined}
+      >
         <div className="modal-header">
           <div>
-            <div className="modal-title">{props.title}</div>
-            {props.subtitle && <div className="muted" style={{ marginTop: 4 }}>{props.subtitle}</div>}
+            <div className="modal-title" id={titleId}>
+              {props.title}
+            </div>
+            {props.subtitle && (
+              <div className="muted" id={subtitleId} style={{ marginTop: 4 }}>
+                {props.subtitle}
+              </div>
+            )}
           </div>
           <button className="btn btn-ghost btn-icon" onClick={props.onClose} aria-label="Close">
             <X size={18} />
