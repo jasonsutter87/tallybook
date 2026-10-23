@@ -1,6 +1,6 @@
-# tallybook.app
+# Tallybook website
 
-The Tallybook website, built from the 2025 Hugo starter (Hugo 0.147, Tailwind + SCSS).
+Live at https://tallybook-app.netlify.app. Built from the 2025 Hugo starter (Hugo 0.147, Tailwind + SCSS).
 
 ```sh
 npm install
