@@ -157,10 +157,40 @@ impl Store {
         self.key.as_ref()
     }
 
-    /// Row counts used to prove a converted copy holds the same data.
-    pub fn fingerprint(&self) -> Result<(i64, i64, i64)> {
-        let count = |t: &str| self.conn.query_row(&format!("SELECT count(*) FROM {t}"), [], |r| r.get::<_, i64>(0));
-        Ok((count("accounts")?, count("journal_entries")?, count("journal_lines")?))
+    /// A SHA-256 over every row of every table, in table-name and row-content
+    /// order, used to prove a converted copy holds exactly the same data.
+    pub fn fingerprint(&self) -> Result<String> {
+        use rusqlite::types::ValueRef;
+        let mut hash = Sha256::new();
+        let tables: Vec<String> = {
+            let mut stmt = self.conn.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite\\_%' ESCAPE '\\' ORDER BY name")?;
+            stmt.query_map([], |r| r.get(0))?.collect::<rusqlite::Result<_>>()?
+        };
+        for table in tables {
+            hash.update(format!("table {table}\n").as_bytes());
+            let quoted = table.replace('"', "\"\"");
+            let columns = self.conn.prepare(&format!("SELECT * FROM \"{quoted}\""))?.column_count();
+            // Ordered by content, not rowid: copies may number rows differently.
+            let order: Vec<String> = (1..=columns).map(|i| i.to_string()).collect();
+            let mut stmt = self.conn.prepare(&format!("SELECT * FROM \"{quoted}\" ORDER BY {}", order.join(", ")))?;
+            let mut rows = stmt.query([])?;
+            while let Some(row) = rows.next()? {
+                for i in 0..columns {
+                    // Type tag, length and bytes, so no two different rows hash alike.
+                    let (tag, bytes): (u8, Vec<u8>) = match row.get_ref(i)? {
+                        ValueRef::Null => (0, vec![]),
+                        ValueRef::Integer(n) => (1, n.to_le_bytes().to_vec()),
+                        ValueRef::Real(f) => (2, f.to_le_bytes().to_vec()),
+                        ValueRef::Text(t) => (3, t.to_vec()),
+                        ValueRef::Blob(b) => (4, b.to_vec()),
+                    };
+                    hash.update([tag]);
+                    hash.update((bytes.len() as u64).to_le_bytes());
+                    hash.update(&bytes);
+                }
+            }
+        }
+        Ok(hash.finalize().iter().map(|b| format!("{b:02x}")).collect())
     }
 
     /// Writes an encrypted copy of the whole book to `dest` (which must not exist).
