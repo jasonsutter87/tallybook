@@ -304,6 +304,54 @@ async fn book_swap_that_fails_leaves_the_book_open() {
     assert!(!PathBuf::from(format!("{}.converting", path.display())).exists(), "no half-made copy left behind");
 }
 
+/// An agent (a second app on the same machine, sharing its keychain) keeps
+/// working after the desktop app encrypts the book underneath it: its entries
+/// land in the encrypted book, not in the file that was replaced. Unix only,
+/// since Windows refuses the swap while the agent has the book open.
+#[cfg(unix)]
+#[tokio::test]
+async fn an_agent_follows_the_book_when_the_app_encrypts_it() {
+    let dir = temp_dir("follow");
+    let keychain = Arc::new(MemorySecrets::default());
+    // `--mcp` shares the desktop app's config folder and keychain.
+    let desktop = App::new(keychain.clone(), dir.join("config")).with_file_remover(|p| std::fs::remove_file(p));
+    let agent = App::new(keychain, dir.join("config")).with_file_remover(|p| std::fs::remove_file(p));
+    let path = dir.join("Shared.tallybook");
+    desktop.call("book.create_demo", json!({ "path": path })).await.unwrap();
+    agent.call("book.open", json!({ "path": path })).await.unwrap();
+
+    desktop.call("book.encrypt", Value::Null).await.unwrap();
+    assert!(tally_store::crypto::is_encrypted_file(&path).unwrap());
+
+    let accounts = agent.call("accounts.list", Value::Null).await.unwrap();
+    let id = |pred: &dyn Fn(&Value) -> bool| accounts.as_array().unwrap().iter().find(|a| pred(a)).unwrap()["id"].clone();
+    let bank = id(&|a| a["subtype"] == "bank");
+    let spend = id(&|a| a["kind"] == "expense");
+    agent
+        .call(
+            "entries.post",
+            json!({ "date": today(), "memo": "Filed by the agent", "lines": [
+                { "account_id": spend, "amount": 4200 }, { "account_id": bank, "amount": -4200 }
+            ] }),
+        )
+        .await
+        .unwrap();
+
+    let seen = desktop.call("entries.list", json!({ "from": today(), "to": today() })).await.unwrap();
+    assert!(
+        seen.as_array().unwrap().iter().any(|e| e["memo"] == "Filed by the agent"),
+        "the agent's entry reached the encrypted book the desktop app has open"
+    );
+
+    // An agent that can't open the new file (no key for it) stops, rather than
+    // writing into the replaced one.
+    let stranger = App::new(Arc::new(MemorySecrets::default()), dir.join("stranger")).with_file_remover(|p| std::fs::remove_file(p));
+    desktop.call("book.decrypt", Value::Null).await.unwrap();
+    stranger.call("book.open", json!({ "path": path })).await.unwrap();
+    desktop.call("book.encrypt", Value::Null).await.unwrap();
+    assert_eq!(stranger.call("accounts.list", Value::Null).await.unwrap_err().code, "no_book");
+}
+
 #[tokio::test]
 async fn cloud_copies_are_encrypted_pruned_and_pushed() {
     use std::process::Command;
