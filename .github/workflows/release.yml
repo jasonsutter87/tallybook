@@ -8,21 +8,43 @@ on:
   push:
     tags: ["v*"]
 
+# Read-only by default; only the job that creates the draft release and
+# uploads installers to it gets write access.
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
 
+# How the update-signing key is kept away from npm code:
+#   - The web UI is built in its own job (`frontend`), which has no secrets.
+#     The installer jobs download that build instead of running
+#     `npm run build`: tauri's beforeBuildCommand is switched off for them
+#     with a --config override.
+#   - Installer jobs install npm packages with --ignore-scripts, so no
+#     package install script runs there.
+# What still runs with the key in its environment: the Tauri CLI (the
+# @tauri-apps/cli npm package and its prebuilt binary, pinned by
+# app/package-lock.json) and Cargo build scripts of Rust dependencies
+# (pinned by Cargo.lock). For more protection, put the signing secrets in a
+# GitHub Environment with required reviewers, reference it from the `build`
+# job (`environment: release`), and add a tag protection rule (ruleset) for
+# v* tags so only maintainers can start a release. Those are repository
+# settings the owner turns on.
+
 jobs:
   checks:
+    permissions:
+      contents: read
     uses: ./.github/workflows/ci.yml
 
   version:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
       - name: Tag must match the app version
         run: |
           app=$(node -p "require('./app/src-tauri/tauri.conf.json').version")
@@ -31,8 +53,35 @@ jobs:
             exit 1
           fi
 
-  build:
+  # The web UI, built once without any secrets. The installers embed it.
+  frontend:
     needs: [checks, version]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - run: npm ci --ignore-scripts
+        working-directory: app
+      - run: npm run build
+        working-directory: app
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: frontend-dist
+          path: app/dist
+          if-no-files-found: error
+          retention-days: 1
+
+  build:
+    needs: [frontend]
+    permissions:
+      # Creates the draft release and uploads installers and latest.json.
+      contents: write
     strategy:
       fail-fast: false
       matrix:
@@ -56,7 +105,9 @@ jobs:
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.runner }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
 
       - name: Linux system libraries
         if: runner.os == 'Linux'
@@ -64,24 +115,39 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libdbus-1-dev pkg-config
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: app/package-lock.json
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
+          toolchain: stable
           targets: ${{ matrix.rust_targets }}
 
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           key: ${{ matrix.runner }}-${{ matrix.rust_targets }}
 
-      - run: npm ci
+      # Only for the Tauri CLI; no install scripts run.
+      - run: npm ci --ignore-scripts
         working-directory: app
 
-      - uses: tauri-apps/tauri-action@v0
+      # The web UI from the `frontend` job, where tauri.conf.json's frontendDist
+      # (app/dist) expects it.
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: frontend-dist
+          path: app/dist
+
+      # Turns off beforeBuildCommand (`npm run build`) for this build: the UI
+      # is already built, and this job holds the signing key.
+      - name: Skip the frontend build hook
+        shell: bash
+        run: echo '{"build":{"beforeBuildCommand":""}}' > "$RUNNER_TEMP/tauri-release.json"
+
+      - uses: tauri-apps/tauri-action@84b9d35b5fc46c1e45415bdb6144030364f7ebc5 # v0.6.2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Signs update packages; the app only installs updates signed with
@@ -114,4 +180,4 @@ jobs:
           includeUpdaterJson: true
           releaseDraft: true
           prerelease: ${{ contains(github.ref_name, '-') }}
-          args: ${{ matrix.args }}
+          args: ${{ matrix.args }} --config ${{ runner.temp }}/tauri-release.json
