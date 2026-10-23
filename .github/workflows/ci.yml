@@ -38,6 +38,44 @@ jobs:
       - run: npm ci
       - run: npm run build
 
+  # The desktop app on every platform it ships to, on every pull request, so a
+  # Windows- or Mac-only break shows up here rather than when cutting a release.
+  platforms:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Linux system libraries
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libdbus-1-dev pkg-config
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: platforms-${{ matrix.os }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      # The desktop crate embeds the built UI, so build it first.
+      - run: npm ci
+        working-directory: app
+      - run: npm run build
+        working-directory: app
+      - name: Desktop app compiles cleanly
+        run: cargo clippy -p tallybook-desktop -- -D warnings
+      # Linux already runs the full suite in the backend job.
+      - name: Tests on this platform
+        if: runner.os != 'Linux'
+        run: cargo test --workspace --exclude tallybook-desktop
+
   # The real UI against the real backend, clicked through like a person would.
   e2e:
     runs-on: ubuntu-latest
