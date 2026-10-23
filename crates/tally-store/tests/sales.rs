@@ -259,3 +259,16 @@ fn payments_list_with_references() {
     assert!(b.s.payments(None, Some(b.acme), d(1, 1), d(12, 31)).unwrap()[0].voided);
     assert!(b.s.payments(Some(PaymentKind::Made), None, d(1, 1), d(12, 31)).unwrap().is_empty());
 }
+
+#[test]
+fn contact_emails_are_single_plain_addresses() {
+    let b = book();
+    let with = |email: &str| NewContact { kind: ContactKind::Customer, name: "Pat".into(), company: None, email: Some(email.into()), phone: None, address: None, notes: None };
+    for bad in ["a@b.c?bcc=x@y.z", "a@b.c&body=hi", "a@b.c, x@y.z", "a b@c.d", "no-at-sign", "@b.c", "a@", "mailto:a@b.c"] {
+        assert!(matches!(b.s.create_contact(&with(bad)), Err(StoreError::Rule(_))), "{bad}");
+        assert!(matches!(b.s.update_contact(b.acme, &with(bad)), Err(StoreError::Rule(_))), "{bad}");
+    }
+    for good in ["pat@example.com", "o'neil+tax@mail.example.co.uk", "  pat@example.com  ", ""] {
+        b.s.create_contact(&with(good)).unwrap();
+    }
+}
