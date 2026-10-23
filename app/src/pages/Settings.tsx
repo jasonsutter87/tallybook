@@ -1,3 +1,7 @@
+// Book and app settings: company profile, sides of the book, license,
+// invoices, importing from Ledger, fiscal year, lock date, encryption,
+// backups and cloud copies, and appearance.
+
 import { Building2, CalendarRange, Home, Plus, Check, Cloud, Copy, GitBranch, KeyRound, ShieldOff, DatabaseBackup, Download, FileText, Lock, LockOpen, Monitor, Moon, Palette, ShieldCheck, Sun, Trash2 } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { call, isTauri, queryClient, useAction, useApi } from "../api";
