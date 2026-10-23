@@ -232,6 +232,27 @@ async fn tax_export_csv_shows_formula_like_memos_as_text() {
     assert!(csv.contains(",12.50,"), "amounts stay plain numbers: {csv}");
 }
 
+/// The tax package is plain text: for an encrypted book it goes only where
+/// the user chose, never silently beside the book.
+#[tokio::test]
+async fn an_encrypted_books_tax_package_needs_a_chosen_folder() {
+    let (app, dir) = app("tax-encrypted");
+    let book = dir.join("books");
+    app.call("book.create_demo", json!({ "path": book.join("demo.tallybook") })).await.unwrap();
+    app.call("book.encrypt", Value::Null).await.unwrap();
+    let year = today().year();
+    let err = app.call("tax.export", json!({ "year": year })).await.unwrap_err();
+    assert_eq!(err.code, "rule");
+    assert!(!book.join(format!("Tax {year}")).exists(), "nothing written beside the book");
+
+    let chosen = dir.join("For the accountant");
+    assert_eq!(app.call("tax.export", json!({ "year": year, "dir": chosen })).await.unwrap_err().code, "rule", "the folder must exist");
+    std::fs::create_dir_all(&chosen).unwrap();
+    let out = app.call("tax.export", json!({ "year": year, "dir": chosen })).await.unwrap();
+    assert_eq!(PathBuf::from(out.as_str().unwrap()), chosen.join(format!("Tax {year}")));
+    assert!(chosen.join(format!("Tax {year}")).join("General ledger.csv").exists());
+}
+
 #[tokio::test]
 async fn delete_book_tears_everything_down() {
     let (app, dir) = app("delete");
