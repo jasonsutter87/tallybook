@@ -323,7 +323,9 @@ export default function Register() {
                         <td className="nowrap muted">{date(r.date)}</td>
                         <td>
                           <div className="row" style={{ gap: 8 }}>
-                            <span className="reg-memo truncate">{r.memo || <span className="subtle">No description</span>}</span>
+                            <button type="button" className="row-button reg-memo truncate" onClick={() => setEntryId(r.entry_id)}>
+                              {r.memo || <span className="subtle">No description</span>}
+                            </button>
                             {r.voided && <span className="pill">Void</span>}
                           </div>
                         </td>
