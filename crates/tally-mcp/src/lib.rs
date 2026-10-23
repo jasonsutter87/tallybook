@@ -68,8 +68,10 @@ const READ: &[&str] = &[
 ];
 
 /// Methods that change the book (or the app's settings) and are offered to
-/// an agent only with `--write`. Listed so that a new method must be sorted
-/// into READ, WRITE or NEVER on purpose (the `policy_sorts_every_method` test).
+/// an agent only with `--write`. Anything not in READ or NEVER is treated as
+/// a write; this list exists so that a new method must be sorted
+/// into READ, WRITE or NEVER on purpose (the `every_dispatched_method_is_in_exactly_one_list` test).
+#[cfg(test)]
 const WRITE: &[&str] = &[
     "book.create", "book.create_demo", "book.forget", "book.backup", "book.add_side", "settings.set",
     "accounts.create", "accounts.rename", "accounts.archive", "accounts.set_flex", "accounts.opening_balance",
