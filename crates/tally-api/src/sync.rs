@@ -67,7 +67,7 @@ struct Link {
 }
 
 #[derive(Deserialize)]
-struct LinkId_ {
+struct LinkParam {
     link_id: LinkId,
 }
 
@@ -119,6 +119,12 @@ struct Fetched {
     batches: HashMap<String, FeedBatch>,
     balances: HashMap<String, Option<Cents>>,
     cursor: String,
+}
+
+/// `…1234`: the last four characters (not bytes, so a pasted non-ASCII id can't panic).
+fn client_id_hint(client_id: &str) -> String {
+    let tail: Vec<char> = client_id.chars().rev().take(4).collect();
+    format!("…{}", tail.into_iter().rev().collect::<String>())
 }
 
 fn plaid_err(e: plaid::PlaidError) -> ApiError {
@@ -175,7 +181,7 @@ impl App {
                 ok(PlaidConfigView {
                     configured: creds.is_some(),
                     environment: creds.as_ref().map(|c| c.environment),
-                    client_id_hint: creds.map(|c| format!("…{}", &c.client_id[c.client_id.len().saturating_sub(4)..])),
+                    client_id_hint: creds.map(|c| client_id_hint(&c.client_id)),
                 })
             }
             "bank.plaid_config_set" => {
@@ -280,7 +286,7 @@ impl App {
                 })
             }
             "bank.unlink" => {
-                let p: LinkId_ = params(p)?;
+                let p: LinkParam = params(p)?;
                 self.with(|s| s.unlink_account(p.link_id))
             }
             "bank.disconnect" => {
@@ -433,4 +439,16 @@ fn suggest_opening(s: &mut Store, account_id: AccountId) -> ApiResult<OpeningSug
         amount: kind.natural(raw_now - inflows),
         bank_balance,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::client_id_hint;
+
+    #[test]
+    fn client_id_hint_takes_characters_not_bytes() {
+        assert_eq!(client_id_hint("abcdef1234"), "…1234");
+        assert_eq!(client_id_hint("ab"), "…ab");
+        assert_eq!(client_id_hint("12éé3"), "…2éé3");
+    }
 }
