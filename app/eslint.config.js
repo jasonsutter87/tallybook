@@ -20,6 +20,9 @@ export default tseslint.config(
       // opens, which is what the WAI-ARIA dialog pattern asks for. The rule is
       // aimed at pages that steal focus on load, which Tallybook doesn't do.
       "jsx-a11y/no-autofocus": "off",
+      // A scrollable region must be focusable so the keyboard can scroll it
+      // (WCAG; axe's scrollable-region-focusable): see .table-scroll.
+      "jsx-a11y/no-noninteractive-tabindex": ["error", { roles: ["tabpanel", "region"] }],
     },
   },
 );
