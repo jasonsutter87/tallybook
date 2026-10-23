@@ -12,3 +12,7 @@ tally-api = { path = "../tally-api" }
 axum = "0.8"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "net"] }
 serde_json = "1"
+
+[dev-dependencies]
+# Already in the tree through axum; used for `ServiceExt::oneshot` in tests.
+tower = { version = "0.5", features = ["util"] }
