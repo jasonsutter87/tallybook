@@ -11,7 +11,7 @@
 
 use crate::{Result, Store, StoreError, conversion_err, BadValue, entry_in, post_in, rule, setting, set_setting};
 use chrono::NaiveDate;
-use rusqlite::{OptionalExtension, Row, params};
+use rusqlite::{Connection, OptionalExtension, Row, params};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use tally_core::chart::codes;
@@ -488,7 +488,7 @@ impl Store {
         Ok(totals)
     }
 
-    fn write_invoice_lines(tx: &rusqlite::Transaction, id: InvoiceId, d: &InvoiceDraft) -> Result<()> {
+    fn write_invoice_lines(tx: &Connection, id: InvoiceId, d: &InvoiceDraft) -> Result<()> {
         tx.execute("DELETE FROM invoice_lines WHERE invoice_id = ?1", [id])?;
         for (pos, l) in d.lines.iter().enumerate() {
             let amount = invoice::line_amount(l.quantity_milli, l.unit_price).ok_or_else(|| StoreError::Rule("line amount overflow".into()))?;
@@ -505,7 +505,7 @@ impl Store {
     pub fn create_invoice(&mut self, d: &InvoiceDraft) -> Result<InvoiceId> {
         let totals = self.check_invoice_draft(d)?;
         let number = self.next_invoice_number()?;
-        let tx = self.conn.transaction()?;
+        let tx = self.conn.savepoint()?;
         tx.execute(
             "INSERT INTO invoices(number, customer_id, issue_date, due_date, memo, tax_rate_bp, subtotal, tax, total)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
@@ -520,7 +520,7 @@ impl Store {
     pub fn update_invoice(&mut self, id: InvoiceId, d: &InvoiceDraft) -> Result<()> {
         self.require_invoice_status(id, "draft", "only drafts can be edited; void and re-issue instead")?;
         let totals = self.check_invoice_draft(d)?;
-        let tx = self.conn.transaction()?;
+        let tx = self.conn.savepoint()?;
         tx.execute(
             "UPDATE invoices SET customer_id = ?1, issue_date = ?2, due_date = ?3, memo = ?4, tax_rate_bp = ?5,
                     subtotal = ?6, tax = ?7, total = ?8 WHERE id = ?9",
@@ -568,7 +568,7 @@ impl Store {
             entry = entry.line(EntryLine::credit(tax_acct, detail.tax));
         }
 
-        let tx = self.conn.transaction()?;
+        let tx = self.conn.savepoint()?;
         let entry_id = post_in(&tx, &entry, "invoice", None)?;
         tx.execute("UPDATE journal_entries SET payee_id = ?1 WHERE id = ?2", params![detail.summary.customer_id, entry_id])?;
         tx.execute("UPDATE invoices SET status = 'open', entry_id = ?1 WHERE id = ?2", params![entry_id, id])?;
@@ -722,7 +722,7 @@ impl Store {
         }
         entry = entry.line(EntryLine::credit(ap, total));
 
-        let tx = self.conn.transaction()?;
+        let tx = self.conn.savepoint()?;
         let entry_id = post_in(&tx, &entry, "bill", None)?;
         tx.execute("UPDATE journal_entries SET payee_id = ?1 WHERE id = ?2", params![b.vendor_id, entry_id])?;
         tx.execute(
@@ -838,7 +838,7 @@ impl Store {
             NewEntry::new(p.date, memo).line(EntryLine::debit(control, total)).line(EntryLine::credit(p.account_id, total))
         };
 
-        let tx = self.conn.transaction()?;
+        let tx = self.conn.savepoint()?;
         let entry_id = post_in(&tx, &entry, "payment", None)?;
         tx.execute("UPDATE journal_entries SET payee_id = ?1 WHERE id = ?2", params![p.contact_id, entry_id])?;
         tx.execute(
