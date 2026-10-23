@@ -1,3 +1,7 @@
+// The app shell: shows Welcome until a book is open, then the sidebar and
+// one route per screen. Home is the business dashboard, or This month for a
+// household-only book.
+
 import { lazy, Suspense } from "react";
 import { Route, Routes } from "react-router-dom";
 import { useApi } from "./api";
