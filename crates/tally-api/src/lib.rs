@@ -223,6 +223,9 @@ pub struct App {
     config_dir: PathBuf,
     /// How deleted books leave the disk: the OS Trash, or plain removal in tests.
     remove_file: fn(&Path) -> std::io::Result<()>,
+    /// Whether opening a book puts it at the top of `recent.json`. Agent
+    /// sessions read the desktop app's list but leave it as it is.
+    update_recent: std::sync::atomic::AtomicBool,
 }
 
 // ---------------------------------------------------------------- shared param types
@@ -261,7 +264,21 @@ struct MonthParam {
 
 impl App {
     pub fn new(secrets: Arc<dyn Secrets>, config_dir: impl Into<PathBuf>) -> App {
-        App { book: Mutex::new(None), secrets, config_dir: config_dir.into(), remove_file: books::move_to_trash }
+        App {
+            book: Mutex::new(None),
+            secrets,
+            config_dir: config_dir.into(),
+            remove_file: books::move_to_trash,
+            update_recent: std::sync::atomic::AtomicBool::new(true),
+        }
+    }
+
+    /// Stops (or resumes) opening and creating books from changing files
+    /// besides the book: the recent-books list, and tidying what an
+    /// interrupted encryption left beside it. `book.recent` still reads the
+    /// list. Agent sessions turn this off.
+    pub fn set_update_recent(&self, on: bool) {
+        self.update_recent.store(on, std::sync::atomic::Ordering::Relaxed);
     }
 
     /// Replaces the Trash with permanent removal (tests, headless servers).
@@ -367,6 +384,37 @@ impl App {
 /// The side a book is mostly about: business when it keeps one.
 pub(crate) fn main_side(s: &Store) -> Result<Scope, StoreError> {
     Ok(s.sides()?.first().copied().unwrap_or_default())
+}
+
+/// Writes one of the app's config files (`recent.json`, `keys.json`,
+/// `license.json`) whole or not at all: into a temporary file beside it,
+/// flushed to disk, then renamed over it. On Unix the folder is private to
+/// the user (0700) and the file readable only by them (0600).
+pub(crate) fn write_private(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    use std::io::Write;
+    let dir = path.parent().unwrap_or(Path::new("."));
+    let mut builder = std::fs::DirBuilder::new();
+    builder.recursive(true);
+    #[cfg(unix)]
+    std::os::unix::fs::DirBuilderExt::mode(&mut builder, 0o700);
+    builder.create(dir)?;
+    let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("config");
+    let tmp = dir.join(format!(".{name}.{}.tmp", uuid::Uuid::new_v4()));
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+    let written = options.open(&tmp).and_then(|mut f| {
+        f.write_all(bytes)?;
+        f.sync_all()
+    });
+    match written.and_then(|()| std::fs::rename(&tmp, path)) {
+        Ok(()) => Ok(()),
+        Err(e) => {
+            let _ = std::fs::remove_file(&tmp);
+            Err(e)
+        }
+    }
 }
 
 /// `~/Documents/Tallybook`, or `$TALLYBOOK_DIR` when set (development, tests).

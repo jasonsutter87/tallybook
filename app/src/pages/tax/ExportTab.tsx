@@ -1,5 +1,6 @@
 // Taxes → For your accountant: writes the tax package (PDFs, CSVs and a
 // README) to a "Tax <year>" folder next to the book, plus printable statements.
+// The package isn't encrypted, so for an encrypted book the user picks the folder.
 
 import { ArrowRight, BookOpen, Check, Copy, FileText, FolderOpen, Info, Package, Scale, ShieldCheck, Table, TrendingUp } from "lucide-react";
 import { useState, type ReactNode } from "react";
@@ -7,7 +8,7 @@ import { Link } from "react-router-dom";
 import { isTauri, useAction, useApi } from "../../api";
 import { Card, Loading, useToast } from "../../components/ui";
 import { plural } from "../../format";
-import type { ScheduleCResponse } from "../../types";
+import type { BookStatus, ScheduleCResponse } from "../../types";
 import type { TaxTabProps } from "../Taxes";
 import "./tax.css";
 import { TaxError } from "./txShared";
@@ -26,7 +27,9 @@ const FILES: { name: string; desc: string; icon: ReactNode }[] = [
 export default function ExportTab({ year, go }: TaxTabProps) {
   const toast = useToast();
   const sc = useApi<ScheduleCResponse>("tax.schedule_c", { year });
-  const exp = useAction<string, { year: number }>("tax.export");
+  const status = useApi<BookStatus>("book.status");
+  const exp = useAction<string, { year: number; dir?: string }>("tax.export");
+  const encrypted = status.data?.encrypted ?? false;
   const [path, setPath] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
@@ -36,7 +39,14 @@ export default function ExportTab({ year, go }: TaxTabProps) {
 
   const create = async () => {
     try {
-      setPath(await exp.mutateAsync({ year }));
+      let dir: string | undefined;
+      if (encrypted && isTauri) {
+        const { open } = await import("@tauri-apps/plugin-dialog");
+        const picked = await open({ directory: true, multiple: false, title: "Where should the tax package go?" });
+        if (typeof picked !== "string") return;
+        dir = picked;
+      }
+      setPath(await exp.mutateAsync(dir ? { year, dir } : { year }));
       setCopied(false);
     } catch (e) {
       toast.error(e);
@@ -78,7 +88,7 @@ export default function ExportTab({ year, go }: TaxTabProps) {
       >
         <div className="stack" style={{ gap: 16 }}>
           <p className="muted" style={{ maxWidth: 680 }}>
-            One folder with everything a tax preparer usually asks for, saved next to your book file. The PDFs are for reading; the CSVs open in
+            One folder with everything a tax preparer usually asks for, saved {encrypted ? "in a folder you choose" : "next to your book file"}. The PDFs are for reading; the CSVs open in
             Excel, Numbers or Google Sheets. Nothing is sent anywhere, and nothing is filed.
           </p>
 
@@ -95,6 +105,16 @@ export default function ExportTab({ year, go }: TaxTabProps) {
               </div>
             ))}
           </div>
+
+          {encrypted && (
+            <div className="tx-note warn">
+              <Info size={15} />
+              <span>
+                <strong>The package isn't encrypted.</strong> Your book is, but these files can be read by anyone who has them, so you'll choose where
+                to save them. A folder that syncs to the cloud or is shared with others isn't a good choice.
+              </span>
+            </div>
+          )}
 
           <div className="tx-note">
             <ShieldCheck size={15} className="pos" />

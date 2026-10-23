@@ -28,14 +28,41 @@ pub enum SimpleFinError {
     Decode(String),
 }
 
+/// SimpleFIN Bridge's hosts. Claim and access URLs must point at one of
+/// these (or a subdomain), over https, so bank credentials only ever go to
+/// the bridge.
+const BRIDGE_HOSTS: [&str; 2] = ["bridge.simplefin.org", "beta-bridge.simplefin.org"];
+
+/// `url` parsed, if it is https to a SimpleFIN Bridge host.
+fn bridge_url(url: &str) -> Option<reqwest::Url> {
+    let url = reqwest::Url::parse(url.trim()).ok()?;
+    let host = url.host_str()?.to_ascii_lowercase();
+    let ours = BRIDGE_HOSTS.iter().any(|h| host == *h || host.ends_with(&format!(".{h}")));
+    (url.scheme() == "https" && ours).then_some(url)
+}
+
+/// Undoes URL percent-encoding (`%40` → `@`), as user names and passwords in
+/// a URL are written.
+fn percent_decode(s: &str) -> Option<String> {
+    let mut out = Vec::with_capacity(s.len());
+    let mut bytes = s.bytes();
+    while let Some(b) = bytes.next() {
+        if b == b'%' {
+            let hex = [bytes.next()?, bytes.next()?];
+            out.push(u8::from_str_radix(std::str::from_utf8(&hex).ok()?, 16).ok()?);
+        } else {
+            out.push(b);
+        }
+    }
+    String::from_utf8(out).ok()
+}
+
 /// Decodes the setup token to its claim URL.
 pub fn claim_url(setup_token: &str) -> Result<String, SimpleFinError> {
     let bytes = STANDARD.decode(setup_token.trim()).map_err(|_| SimpleFinError::BadSetupToken)?;
     let url = String::from_utf8(bytes).map_err(|_| SimpleFinError::BadSetupToken)?;
-    if !url.starts_with("https://") {
-        return Err(SimpleFinError::BadSetupToken);
-    }
-    Ok(url)
+    bridge_url(&url).ok_or(SimpleFinError::BadSetupToken)?;
+    Ok(url.trim().to_string())
 }
 
 /// Trades a setup token for the access URL. **One-shot**: store the result.
@@ -45,7 +72,10 @@ pub async fn claim(setup_token: &str) -> Result<String, SimpleFinError> {
     if !resp.status().is_success() {
         return Err(SimpleFinError::ClaimFailed(resp.status().as_u16()));
     }
-    Ok(resp.text().await?.trim().to_string())
+    let access_url = resp.text().await?.trim().to_string();
+    // Never store an access URL that would send credentials anywhere else.
+    split_access_url(&access_url)?;
+    Ok(access_url)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -94,13 +124,17 @@ fn unix_date(ts: i64) -> Option<NaiveDate> {
     DateTime::from_timestamp(ts, 0).map(|d| d.date_naive())
 }
 
-/// Splits `https://user:pass@host/path` into a bare URL and basic-auth credentials.
+/// Splits `https://user:pass@host/path` into a bare URL and basic-auth
+/// credentials (percent-decoded). Only https URLs to SimpleFIN Bridge with
+/// both a user and a password are accepted.
 fn split_access_url(access_url: &str) -> Result<(String, String, String), SimpleFinError> {
-    let bad = || SimpleFinError::Decode("malformed access URL".into());
-    let (scheme, rest) = access_url.split_once("://").ok_or_else(bad)?;
-    let (creds, host) = rest.split_once('@').ok_or_else(bad)?;
-    let (user, pass) = creds.split_once(':').ok_or_else(bad)?;
-    Ok((format!("{scheme}://{host}"), user.to_string(), pass.to_string()))
+    let bad = || SimpleFinError::Decode("the access URL isn't an https SimpleFIN Bridge URL with credentials".into());
+    let mut url = bridge_url(access_url).ok_or_else(bad)?;
+    let user = percent_decode(url.username()).filter(|u| !u.is_empty()).ok_or_else(bad)?;
+    let pass = url.password().and_then(percent_decode).filter(|p| !p.is_empty()).ok_or_else(bad)?;
+    url.set_username("").map_err(|_| bad())?;
+    url.set_password(None).map_err(|_| bad())?;
+    Ok((url.to_string(), user, pass))
 }
 
 /// Fetches accounts and transactions posted on or after `since`.
@@ -174,17 +208,36 @@ mod tests {
 
     #[test]
     fn decodes_setup_tokens() {
-        let token = STANDARD.encode("https://bridge.example/simplefin/claim/abc");
-        assert_eq!(claim_url(&token).unwrap(), "https://bridge.example/simplefin/claim/abc");
+        let token = STANDARD.encode("https://beta-bridge.simplefin.org/simplefin/claim/abc");
+        assert_eq!(claim_url(&token).unwrap(), "https://beta-bridge.simplefin.org/simplefin/claim/abc");
         assert!(claim_url("not base64!!").is_err());
         assert!(claim_url(&STANDARD.encode("http://insecure")).is_err());
+        assert!(claim_url(&STANDARD.encode("http://bridge.simplefin.org/claim/abc")).is_err(), "not https");
+        assert!(claim_url(&STANDARD.encode("https://bridge.example/claim/abc")).is_err(), "not the bridge");
+        assert!(claim_url(&STANDARD.encode("https://bridge.simplefin.org.evil.example/claim")).is_err());
     }
 
     #[test]
     fn splits_access_url() {
-        let (base, u, p) = split_access_url("https://user:secret@bridge.example/simplefin").unwrap();
-        assert_eq!(base, "https://bridge.example/simplefin");
+        let (base, u, p) = split_access_url("https://user:secret@bridge.simplefin.org/simplefin").unwrap();
+        assert_eq!(base, "https://bridge.simplefin.org/simplefin");
         assert_eq!((u.as_str(), p.as_str()), ("user", "secret"));
+        let (_, _, p) = split_access_url("https://user:p%40ss%3Aword@beta-bridge.simplefin.org/simplefin").unwrap();
+        assert_eq!(p, "p@ss:word", "percent-encoded passwords decode");
+    }
+
+    #[test]
+    fn refuses_access_urls_that_leave_the_bridge() {
+        for url in [
+            "http://u:p@bridge.simplefin.org/simplefin",
+            "https://u:p@ss@evil.example/x",
+            "https://u:p@evil.example/simplefin",
+            "https://bridge.simplefin.org/simplefin",
+            "https://u@bridge.simplefin.org/simplefin",
+            "not a url",
+        ] {
+            assert!(split_access_url(url).is_err(), "{url}");
+        }
     }
 
     #[test]

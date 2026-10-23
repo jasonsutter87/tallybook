@@ -20,7 +20,6 @@
         aria-label="Toggle navigation menu"
         aria-expanded="false"
         aria-controls="mobile-menu"
-        onclick="document.getElementById('mobile-menu').classList.toggle('hidden'); this.setAttribute('aria-expanded', this.getAttribute('aria-expanded') === 'true' ? 'false' : 'true');"
       >
         {{ partial "icon.html" (dict "name" "menu" "size" 22) }}
       </button>
@@ -30,7 +29,9 @@
   {{/* Mobile menu (hidden by default) */}}
   <ul id="mobile-menu" class="hidden mobile-menu d-lg-none">
     {{ range .Site.Menus.main }}
-      <li><a href="{{ .URL }}" onclick="document.getElementById('mobile-menu').classList.add('hidden')">{{ .Name }}</a></li>
+      <li><a href="{{ .URL }}">{{ .Name }}</a></li>
     {{ end }}
   </ul>
+  {{/* Opens and closes the mobile menu (static/js/menu.js). */}}
+  <script defer src="{{ "js/menu.js" | relURL }}"></script>
 </div>

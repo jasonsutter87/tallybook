@@ -140,7 +140,7 @@ they can't use Tallybook directly.
 | Tool | What it does | Needs `--write` |
 |------|--------------|:---:|
 | `book_status` | The open book, its sides, license, inbox count, recent books | |
-| `open_book` | Switch to another book | |
+| `open_book` | Switch to another `.tallybook` file | |
 | `accounts` | Chart of accounts with balances (and the ids other tools take) | |
 | `account_register` | Every line in one account, with a running balance | |
 | `entries` | Journal entries in a date range | |
@@ -171,8 +171,12 @@ read, write or never allowed for agents, is in the [API reference](API.md).
 - **The book's own rules still apply.** Entries must balance, closed periods stay closed,
   and voids reverse rather than delete. License gates are the same as in the app.
 - **Never available to an agent,** in any mode: deleting a book, encryption and recovery
-  keys, licenses, cloud backup destinations, and connecting or disconnecting banks. Do
-  those in the app.
+  keys, licenses, cloud backup destinations and their settings, the lock date that closes
+  past periods, choosing where the (unencrypted) tax package is saved, and connecting or
+  disconnecting banks. Do those in the app. `settings.set` changes only the business
+  profile and invoice defaults.
+- **The app's files stay as they are.** An agent opens only `.tallybook` files, and opening
+  one doesn't change the app's recent-books list. A read-only agent changes no files.
 - **The app and an agent can have the same book open.** Each waits briefly for the other's
   write to finish. Screens in the app show an agent's changes the next time they load.
 - **Your books go to the agent's AI.** Whatever the agent reads is sent to the AI

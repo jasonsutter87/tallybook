@@ -59,7 +59,12 @@ npm run devserver               # terminal 1: API on 127.0.0.1:1441
 npm run dev                     # terminal 2: UI on http://localhost:1440
 ```
 
-Set `TALLYBOOK_DIR` to keep development books out of `~/Documents/Tallybook`.
+The devserver keeps its books in `~/Documents/Tallybook Dev` (set
+`TALLYBOOK_DIR` to use another folder), never in `~/Documents/Tallybook`. It
+answers only requests addressed to `127.0.0.1:1441` or `localhost:1441`, from
+no origin or the Vite origin (`http://localhost:1440`), with
+`content-type: application/json`, so a web page can't reach it from the
+browser.
 To look around a realistic sample business with six months of history,
 ask the devserver for one (the app itself no longer offers it):
 

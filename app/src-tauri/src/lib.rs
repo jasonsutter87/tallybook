@@ -14,9 +14,9 @@ async fn call(app: tauri::State<'_, Arc<App>>, method: String, params: serde_jso
 pub fn run() {
     // `Tallybook --mcp [--write] [--book <path>]`: no window, just the books on
     // stdin/stdout for an agent (see docs/AGENTS.md).
-    let args: Vec<String> = std::env::args().collect();
-    if args.iter().any(|a| a == "--mcp") {
-        return serve_mcp(&args);
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    if args.first().is_some_and(|a| a == "--mcp") {
+        return serve_mcp(args);
     }
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -42,9 +42,20 @@ pub fn run() {
 }
 
 /// Runs the MCP server with the same config dir and keychain this build of the app uses.
-fn serve_mcp(args: &[String]) {
-    let book = args.iter().position(|a| a == "--book").and_then(|i| args.get(i + 1)).map(std::path::PathBuf::from);
-    let opts = tally_mcp::Options { write: args.iter().any(|a| a == "--write"), book };
+/// Arguments are parsed in order by the same parser as `tallybook-mcp`.
+fn serve_mcp(args: Vec<String>) {
+    let args = match tally_mcp::parse_args(args) {
+        Ok(a) if !a.dev && a.config_dir.is_none() && !a.help => a,
+        Ok(_) => {
+            eprintln!("Tallybook --mcp takes only --write and --book <path>; use tallybook-mcp for more options");
+            std::process::exit(2);
+        }
+        Err(e) => {
+            eprintln!("Tallybook --mcp: {e}");
+            std::process::exit(2);
+        }
+    };
+    let opts = tally_mcp::Options { write: args.write, book: args.book };
     let (config_dir, service) = if cfg!(debug_assertions) {
         (tally_mcp::desktop_config_dir().join("dev"), "app.tallybook.dev")
     } else {

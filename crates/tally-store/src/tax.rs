@@ -4,7 +4,7 @@
 //! Only the business side of a book is taxed here: Schedule C is a business
 //! form, so household categories are neither mapped nor reported.
 
-use crate::{BadValue, Result, Store, StoreError, conversion_err, post_in, rule};
+use crate::{BadValue, Result, Store, StoreError, check_entry_not_locked, conversion_err, post_in, rule};
 use chrono::NaiveDate;
 use rusqlite::{OptionalExtension, params};
 use serde::{Deserialize, Serialize};
@@ -194,8 +194,10 @@ impl Store {
 
     // ------------------------------------------------------------ payees & 1099s
 
-    /// Records who an entry was with. Metadata only; amounts are untouched.
+    /// Records who an entry was with. Amounts are untouched, but the payee
+    /// decides 1099 totals, so entries in closed periods keep theirs.
     pub fn set_entry_payee(&self, entry_id: EntryId, contact_id: Option<i64>) -> Result<()> {
+        check_entry_not_locked(&self.conn, entry_id)?;
         if let Some(c) = contact_id {
             self.contact(c)?;
         }
@@ -287,7 +289,7 @@ impl Store {
         let entry = NewEntry::new(p.date, format!("{who} estimated tax · Q{} {}", p.quarter, p.tax_year))
             .line(EntryLine::debit(draw.id, p.amount))
             .line(EntryLine::credit(p.account_id, p.amount));
-        let tx = self.conn.transaction()?;
+        let tx = self.conn.savepoint()?;
         let entry_id = post_in(&tx, &entry, "tax_payment", None)?;
         tx.execute(
             "INSERT INTO tax_payments(tax_year, quarter, jurisdiction, date, amount, account_id, entry_id)

@@ -1,5 +1,14 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+{{/* Content-Security-Policy for the site's pages. It lives here rather than in
+     netlify.toml because Netlify applies every matching [[headers]] rule, so a
+     CSP header on /* would also land on /admin/ and, combined with the admin
+     page's own policy, block the CMS. frame-ancestors can't be set from a meta
+     tag; netlify.toml sends it as a header for every path. Scripts and styles
+     come only from this origin. style-src-attr allows the style="" attributes
+     Hugo's syntax highlighter writes into code blocks. JSON-LD blocks are data,
+     not script, so script-src doesn't apply to them. */}}
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; style-src-attr 'unsafe-inline'; img-src 'self'; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
 <title>
   {{- block "title" . -}}
     {{- if .Params.PageTitle -}}{{ .Params.PageTitle }}{{- else if .IsHome -}}{{ .Site.Title }} · Bookkeeping and budgeting on your own computer{{- else -}}{{ .Title }} · {{ .Site.Title }}{{- end -}}

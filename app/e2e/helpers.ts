@@ -7,7 +7,8 @@ const API = "http://127.0.0.1:1441/api";
 
 /** Calls the backend directly, for setting up and checking state. */
 export async function api<T = unknown>(request: APIRequestContext, method: string, params: unknown = null): Promise<T> {
-  const res = await request.post(`${API}/${method}`, { data: params });
+  // The dev server takes only JSON requests, bodies or not.
+  const res = await request.post(`${API}/${method}`, { headers: { "content-type": "application/json" }, data: JSON.stringify(params) });
   const body = await res.json().catch(() => null);
   if (!res.ok()) throw new Error(`${method}: ${body?.code} ${body?.message}`);
   return body as T;

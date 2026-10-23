@@ -6,3 +6,36 @@
   HUGO_VERSION = "0.147.4"
   NODE_VERSION = "20"
 
+# Security headers.
+#
+# Netlify applies every [[headers]] rule whose path matches, so the /* rule
+# also reaches /admin/. Two Content-Security-Policy headers are two policies,
+# and a browser enforces both. That's why:
+#   - The /* rule's CSP only holds directives that suit every page, the CMS
+#     included (framing, <base>, plugins, form targets).
+#   - The site's full policy (scripts, styles, images from this origin only)
+#     is a <meta> tag in layouts/partials/head.html, which /admin/ doesn't use.
+#   - /admin/ gets its own policy below for Decap CMS.
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    Strict-Transport-Security = "max-age=31536000"
+    Content-Security-Policy = "frame-ancestors 'none'; base-uri 'self'; object-src 'none'; form-action 'self'"
+    X-Frame-Options = "DENY"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Permissions-Policy = "camera=(), microphone=(), geolocation=(), payment=(), usb=(), serial=(), bluetooth=(), hid=(), midi=(), magnetometer=(), gyroscope=(), accelerometer=(), display-capture=(), browsing-topics=()"
+
+# Decap CMS: its script from the pinned unpkg path (the version must match
+# static/admin/index.html; the CMS loads further chunks from the same folder),
+# the GitHub API for content and the GitHub status check, GitHub avatars,
+# inline styles, which the CMS's UI library injects at runtime, and
+# 'unsafe-eval', which the CMS needs to validate its config (it compiles JSON
+# schemas into functions); it fails to start without it. Login
+# opens a Netlify (api.netlify.com) popup, which this page's policy doesn't
+# govern.
+[[headers]]
+  for = "/admin/*"
+  [headers.values]
+    Content-Security-Policy = "default-src 'self'; script-src 'self' 'unsafe-eval' https://unpkg.com/decap-cms@3.17.1/dist/; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://avatars.githubusercontent.com; font-src 'self' data:; connect-src 'self' https://api.github.com https://www.githubstatus.com; worker-src 'self' blob:; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"

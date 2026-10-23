@@ -6,7 +6,12 @@
   <title>Content Manager</title>
 </head>
 <body>
-  <!-- Include the script that builds the page and powers Netlify CMS -->
-  <script src="https://unpkg.com/decap-cms@^3.0.0/dist/decap-cms.js"></script>
+  <!-- Decap CMS, pinned to an exact version with a Subresource Integrity hash.
+       To upgrade: change the version, then recompute the hash with
+       curl -sL <url> | openssl dgst -sha384 -binary | openssl base64 -A
+       and update the version in the /admin/* policy in netlify.toml too. -->
+  <script src="https://unpkg.com/decap-cms@3.17.1/dist/decap-cms.js"
+          integrity="sha384-d2pbrhjc5asvSK35gKkrgRIk0Wq+2CQynWnXtSsYWQawXCgBXhcAK737jBAKXT4T"
+          crossorigin="anonymous"></script>
 </body>
 </html>

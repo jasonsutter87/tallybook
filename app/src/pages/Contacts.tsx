@@ -272,7 +272,7 @@ function Profile(props: { contact: Contact; onClose: () => void; onEdit: () => v
             </div>
             <div className="card" style={{ boxShadow: "none" }}>
               <Detail icon={<Users size={15} />} label="Company" value={c.company} />
-              <Detail icon={<Mail size={15} />} label="Email" value={c.email && <a href={`mailto:${c.email}`}>{c.email}</a>} />
+              <Detail icon={<Mail size={15} />} label="Email" value={c.email && <a href={`mailto:${encodeURIComponent(c.email)}`}>{c.email}</a>} />
               <Detail icon={<Phone size={15} />} label="Phone" value={c.phone} />
               <Detail icon={<MapPin size={15} />} label="Address" value={c.address} />
               <Detail icon={<StickyNote size={15} />} label="Notes" value={c.notes} />

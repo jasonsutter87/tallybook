@@ -54,8 +54,10 @@ the wrong type, fail with `bad_params`.
   so the journal stays an audit trail. A void posts a reversing entry on the
   `date` given (today when absent).
 - **Atomicity.** Each call is a transaction in the store: it either fully
-  applies or leaves the book unchanged, with the exceptions noted on
-  `entries.post` and `inbox.accept`.
+  applies or leaves the book unchanged. That includes calls made of several
+  steps (`accounts.create` with an opening balance, `entries.post` and
+  `inbox.accept` with their tags and rule, `inbox.undo`, `import.ledger`).
+  `inbox.accept_suggested` applies each transaction on its own.
 - **The book lock.** One book is open at a time and calls are serialised
   against it. Network calls (`bank.*`) and file work (`tax.export`,
   `cloud.backup_now`) read what they need under the lock and run outside it.
@@ -99,8 +101,13 @@ The MCP server sorts every method into exactly one of three lists
   and keys, licenses, cloud destinations, bank credentials). Do these in the
   app.
 
-Note that "read" is about the book's contents: `book.open` and `book.close`
-change which book is open but not what is in it.
+Note that "read" is about the book's contents: `book.open` changes which
+book is open but not what is in it. For agents, `book.close` counts as a
+write, and a few params are refused even where the method is allowed:
+`settings.set` with `lock_date` (closing or reopening periods is the user's
+call), `tax.export` with `dir`, and `book.open` on anything but a
+`.tallybook` file. An agent session also never changes the app's recent-books
+list.
 
 ---
 
@@ -115,8 +122,8 @@ change which book is open but not what is in it.
 | `book.default_dir` | read | none | the folder books are kept in (string) | `~/Documents/Tallybook`, or `$TALLYBOOK_DIR`. |
 | `book.create` | write | `path`, `company_name`, `sides?` (`[Scope]`, default `["business"]`) | `{ path, company_name }`; the new book is open | `rule` if the name is empty, `sides` is empty, or `path` exists; `license` for a business side without a Business license. |
 | `book.create_demo` | write | `path` | `{ path, company_name }` | Makes "Northwind Studio" with sample data; `rule` if `path` exists. |
-| `book.open` | read | `path` | `{ path, company_name }` | `not_found`; `locked` if encrypted and the key isn't known here. Opening adds it to the recent list. |
-| `book.close` | read | none | `null` | |
+| `book.open` | read | `path` | `{ path, company_name }` | `not_found`; `locked` if encrypted and the key isn't known here; `rule` for a file that isn't a Tallybook book (another program's SQLite database, refused before anything is written to it) or a book holding triggers or views Tallybook didn't create. Opening adds it to the recent list and removes leftovers of an interrupted encryption (`<book>.converting`, `<book>.previous`). |
+| `book.close` | write | none | `null` | |
 | `book.forget` | write | `path` | `null` | Removes it from the recent list; the file is untouched. |
 | `book.add_side` | write | `scope` | `null` | A no-op if the book already has it; `license` for `business` without Business. |
 | `book.backup` | write | none | path of the new dated copy (string) | Into `Backups/` beside the book. |
@@ -132,7 +139,7 @@ change which book is open but not what is in it.
 | Method | Access | Params | Returns | Notes |
 |--------|--------|--------|---------|-------|
 | `settings.get` | read | none | `{ prefs: {key: value}, fiscal_year_start_month, lock_date }` | `lock_date` is `null` when books aren't closed. |
-| `settings.set` | write | `prefs?` (`{key: value \| null}`; `null` or blank clears), `fiscal_year_start_month?` (1-12), `lock_date?` (`YYYY-MM-DD`, or `null` to clear) | `null` | Entries dated on or before `lock_date` are refused by every posting method with `rule`. |
+| `settings.set` | write | `prefs?` (`{key: value \| null}`; `null` or blank clears), `fiscal_year_start_month?` (1-12), `lock_date?` (`YYYY-MM-DD`, or `null` to clear) | `null` | `prefs` keys are limited to `company.name`, `company.email`, `company.phone`, `company.address`, `invoice.next_number`, `invoice.default_terms_days`, `invoice.default_tax_bp` and `invoice.footer`; any other key is `bad_params` and nothing is written (cloud copies, the tax profile and bank links have their own methods). Entries dated on or before `lock_date` are refused by every posting method with `rule`, and their payee, person, goal and bank matches can't change either. |
 
 ## Reports: `dashboard`, `reports.*`
 
@@ -159,7 +166,7 @@ business-only by nature**: invoices and bills have no household side, so
 |--------|--------|--------|---------|----------------|
 | `accounts.list` | read | none | `[Account]` with `balance` (natural sign, as of today), `kind`, `link` (bank link or `null`), `reconcilable` | Includes archived accounts. |
 | `accounts.subtypes` | read | none | `[{ value, kind }]` | The 15 subtypes: `bank`, `accounts_receivable`, `other_current_asset`, `fixed_asset`, `credit_card`, `accounts_payable`, `other_current_liability`, `long_term_liability`, `equity`, `retained_earnings`, `income`, `other_income`, `cost_of_goods_sold`, `expense`, `other_expense`. |
-| `accounts.create` | write | `name`, `subtype`, `code?`, `parent_id?` (`AccountId`), `scope?` (default: main side), `flex?` (`fixed`/`usage`/`lifestyle`, household spending only), `opening_balance?` (cents, natural sign), `opening_date?` (today) | new `AccountId` | `rule` for a duplicate code, a bad parent, or a scope the book doesn't have. Not atomic with its opening balance: if posting the balance is refused (say, inside a locked period) the account still exists. |
+| `accounts.create` | write | `name`, `subtype`, `code?`, `parent_id?` (`AccountId`), `scope?` (default: main side), `flex?` (`fixed`/`usage`/`lifestyle`, household spending only), `opening_balance?` (cents, natural sign), `opening_date?` (today) | new `AccountId` | `rule` for a duplicate code, a bad parent, or a scope the book doesn't have. If the opening balance is refused (say, inside a locked period), no account is made. |
 | `accounts.rename` | write | `id`, `name` | `null` | |
 | `accounts.archive` | write | `id`, `archived` | `null` | `rule` while the account still has a balance. |
 | `accounts.set_flex` | write | `id`, `flex` (or `null` to clear) | `null` | Household spending accounts only. |
@@ -167,10 +174,10 @@ business-only by nature**: invoices and bills have no household side, so
 | `accounts.register` | read | `id` | `[RegisterRow]`: every line with a running balance | |
 | `entries.get` | read | `id` | `Entry` with its `lines`, `voided_by_id`, `payee_id`, `person_id` | `not_found`. |
 | `entries.list` | read | `from`, `to` | `[Entry]` dated in the range | |
-| `entries.post` | write | `date`, `memo`, `lines` (`[{ account_id, amount, memo? }]`, amounts summing to zero), `person_id?`, `payee_id?` (`ContactId`, feeds 1099s) | new `EntryId` | `rule` if it doesn't balance, has fewer than two lines or a zero line, or is in a locked period. The tag is applied after the entry posts, so a failing `person_id`/`payee_id` leaves the entry posted. |
+| `entries.post` | write | `date`, `memo`, `lines` (`[{ account_id, amount, memo? }]`, amounts summing to zero), `person_id?`, `payee_id?` (`ContactId`, feeds 1099s) | new `EntryId` | `rule` if it doesn't balance, has fewer than two lines or a zero line, or is in a locked period; `not_found` for an unknown `person_id`/`payee_id`, and then nothing is posted. |
 | `entries.void` | write | `id`, `date?` (today) | `null` | Posts a reversing entry. `rule` if already void. |
-| `entries.set_person` | write | `id`, `person_id` (or `null`) | `null` | Household "who was it for". |
-| `entries.set_goal` | write | `id`, `goal_id` (or `null`) | `null` | Counts an entry toward a savings goal; the entry must touch the goal's account. Lives in `goals.rs` but is named for the thing it tags. |
+| `entries.set_person` | write | `id`, `person_id` (or `null`) | `null` | Household "who was it for". `rule` for an entry in a locked period. |
+| `entries.set_goal` | write | `id`, `goal_id` (or `null`) | `null` | Counts an entry toward a savings goal; the entry must touch the goal's account. `rule` for an entry in a locked period. Lives in `goals.rs` but is named for the thing it tags. |
 
 ## People and budgets (household): `people.*`, `budget.*`
 
@@ -222,11 +229,11 @@ Imported bank transactions wait here until accepted into the books.
 | `inbox.reviewed` | read | `account_id?` | `[ReviewedTxn]`, newest first, at most 200, with `categories` | |
 | `inbox.count` | read | none | number waiting | |
 | `inbox.candidates` | read | `id` (`BankTxnId`) | `[candidate]`: existing entry lines it could match | |
-| `inbox.accept` | write | `id`, `account_id` (the category), `memo?`, `remember?` (false; also makes a rule), `payee_id?`, `person_id?` | the new `EntryId` | The entry is posted first and the tags and rule after, so a failure there leaves it posted. |
+| `inbox.accept` | write | `id`, `account_id` (the category), `memo?`, `remember?` (false; also makes a rule), `payee_id?`, `person_id?` | the new `EntryId` | Posting, tags and rule happen together: if any fails, the transaction stays in the inbox. |
 | `inbox.split` | write | `id`, `splits` (`[{ account_id, amount, memo? }]`, summing to the transaction's amount), `memo?` | `EntryId` | `rule` if the splits don't sum. |
 | `inbox.match` | write | `id`, `line_id` (`LineId`) | `null` | Matches to a line already in the books instead of posting. |
 | `inbox.exclude` | write | `ids` (`[BankTxnId]`) | `null` | Marks as not belonging in the books. |
-| `inbox.undo` | write | `id` | `null` | Reverses an accept, match or exclude. |
+| `inbox.undo` | write | `id` | `null` | Reverses an accept, match or exclude. `rule` when the entry involved is in a locked period. |
 | `inbox.accept_suggested` | write | `ids` (`[BankTxnId]`) | `{ accepted, skipped }` | Applies each transaction's own suggestion; ones without are skipped, not failed. |
 
 ## Importing: `import.*`
@@ -240,7 +247,7 @@ File contents are passed as strings (`content`), not paths, except Ledger.
 | `import.ofx_preview` | read | `content` | `[{ account, count, from, to }]`, one per statement | |
 | `import.ofx` | write | `content`, `index` (which statement), `account_id` | `ImportSummary` | `bad_params` for an index that doesn't exist. |
 | `import.ledger_preview` | read | `path` | counts and date range | Reads a Ledger SQLite file from disk; imports nothing. |
-| `import.ledger` | write | `path`, `money_account_id?` | `{ added, skipped, notes }` | Safe to repeat. Lands in a new "Ledger import" account when none is given. |
+| `import.ledger` | write | `path`, `money_account_id?` | `{ added, skipped, notes }` | Safe to repeat; an import that fails adds nothing. Lands in a new "Ledger import" account when none is given. |
 
 ## Rules: `rules.*`
 
@@ -280,7 +287,7 @@ invoices and bills, so it has its own prefix, and lives in `bills.rs`.
 |--------|--------|--------|---------|
 | `contacts.list` | read | none | `[Contact]` |
 | `contacts.get` | read | `id` | `Contact` |
-| `contacts.create` | write | `kind` (`customer` \| `vendor` \| `both`), `name`, `company?`, `email?`, `phone?`, `address?`, `notes?` | new `ContactId` |
+| `contacts.create` | write | `kind` (`customer` \| `vendor` \| `both`), `name`, `company?`, `email?` (one plain address; `rule` otherwise), `phone?`, `address?`, `notes?` | new `ContactId` |
 | `contacts.update` | write | `id`, `contact` (same fields as create) | `null` |
 | `contacts.archive` | write | `id`, `archived` | `null` |
 
@@ -340,9 +347,9 @@ year needs that tax year covered. A year with no verified tables fails with
 | `tax.record_payment` | write | `tax_year`, `quarter` (1-4), `jurisdiction` (`federal` \| `state`), `date`, `amount`, `account_id` | new `TaxPaymentId` | `bad_params` for a `tax_year` outside the 32-bit range; `rule` for a quarter outside 1-4, a zero amount, or an account that can't pay. Also posts the payment as an entry. |
 | `tax.void_payment` | write | `id` | `null` | |
 | `tax.1099` | read | `year?` | `Report1099`: payees, amounts, who crosses the threshold | |
-| `tax.set_payee` | write | `entry_id`, `contact_id` (or `null`) | `null` | Free of the tax license: it is everyday bookkeeping. |
+| `tax.set_payee` | write | `entry_id`, `contact_id` (or `null`) | `null` | Free of the tax license: it is everyday bookkeeping. `rule` for an entry in a locked period. |
 | `tax.set_contact` | write | `id`, `is_1099`, `w9_on_file`, `legal_name?`, `tin_last4?` | `null` | Only the last four digits of a TIN are stored. |
-| `tax.export` | write | `year?` | path of the new `Tax <year>/` folder beside the book | Writes CSVs, two PDFs and a README. `io` on a write failure. |
+| `tax.export` | write | `year?`, `dir?` (an existing folder) | path of the new `Tax <year>/` folder, in `dir` or beside the book | Writes CSVs, two PDFs and a README, none of them encrypted. An encrypted book needs `dir` (`rule` without it), so the package never lands silently beside the book. Text cells that a spreadsheet would read as a formula start with `'`. `io` on a write failure. |
 
 ## Bank connections: `bank.*`
 
@@ -360,7 +367,7 @@ credentials live in the OS keychain, never in the book.
 | `bank.plaid_start` | never | none | a hosted-link `{ link_token, url }` |
 | `bank.plaid_relink_start` | never | `connection_id` | a hosted-link, for repairing a connection |
 | `bank.plaid_poll` | never | `link_token`, `connection_id?` | `{ status: "waiting" \| "exited" \| "linked", ... }` |
-| `bank.simplefin_connect` | never | `setup_token` | `{ status: "linked", connection_id, institution, accounts }` |
+| `bank.simplefin_connect` | never | `setup_token` (its claim URL and the access URL it returns must be https to SimpleFIN Bridge) | `{ status: "linked", connection_id, institution, accounts }` |
 | `bank.simplefin_reconnect` | never | `connection_id`, `setup_token` | `null` |
 | `bank.link` | never | `connection_id`, `external_account_id`, `name`, `start_date`, `mask?`, and `account_id` (existing) or `new_account` (`{ name, subtype, scope? }`) | `{ link_id, account_id }` |
 | `bank.unlink` | never | `link_id` | `null` |

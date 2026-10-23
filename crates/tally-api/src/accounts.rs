@@ -110,7 +110,8 @@ impl App {
             "accounts.subtypes" => ok(AccountSubtype::ALL.iter().map(|t| SubtypeInfo { value: *t, kind: t.kind() }).collect::<Vec<_>>()),
             "accounts.create" => {
                 let p: CreateAccount = params(p)?;
-                self.with(|s| {
+                // The account and its opening balance are made together or not at all.
+                self.with(|s| s.atomically(|s| {
                     let scope = match p.scope {
                         Some(scope) => scope,
                         None => main_side(s)?,
@@ -120,7 +121,7 @@ impl App {
                         s.post_opening_balance(id, p.opening_date.unwrap_or_else(today), amount)?;
                     }
                     Ok(id)
-                })
+                }))
             }
             "accounts.rename" => {
                 let p: Rename = params(p)?;
@@ -153,7 +154,8 @@ impl App {
             }
             "entries.post" => {
                 let p: PostEntry = params(p)?;
-                self.with(|s| {
+                // An entry posts with its person and payee, or not at all.
+                self.with(|s| s.atomically(|s| {
                     let id = s.post_entry(&NewEntry { date: p.date, memo: p.memo, lines: p.lines })?;
                     if p.person_id.is_some() {
                         s.set_entry_person(id, p.person_id)?;
@@ -162,7 +164,7 @@ impl App {
                         s.set_entry_payee(id, p.payee_id)?;
                     }
                     Ok(id)
-                })
+                }))
             }
             // {id, person_id} -> null.
             "entries.set_person" => {

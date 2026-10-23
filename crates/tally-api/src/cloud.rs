@@ -16,6 +16,8 @@ use tally_store::Store;
 use tally_store::crypto::is_encrypted_file;
 
 const DEFAULT_KEEP: usize = 10;
+/// How many dated copies a folder may keep, at most.
+const MAX_KEEP: usize = 100;
 const AUTO_EVERY_HOURS: i64 = 24;
 
 #[derive(Serialize)]
@@ -67,8 +69,20 @@ struct BackupReport {
     git: Option<DestResult>,
 }
 
+/// The `cloud.keep` setting as stored, read back within 1..=[`MAX_KEEP`]:
+/// a folder always keeps at least the copy just made.
+fn keep_from(stored: Option<String>) -> usize {
+    stored.and_then(|k| k.trim().parse::<usize>().ok()).unwrap_or(DEFAULT_KEEP).clamp(1, MAX_KEEP)
+}
+
+/// A hooks folder that can't hold any hooks.
+const NO_HOOKS: &str = if cfg!(windows) { "core.hooksPath=NUL" } else { "core.hooksPath=/dev/null" };
+
+/// Runs git in `repo`. Tallybook only adds, commits and pushes one file, so it
+/// runs no hooks and no filesystem monitor the repository may configure.
 fn git(repo: &Path, args: &[&str]) -> Result<String, String> {
     let out = Command::new("git")
+        .args(["-c", NO_HOOKS, "-c", "core.fsmonitor=false"])
         .arg("-C")
         .arg(repo)
         .args(args)
@@ -176,7 +190,7 @@ impl App {
                     encrypted: s.is_encrypted(),
                     git_has_remote: git.as_deref().is_some_and(|g| has_remote(Path::new(g))),
                     due: auto && s.is_encrypted() && (folder.is_some() || git.is_some()) && stale,
-                    keep: pref("cloud.keep").and_then(|k| k.parse().ok()).unwrap_or(DEFAULT_KEEP),
+                    keep: keep_from(pref("cloud.keep")),
                     last_error: pref("cloud.last_error"),
                     folder,
                     git,
@@ -209,7 +223,7 @@ impl App {
                         s.set_pref("cloud.auto", Some(if a { "1" } else { "0" }))?;
                     }
                     if let Some(k) = p.keep {
-                        s.set_pref("cloud.keep", Some(&k.clamp(1, 100).to_string()))?;
+                        s.set_pref("cloud.keep", Some(&k.clamp(1, MAX_KEEP).to_string()))?;
                     }
                     Ok(())
                 })
@@ -234,7 +248,7 @@ impl App {
             let s = &book.store;
             let stem = book.path.file_stem().and_then(|s| s.to_str()).unwrap_or("book").to_string();
             let name = s.pref("company.name")?.unwrap_or_else(|| stem.clone());
-            let keep = s.pref("cloud.keep")?.and_then(|k| k.parse().ok()).unwrap_or(DEFAULT_KEEP);
+            let keep = keep_from(s.pref("cloud.keep")?);
             let (folder, git_repo) = (s.pref("cloud.folder")?, s.pref("cloud.git")?);
             if folder.is_none() && git_repo.is_none() {
                 return Err(ApiError::new("rule", "choose a cloud folder or a Git repository first"));
@@ -287,8 +301,10 @@ fn copy_to_folder(snapshot: &Path, folder: &str, stem: &str, stamp: &str, keep: 
             p.extension().is_some_and(|e| e == "tallybook") && p.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.starts_with(&prefix))
         })
         .collect();
+    // Never the copy just written, whatever `keep` says.
+    copies.retain(|p| *p != dest);
     copies.sort();
-    let excess = copies.len().saturating_sub(keep);
+    let excess = copies.len().saturating_sub(keep.max(1) - 1);
     for old in copies.into_iter().take(excess) {
         let _ = std::fs::remove_file(old);
     }
@@ -317,7 +333,7 @@ fn copy_to_git(snapshot: &Path, repo: &Path, stem: &str, stamp: &str, book_name:
         std::fs::write(&readme, text).map_err(|e| e.to_string())?;
     }
     git(repo, &["add", "--", &file, "README.md"])?;
-    let staged = git(repo, &["diff", "--cached", "--quiet"]).is_err();
+    let staged = git(repo, &["diff", "--cached", "--quiet", "--no-ext-diff"]).is_err();
     let mut detail = String::from("No changes since the last copy.");
     if staged {
         git(repo, &["commit", "-m", &format!("Tallybook backup {stamp}"), "--", &file, "README.md"])?;

@@ -85,6 +85,21 @@ fn sibling(path: &Path, suffix: &str) -> PathBuf {
     PathBuf::from(s)
 }
 
+/// Removes what an interrupted encrypt or decrypt can leave beside a book:
+/// `<book>.converting` (the copy being written) and `<book>.previous` (the
+/// original, after the swap). Either may be a plain-text copy of the book.
+/// Called when the book itself opens, which proves the conversion either
+/// finished or never replaced it. Removed outright, not moved to the Trash.
+pub(crate) fn remove_conversion_leftovers(path: &Path) {
+    for leftover in [sibling(path, ".converting"), sibling(path, ".previous")] {
+        if leftover.exists() {
+            for f in book_files(&leftover) {
+                let _ = std::fs::remove_file(f);
+            }
+        }
+    }
+}
+
 impl App {
     // ------------------------------------------------------------ key registry
     //
@@ -113,8 +128,7 @@ impl App {
         self.secrets.set(&format!("book-key:{id}"), &crypto::hex(key)).map_err(|e| ApiError::new("keychain", e))?;
         let mut ids = self.key_ids();
         ids.push(id);
-        let _ = std::fs::create_dir_all(&self.config_dir);
-        std::fs::write(self.config_dir.join("keys.json"), serde_json::to_vec(&ids).unwrap_or_default())
+        crate::write_private(&self.config_dir.join("keys.json"), &serde_json::to_vec(&ids).unwrap_or_default())
             .map_err(|e| ApiError::new("io", e.to_string()))
     }
 
@@ -215,7 +229,7 @@ impl App {
 
         let mut report = DeleteReport::default();
         for conn in &connections {
-            let Some(key) = &conn.secret_ref else { continue };
+            let Some(key) = crate::sync::secret_key(conn) else { continue };
             if conn.provider == Provider::Plaid
                 && let Ok(Some(token)) = self.secrets.get(key)
             {

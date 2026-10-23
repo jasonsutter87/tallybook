@@ -9,7 +9,8 @@ export default defineConfig({
   server: {
     port: 1440,
     strictPort: true,
-    proxy: { "/api": "http://127.0.0.1:1441" },
+    // changeOrigin: the dev server answers only requests addressed to itself (Host 127.0.0.1:1441).
+    proxy: { "/api": { target: "http://127.0.0.1:1441", changeOrigin: true } },
   },
   envPrefix: ["VITE_", "TAURI_ENV_*"],
   build: { target: "safari15", outDir: "dist" },

@@ -145,6 +145,23 @@ fn sfin_err(e: simplefin::SimpleFinError) -> ApiError {
     ApiError::new("bank", e.to_string())
 }
 
+/// The keychain entry holding a connection's credentials, as Tallybook names
+/// them: `plaid:<uuid>` or `simplefin:<uuid>`, matching the connection's
+/// provider. The name comes from the book file, which may come from someone
+/// else, so any other name is treated as no credentials at all: Tallybook
+/// never reads or deletes a keychain entry it didn't create for this purpose.
+pub(crate) fn secret_key(conn: &BankConnection) -> Option<&str> {
+    let key = conn.secret_ref.as_deref()?;
+    let prefix = match conn.provider {
+        Provider::Plaid => "plaid:",
+        Provider::Simplefin => "simplefin:",
+        Provider::File => return None,
+    };
+    let id = key.strip_prefix(prefix)?;
+    let canonical = uuid::Uuid::parse_str(id).ok()?.hyphenated().to_string();
+    (canonical == id).then_some(key)
+}
+
 impl App {
     fn plaid_client(&self) -> ApiResult<plaid::Client> {
         let raw = self
@@ -157,7 +174,7 @@ impl App {
     }
 
     fn secret(&self, conn: &BankConnection) -> ApiResult<String> {
-        let key = conn.secret_ref.as_deref().ok_or_else(|| ApiError::new("rule", "this connection has no saved credentials"))?;
+        let key = secret_key(conn).ok_or_else(|| ApiError::new("rule", "this connection has no saved credentials"))?;
         self.secrets
             .get(key)
             .map_err(|e| ApiError::new("keychain", e))?
@@ -280,7 +297,7 @@ impl App {
         if conn.provider != Provider::Simplefin {
             return Err(ApiError::new("rule", "that isn't a SimpleFIN connection"));
         }
-        let key = conn.secret_ref.clone().ok_or_else(|| ApiError::new("rule", "this connection was disconnected; connect it again instead"))?;
+        let key = secret_key(&conn).ok_or_else(|| ApiError::new("rule", "this connection was disconnected; connect it again instead"))?.to_string();
         let access_url = simplefin::claim(&p.setup_token).await.map_err(sfin_err)?;
         // Same connection, same links: only the credential changes.
         self.secrets.set(&key, &access_url).map_err(|e| ApiError::new("keychain", e))?;
@@ -331,7 +348,7 @@ impl App {
             // Best effort: revoke at Plaid; disconnect locally regardless.
             let _ = client.remove_item(&token).await;
         }
-        if let Some(key) = &conn.secret_ref {
+        if let Some(key) = secret_key(&conn) {
             let _ = self.secrets.delete(key);
         }
         self.with(|s| s.disconnect(p.connection_id))

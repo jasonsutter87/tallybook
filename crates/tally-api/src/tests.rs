@@ -212,14 +212,56 @@ async fn tax_center_end_to_end() {
 }
 
 #[tokio::test]
+async fn tax_export_csv_shows_formula_like_memos_as_text() {
+    let (app, dir) = app("tax-csv");
+    app.call("book.create", json!({ "path": dir.join("Shop.tallybook"), "company_name": "Shop" })).await.unwrap();
+    let accounts = app.call("accounts.list", Value::Null).await.unwrap();
+    let id = |code: &str| accounts.as_array().unwrap().iter().find(|a| a["code"] == code).unwrap()["id"].clone();
+    let date = NaiveDate::from_ymd_opt(today().year(), 1, 2).unwrap();
+    app.call("entries.post", json!({ "date": date, "memo": "=HYPERLINK(\"https://example.com\")", "lines": [
+        { "account_id": id("6500"), "amount": 1250, "memo": "@SUM(A1)" },
+        { "account_id": id("4000"), "amount": -1250 }
+    ] }))
+    .await
+    .unwrap();
+    let out = PathBuf::from(app.call("tax.export", json!({ "year": today().year() })).await.unwrap().as_str().unwrap().to_string());
+    let csv = std::fs::read_to_string(out.join("General ledger.csv")).unwrap();
+    assert!(csv.contains("\"'=HYPERLINK("), "{csv}");
+    assert!(csv.contains(",'@SUM(A1)"), "{csv}");
+    assert!(!csv.contains(",=") && !csv.contains(",@"), "{csv}");
+    assert!(csv.contains(",12.50,"), "amounts stay plain numbers: {csv}");
+}
+
+/// The tax package is plain text: for an encrypted book it goes only where
+/// the user chose, never silently beside the book.
+#[tokio::test]
+async fn an_encrypted_books_tax_package_needs_a_chosen_folder() {
+    let (app, dir) = app("tax-encrypted");
+    let book = dir.join("books");
+    app.call("book.create_demo", json!({ "path": book.join("demo.tallybook") })).await.unwrap();
+    app.call("book.encrypt", Value::Null).await.unwrap();
+    let year = today().year();
+    let err = app.call("tax.export", json!({ "year": year })).await.unwrap_err();
+    assert_eq!(err.code, "rule");
+    assert!(!book.join(format!("Tax {year}")).exists(), "nothing written beside the book");
+
+    let chosen = dir.join("For the accountant");
+    assert_eq!(app.call("tax.export", json!({ "year": year, "dir": chosen })).await.unwrap_err().code, "rule", "the folder must exist");
+    std::fs::create_dir_all(&chosen).unwrap();
+    let out = app.call("tax.export", json!({ "year": year, "dir": chosen })).await.unwrap();
+    assert_eq!(PathBuf::from(out.as_str().unwrap()), chosen.join(format!("Tax {year}")));
+    assert!(chosen.join(format!("Tax {year}")).join("General ledger.csv").exists());
+}
+
+#[tokio::test]
 async fn delete_book_tears_everything_down() {
     let (app, dir) = app("delete");
     let path = dir.join("Gone.tallybook");
     app.call("book.create", json!({ "path": path, "company_name": "Gone Co" })).await.unwrap();
     app.call("book.backup", Value::Null).await.unwrap();
     // A bank connection whose credential lives in the keychain.
-    app.secrets.set("simplefin:test", "https://user:pass@bridge.example/simplefin").unwrap();
-    app.run(|s| s.create_connection(Provider::Simplefin, "CU", None, Some("simplefin:test"))).unwrap();
+    app.secrets.set("simplefin:00000000-0000-4000-8000-000000000001", "https://user:pass@bridge.example/simplefin").unwrap();
+    app.run(|s| s.create_connection(Provider::Simplefin, "CU", None, Some("simplefin:00000000-0000-4000-8000-000000000001"))).unwrap();
 
     let wrong = app.call("book.delete", json!({ "path": path, "confirm_name": "gone co" })).await.unwrap_err();
     assert_eq!(wrong.code, "rule", "the name must match exactly");
@@ -229,7 +271,7 @@ async fn delete_book_tears_everything_down() {
     let r = app.call("book.delete", json!({ "path": path, "confirm_name": "Gone Co", "include_backups": true })).await.unwrap();
     assert!(!path.exists());
     assert_eq!(r["keychain_entries_removed"], 1);
-    assert!(app.secrets.get("simplefin:test").unwrap().is_none(), "credential removed from the keychain");
+    assert!(app.secrets.get("simplefin:00000000-0000-4000-8000-000000000001").unwrap().is_none(), "credential removed from the keychain");
     assert!(std::fs::read_dir(dir.join("Backups")).unwrap().next().is_none(), "backups removed too");
     assert!(!app.is_open(), "the open book was closed first");
     assert!(app.call("book.recent", Value::Null).await.unwrap().as_array().unwrap().is_empty());
@@ -237,6 +279,145 @@ async fn delete_book_tears_everything_down() {
     let not_a_book = dir.join("notes.txt");
     std::fs::write(&not_a_book, "hi").unwrap();
     assert_eq!(app.call("book.delete", json!({ "path": not_a_book, "confirm_name": "x" })).await.unwrap_err().code, "rule");
+}
+
+/// A connection's keychain name comes from the book file. Names Tallybook
+/// didn't make (`<provider>:<uuid>`) are never read or deleted.
+#[tokio::test]
+async fn a_book_cant_name_keychain_entries_it_doesnt_own() {
+    let (app, dir) = app("secret-ref");
+    let path = dir.join("Shared.tallybook");
+    app.call("book.create", json!({ "path": path, "company_name": "Shared" })).await.unwrap();
+    app.secrets.set("plaid.credentials", "{\"client_id\":\"mine\"}").unwrap();
+    app.secrets.set("book-key:1234", "abcd").unwrap();
+    let plaid_ok = "plaid:00000000-0000-4000-8000-0000000000aa";
+    app.secrets.set(plaid_ok, "simplefin-looking").unwrap();
+    let (a, b, c) = app
+        .run(|s| {
+            Ok((
+                s.create_connection(Provider::Plaid, "Sneaky", None, Some("plaid.credentials"))?,
+                s.create_connection(Provider::Simplefin, "Sneaky 2", None, Some("book-key:1234"))?,
+                // A real-looking name, but for the other provider.
+                s.create_connection(Provider::Simplefin, "Sneaky 3", None, Some(plaid_ok))?,
+            ))
+        })
+        .unwrap();
+    for id in [a, b, c] {
+        let err = app.call("bank.feed_accounts", json!({ "connection_id": id })).await.unwrap_err();
+        assert!(err.message.contains("no saved credentials"), "{err:?}");
+    }
+    app.call("bank.disconnect", json!({ "connection_id": a })).await.unwrap();
+    assert!(app.secrets.get("plaid.credentials").unwrap().is_some(), "disconnecting left the Plaid keys alone");
+
+    let r = app.call("book.delete", json!({ "path": path, "confirm_name": "Shared" })).await.unwrap();
+    assert_eq!(r["keychain_entries_removed"], 0, "{r}");
+    for key in ["plaid.credentials", "book-key:1234", plaid_ok] {
+        assert!(app.secrets.get(key).unwrap().is_some(), "{key} survived deleting the book");
+    }
+}
+
+/// recent.json, keys.json and license.json are written whole, readable only
+/// by the user, and license.json holds no whole license key.
+#[tokio::test]
+async fn config_files_are_private_and_license_keys_live_in_the_keychain() {
+    let (app, dir) = free_app("config-files");
+    app.call("book.create", json!({ "path": dir.join("Home.tallybook"), "company_name": "Home", "sides": ["household"] })).await.unwrap();
+    app.call("book.encrypt", Value::Null).await.unwrap();
+    let license = crate::license::License {
+        tier: crate::license::Tier::Business,
+        key: "ABCD-1234-SECRET-WXYZ".into(),
+        instance_id: "inst-1".into(),
+        email: None,
+        activated_on: today(),
+        tax_years: vec![],
+        earlier: vec![crate::license::Activation { key: "OLD-KEY-HIDDEN-9999".into(), instance_id: "inst-0".into() }],
+    };
+    app.save_license(&license).unwrap();
+
+    let config = dir.join("config");
+    let text = std::fs::read_to_string(config.join("license.json")).unwrap();
+    assert!(!text.contains("SECRET") && !text.contains("HIDDEN"), "{text}");
+    assert_eq!(app.load_license().unwrap(), license, "the keys come back from the keychain");
+    assert_eq!(app.call("license.status", Value::Null).await.unwrap()["key_hint"], "WXYZ");
+    assert_eq!(app.call("license.status", Value::Null).await.unwrap()["tier"], "business");
+
+    let names: Vec<String> = std::fs::read_dir(&config).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().to_string()).collect();
+    assert!(names.iter().all(|n| !n.ends_with(".tmp")), "no temporary files left: {names:?}");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        for f in ["recent.json", "keys.json", "license.json"] {
+            let mode = std::fs::metadata(config.join(f)).unwrap().permissions().mode();
+            assert_eq!(mode & 0o077, 0, "{f} is {mode:o}");
+        }
+    }
+}
+
+/// What an interrupted encrypt or decrypt leaves beside a book (possibly a
+/// plain-text copy) is removed when the book next opens in the app.
+#[tokio::test]
+async fn opening_a_book_removes_conversion_leftovers() {
+    let (app, dir) = app("leftovers");
+    let path = dir.join("Vault.tallybook");
+    app.call("book.create", json!({ "path": path, "company_name": "Vault" })).await.unwrap();
+    app.call("book.backup", Value::Null).await.unwrap();
+    let plain_copy = std::fs::read_dir(dir.join("Backups")).unwrap().next().unwrap().unwrap().path();
+    app.call("book.encrypt", Value::Null).await.unwrap();
+    app.call("book.close", Value::Null).await.unwrap();
+    let previous = dir.join("Vault.tallybook.previous");
+    let converting = dir.join("Vault.tallybook.converting");
+    std::fs::copy(&plain_copy, &previous).unwrap();
+    std::fs::copy(&plain_copy, &converting).unwrap();
+    std::fs::write(dir.join("Vault.tallybook.previous-wal"), b"wal").unwrap();
+
+    // An agent session leaves them (it changes no files)...
+    app.set_update_recent(false);
+    app.call("book.open", json!({ "path": path })).await.unwrap();
+    assert!(previous.exists() && converting.exists());
+    // ...the app removes them.
+    app.set_update_recent(true);
+    app.call("book.open", json!({ "path": path })).await.unwrap();
+    assert!(!previous.exists() && !converting.exists() && !dir.join("Vault.tallybook.previous-wal").exists());
+    assert!(path.exists(), "the book itself stays");
+    assert!(tally_store::crypto::is_encrypted_file(&path).unwrap());
+}
+
+/// A call that does several things does all of them or none: an error never
+/// hides a half-made change that a retry would then duplicate.
+#[tokio::test]
+async fn compound_calls_change_nothing_when_they_fail() {
+    let (app, dir) = app("atomic");
+    app.call("book.create_demo", json!({ "path": dir.join("demo.tallybook") })).await.unwrap();
+    app.call("settings.set", json!({ "lock_date": "2020-12-31" })).await.unwrap();
+    let count = |v: Value| v.as_array().unwrap().len();
+
+    let accounts = count(app.call("accounts.list", Value::Null).await.unwrap());
+    let err = app
+        .call("accounts.create", json!({ "name": "Old savings", "subtype": "bank", "opening_balance": 5000, "opening_date": "2020-06-30" }))
+        .await
+        .unwrap_err();
+    assert_eq!(err.code, "rule");
+    assert_eq!(count(app.call("accounts.list", Value::Null).await.unwrap()), accounts, "no account without its opening balance");
+
+    let list = app.call("accounts.list", Value::Null).await.unwrap();
+    let id = |code: &str| list.as_array().unwrap().iter().find(|a| a["code"] == code).unwrap()["id"].clone();
+    let range = json!({ "from": "2000-01-01", "to": "2100-01-01" });
+    let entries = count(app.call("entries.list", range.clone()).await.unwrap());
+    let err = app
+        .call("entries.post", json!({ "date": today(), "memo": "Lunch", "payee_id": 999_999, "lines": [
+            { "account_id": id("6250"), "amount": 1500 }, { "account_id": id("4000"), "amount": -1500 }
+        ] }))
+        .await
+        .unwrap_err();
+    assert_eq!(err.code, "not_found", "{err:?}");
+    assert_eq!(count(app.call("entries.list", range.clone()).await.unwrap()), entries, "no entry without its payee");
+
+    let waiting = app.call("inbox.count", Value::Null).await.unwrap();
+    let txn = app.call("inbox.list", Value::Null).await.unwrap()[0]["id"].clone();
+    let err = app.call("inbox.accept", json!({ "id": txn, "account_id": id("6250"), "person_id": 999_999 })).await.unwrap_err();
+    assert_eq!(err.code, "not_found");
+    assert_eq!(app.call("inbox.count", Value::Null).await.unwrap(), waiting, "the transaction is still waiting");
+    assert_eq!(count(app.call("entries.list", range).await.unwrap()), entries);
 }
 
 #[tokio::test]
@@ -409,6 +590,90 @@ async fn cloud_copies_are_encrypted_pruned_and_pushed() {
     assert!(status["last"].is_string() && status["last_error"].is_null());
 }
 
+#[tokio::test]
+async fn settings_set_accepts_only_known_preference_keys() {
+    let (app, dir) = app("prefs-allowlist");
+    app.call("book.create", json!({ "path": dir.join("Shop.tallybook"), "company_name": "Shop" })).await.unwrap();
+    let before = app.call("cloud.status", Value::Null).await.unwrap();
+    for key in ["cloud.git", "cloud.folder", "cloud.keep", "cloud.auto", "cloud.last", "tax.profile", "plaid.user_id", "lock_date", "anything"] {
+        let err = app.call("settings.set", json!({ "prefs": { key: "/tmp/x" } })).await.unwrap_err();
+        assert_eq!(err.code, "bad_params", "{key}");
+    }
+    // One unknown key refuses the whole call: the known one isn't written either.
+    let err = app.call("settings.set", json!({ "prefs": { "company.email": "a@b.co", "cloud.auto": "1" } })).await.unwrap_err();
+    assert_eq!(err.code, "bad_params");
+    let prefs = app.call("settings.get", Value::Null).await.unwrap()["prefs"].clone();
+    assert!(prefs.get("company.email").is_none() && prefs.get("cloud.auto").is_none(), "{prefs}");
+    assert_eq!(app.call("cloud.status", Value::Null).await.unwrap()["auto"], before["auto"]);
+    assert_eq!(app.call("cloud.status", Value::Null).await.unwrap()["git"], before["git"]);
+
+    // Every key the Settings screen saves still works.
+    for key in crate::settings::PREF_KEYS {
+        app.call("settings.set", json!({ "prefs": { *key: "7" } })).await.unwrap();
+    }
+}
+
+#[tokio::test]
+async fn a_folder_always_keeps_the_copy_just_made() {
+    let (app, dir) = app("cloud-keep");
+    app.call("book.create", json!({ "path": dir.join("Shop.tallybook"), "company_name": "Shop" })).await.unwrap();
+    app.call("book.encrypt", Value::Null).await.unwrap();
+    let drive = dir.join("Drive");
+    std::fs::create_dir_all(&drive).unwrap();
+    app.call("cloud.set", json!({ "folder": drive })).await.unwrap();
+    // A stored value outside 1..=100, however it got there, reads back as 1.
+    app.with(|s| s.set_pref("cloud.keep", Some("0"))).unwrap();
+    assert_eq!(app.call("cloud.status", Value::Null).await.unwrap()["keep"], 1);
+    for _ in 0..2 {
+        let r = app.call("cloud.backup_now", Value::Null).await.unwrap();
+        assert_eq!(r["folder"]["ok"], true, "{r}");
+        let newest = PathBuf::from(r["folder"]["path"].as_str().unwrap());
+        assert!(newest.exists(), "the copy just made is never pruned");
+        std::thread::sleep(std::time::Duration::from_millis(1100)); // distinct timestamps
+    }
+    assert_eq!(std::fs::read_dir(drive.join("Tallybook")).unwrap().count(), 1);
+}
+
+/// Cloud copies into a Git repository run none of the repository's hooks and
+/// no filesystem monitor it configures.
+#[cfg(unix)]
+#[tokio::test]
+async fn cloud_git_copies_run_no_repository_hooks() {
+    use std::os::unix::fs::PermissionsExt;
+    use std::process::Command;
+    let (app, dir) = app("cloud-hooks");
+    app.call("book.create", json!({ "path": dir.join("Shop.tallybook"), "company_name": "Shop" })).await.unwrap();
+    app.call("book.encrypt", Value::Null).await.unwrap();
+    let repo = dir.join("repo");
+    std::fs::create_dir_all(&repo).unwrap();
+    let git = |args: &[&str]| {
+        let out = Command::new("git").args(args).current_dir(&repo).output().unwrap();
+        assert!(out.status.success(), "git {args:?}: {}", String::from_utf8_lossy(&out.stderr));
+    };
+    git(&["init", "-q"]);
+    git(&["config", "user.email", "test@example.com"]);
+    git(&["config", "user.name", "Test"]);
+    let marker = dir.join("ran");
+    let script = |name: &str| {
+        let p = dir.join(name);
+        std::fs::write(&p, format!("#!/bin/sh\necho {name} >> '{}'\nexit 0\n", marker.display())).unwrap();
+        std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
+        p
+    };
+    for hook in ["pre-commit", "commit-msg", "post-commit", "pre-push"] {
+        std::fs::copy(script(hook), repo.join(".git/hooks").join(hook)).unwrap();
+        std::fs::set_permissions(repo.join(".git/hooks").join(hook), std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    git(&["config", "core.fsmonitor", script("fsmonitor").to_str().unwrap()]);
+
+    app.call("cloud.set", json!({ "git": repo })).await.unwrap();
+    let r = app.call("cloud.backup_now", Value::Null).await.unwrap();
+    assert_eq!(r["git"]["ok"], true, "{r}");
+    let log = Command::new("git").args(["-c", "core.fsmonitor=false", "log", "--oneline"]).current_dir(&repo).output().unwrap();
+    assert!(String::from_utf8_lossy(&log.stdout).contains("Tallybook backup"), "the copy was committed");
+    assert!(!marker.exists(), "ran: {}", std::fs::read_to_string(&marker).unwrap_or_default());
+}
+
 /// The household mode's book-level methods, as the UI calls them: sides,
 /// scoped accounts, and scoped reports and dashboard. Amounts are cents.
 #[tokio::test]
@@ -492,9 +757,9 @@ async fn sync_all_reports_a_failing_connection_and_carries_on() {
     // The first connection has a link but its secret was never stored; the second has no links, so it syncs trivially.
     let (broken, fine) = app
         .run(|s| {
-            let broken = s.create_connection(Provider::Simplefin, "Broken CU", None, Some("simplefin:missing"))?;
+            let broken = s.create_connection(Provider::Simplefin, "Broken CU", None, Some("simplefin:00000000-0000-4000-8000-000000000002"))?;
             s.link_account(broken, "ext-1", account, "Checking", None, today())?;
-            let fine = s.create_connection(Provider::Simplefin, "Fine CU", None, Some("simplefin:fine"))?;
+            let fine = s.create_connection(Provider::Simplefin, "Fine CU", None, Some("simplefin:00000000-0000-4000-8000-000000000003"))?;
             Ok((broken, fine))
         })
         .unwrap();

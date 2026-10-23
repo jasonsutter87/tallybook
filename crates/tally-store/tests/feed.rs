@@ -211,3 +211,33 @@ fn only_bank_like_accounts_link() {
     b.s.link_account(conn, "x", b.checking, "x", None, d(1, 1)).unwrap();
     assert!(b.s.link_account(conn, "y", b.checking, "y", None, d(1, 1)).is_err(), "one feed per account");
 }
+
+#[test]
+fn closed_periods_keep_their_payees_people_goals_and_matches() {
+    let mut b = book();
+    let march = b
+        .s
+        .post_entry(&NewEntry::new(d(3, 1), "Check 1042").line(EntryLine::debit(b.meals, Cents(1200_00))).line(EntryLine::credit(b.checking, Cents(1200_00))))
+        .unwrap();
+    let april = b
+        .s
+        .post_entry(&NewEntry::new(d(4, 2), "Lunch").line(EntryLine::debit(b.meals, Cents(20_00))).line(EntryLine::credit(b.checking, Cents(20_00))))
+        .unwrap();
+    b.s.import_feed(b.checking, &added(vec![ft("chk", d(3, 4), -1200_00, "CHECK 1042")])).unwrap();
+    let item = b.s.inbox(None).unwrap().remove(0);
+    let Some(Suggestion::Match { line_id, .. }) = item.suggestion else { panic!("expected a match") };
+    b.s.match_txn(item.txn.id, line_id).unwrap();
+
+    b.s.set_lock_date(Some(d(3, 31))).unwrap();
+    assert!(matches!(b.s.set_entry_payee(march, None), Err(StoreError::Rule(_))));
+    assert!(matches!(b.s.set_entry_person(march, None), Err(StoreError::Rule(_))));
+    assert!(matches!(b.s.set_entry_goal(march, None), Err(StoreError::Rule(_))));
+    assert!(matches!(b.s.undo_review(item.txn.id), Err(StoreError::Rule(_))));
+    assert_eq!(b.s.register(b.checking).unwrap()[0].cleared, Cleared::Cleared, "the match stands");
+
+    // Entries after the lock date can still change.
+    b.s.set_entry_payee(april, None).unwrap();
+    b.s.set_entry_person(april, None).unwrap();
+    b.s.set_entry_goal(april, None).unwrap();
+    assert!(matches!(b.s.set_entry_payee(9999, None), Err(StoreError::NotFound(..))));
+}

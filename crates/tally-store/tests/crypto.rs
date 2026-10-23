@@ -162,3 +162,24 @@ fn encrypted_books_use_plain_sqlcipher_4_settings() {
     let name: String = conn.query_row("SELECT value FROM settings WHERE key = 'pref.company.name'", [], |r| r.get(0)).unwrap();
     assert_eq!(name, "Secret Sauce LLC");
 }
+
+#[test]
+fn fingerprints_cover_every_table_and_survive_encryption() {
+    let d = dir("fingerprint");
+    let store = plain_book(&d.join("book.tallybook"));
+    let before = store.fingerprint().unwrap();
+
+    store.export_plain(&d.join("copy.tallybook")).unwrap();
+    let copy = Store::open(d.join("copy.tallybook")).unwrap();
+    assert_eq!(copy.fingerprint().unwrap(), before);
+    let key = generate_key().unwrap();
+    store.export_encrypted(&d.join("enc.tallybook"), &key).unwrap();
+    assert_eq!(Store::open_encrypted(d.join("enc.tallybook"), &key).unwrap().fingerprint().unwrap(), before);
+
+    // A change in a table other than accounts and the journal still shows.
+    copy.set_pref("company.email", Some("a@b.co")).unwrap();
+    assert_ne!(copy.fingerprint().unwrap(), before);
+    let other = Store::open(d.join("copy.tallybook")).unwrap();
+    other.debug_execute("DELETE FROM settings WHERE key = 'pref.company.email'").unwrap();
+    assert_eq!(other.fingerprint().unwrap(), before);
+}

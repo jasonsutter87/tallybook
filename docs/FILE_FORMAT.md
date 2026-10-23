@@ -28,7 +28,11 @@ business, a household, or both.
   68–71 of the SQLite header, so a hex dump of a plain book shows `TALY` at
   offset `0x44`, and the Unix `file` command prints
   `application id 1413565529`. Books from before schema 12 have `0` there
-  until a newer Tallybook opens them.
+  until a newer Tallybook opens them. Tallybook refuses, before writing
+  anything to it, a file with another application id, or one with id `0`
+  that has tables but not Tallybook's (`accounts`, `journal_entries`,
+  `settings`), and a book holding triggers or views its migrations didn't
+  create.
 - **Schema version.** `PRAGMA user_version;` is the schema version, 1 to 12
   as of this writing. Each version is one file of SQL, applied in order:
   `schema.sql` is v1, `schema_v2.sql` is v2, and so on. Each file's header
@@ -526,7 +530,9 @@ Tallybook keeps a few small JSON files, all UTF-8, in its settings folder:
 `%APPDATA%\app.tallybook.desktop` on Windows, and
 `~/.config/app.tallybook.desktop` (or `$XDG_CONFIG_HOME`) on Linux.
 Development builds use a `dev` folder inside it. Losing any of them loses
-no bookkeeping.
+no bookkeeping. Each is written whole (a temporary file renamed over the old
+one), and on macOS and Linux readable only by the user (mode 0600, folder
+0700).
 
 - **`recent.json`**: the books on the welcome screen, newest first, at most
   ten: `[{"path": "...", "name": "...", "last_opened": "<RFC 3339>", "encrypted": false}]`.
@@ -538,5 +544,8 @@ no bookkeeping.
   `business` or `tax`), the license `key` and Lemon Squeezy `instance_id`
   it was activated with, `email`, `activated_on` (`YYYY-MM-DD`),
   `tax_years` (calendar years tax prep is unlocked for) and `earlier` (keys
-  activated here before the current one). A license never locks anyone out
+  activated here before the current one). Each key itself is in the keychain
+  as `license-key:<instance_id>`, and `key` holds only its last four
+  characters; files written by earlier versions hold whole keys, which still
+  work. A license never locks anyone out
   of reading a book.

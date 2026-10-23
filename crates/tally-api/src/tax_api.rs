@@ -37,6 +37,13 @@ struct Year {
     year: Option<i32>,
 }
 
+/// `tax.export`: the year, and the folder to put the `Tax <year>` package in;
+/// the book's own folder when absent (plain books only).
+#[derive(Deserialize)]
+struct ExportParams {
+    dir: Option<PathBuf>,
+}
+
 #[derive(Deserialize)]
 struct SetLine {
     account_id: AccountId,
@@ -271,8 +278,13 @@ fn build_estimate(s: &Store, year: i32, ty: &'static TaxYear) -> ApiResult<Estim
     })
 }
 
+/// A text cell (a name, label or memo) for the CSV files. Text that a
+/// spreadsheet would read as a formula (starting with `=`, `+`, `-`, `@`, a
+/// tab or a carriage return) gets a leading `'`, so it shows as typed. Money
+/// is written by [`dollars`], never through here, so amounts stay numbers.
 fn csv_cell(s: &str) -> String {
-    if s.contains([',', '"', '\n']) { format!("\"{}\"", s.replace('"', "\"\"")) } else { s.to_string() }
+    let s = if s.starts_with(['=', '+', '-', '@', '\t', '\r']) { format!("'{s}") } else { s.to_string() };
+    if s.contains([',', '"', '\n', '\r']) { format!("\"{}\"", s.replace('"', "\"\"")) } else { s }
 }
 
 /// Cents as plain dollars for the CSV files: `1234.50`, `-3.07`. No `$`,
@@ -454,9 +466,10 @@ impl App {
                 self.with(|s| s.set_contact_tax(p.id, &p.tax))
             }
             "tax.export" => {
-                let year = year_of(p)?;
+                let year = year_of(p.clone())?;
                 let ty = require_year(year)?;
-                self.export(year, ty)
+                let ExportParams { dir } = params(p)?;
+                self.export(year, ty, dir)
             }
             _ => Err(unknown_method(method)),
         }
@@ -518,18 +531,30 @@ impl App {
         })
     }
 
-    /// Writes an accountant package to "<book folder>/Tax <year>/".
+    /// Writes an accountant package to "<folder>/Tax <year>/": the folder
+    /// given, or the book's own. The package is plain text and PDFs, so for an
+    /// encrypted book (often kept in a synced folder) a folder must be chosen.
     ///
     /// Everything is read from the book under the lock; the files (CSVs and
     /// PDFs) are written after it is released, so a slow disk never blocks
     /// other calls.
-    fn export(&self, year: i32, ty: &'static TaxYear) -> ApiResult<Value> {
+    fn export(&self, year: i32, ty: &'static TaxYear, into: Option<PathBuf>) -> ApiResult<Value> {
         let data = {
             let mut guard = self.lock();
             let book = guard.as_mut().ok_or_else(|| ApiError::new("no_book", "no book is open"))?;
+            if into.is_none() && book.store.is_encrypted() {
+                return Err(ApiError::new(
+                    "rule",
+                    "this book is encrypted but the tax package isn't, so choose where to save it rather than next to the book",
+                ));
+            }
             gather_export(&book.store, &book.path, year, ty)?
         };
-        let dir: PathBuf = data.book_path.parent().unwrap_or(std::path::Path::new(".")).join(format!("Tax {year}"));
+        let base = into.unwrap_or_else(|| data.book_path.parent().unwrap_or(std::path::Path::new(".")).to_path_buf());
+        if !base.is_dir() {
+            return Err(ApiError::new("rule", format!("{} isn't a folder", base.display())));
+        }
+        let dir: PathBuf = base.join(format!("Tax {year}"));
         std::fs::create_dir_all(&dir).map_err(|e| ApiError::new("io", e.to_string()))?;
         let write = |name: &str, body: &[u8]| std::fs::write(dir.join(name), body).map_err(|e| ApiError::new("io", e.to_string()));
         let (sc, r, est, names) = (&data.sc, &data.r, &data.est, &data.names);
@@ -580,4 +605,25 @@ fn gather_export(s: &Store, book_path: &std::path::Path, year: i32, ty: &'static
     let book_path = book_path.to_path_buf();
     let book_file = book_path.file_name().map_or_else(String::new, |n| n.to_string_lossy().into_owned());
     Ok(ExportData { book_path, book_file, company, range, names, est, sc, entries, r, pnl })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn csv_text_cells_never_start_a_formula() {
+        assert_eq!(csv_cell("=1+1"), "'=1+1");
+        assert_eq!(csv_cell("@SUM(A1)"), "'@SUM(A1)");
+        assert_eq!(csv_cell("-2+3"), "'-2+3");
+        assert_eq!(csv_cell("+1"), "'+1");
+        assert_eq!(csv_cell("\tx"), "'\tx");
+        assert_eq!(csv_cell("\rx"), "\"'\rx\"");
+        assert_eq!(csv_cell("a\rb"), "\"a\rb\"", "a bare CR is quoted so it can't start a row");
+        assert_eq!(csv_cell("=HYPERLINK(\"x\")"), "\"'=HYPERLINK(\"\"x\"\")\"");
+        assert_eq!(csv_cell("Office, rent"), "\"Office, rent\"");
+        assert_eq!(csv_cell("Plain"), "Plain");
+        // Amounts don't go through csv_cell and keep their minus sign.
+        assert_eq!(dollars(Cents(-1250)), "-12.50");
+    }
 }

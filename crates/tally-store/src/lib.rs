@@ -11,7 +11,7 @@
 
 use chrono::{Datelike, NaiveDate};
 use rusqlite::types::Type;
-use rusqlite::{Connection, OptionalExtension, Row, Transaction, params};
+use rusqlite::{Connection, OptionalExtension, Row, params};
 use serde::Serialize;
 use std::path::Path;
 use tally_core::chart::{self, codes};
@@ -67,6 +67,64 @@ const SCHEMA_VERSION: i64 = 12;
 /// SQLite file. Set by `schema_v12.sql`; never change it.
 pub const APPLICATION_ID: i32 = 0x5441_4C59;
 const _: () = assert!(MIGRATIONS[MIGRATIONS.len() - 1].0 == SCHEMA_VERSION);
+
+/// Tables every Tallybook book has had since schema v1. A file with tables but
+/// not these is some other program's database.
+const BOOK_TABLES: [&str; 3] = ["accounts", "journal_entries", "settings"];
+
+/// Settings for every connection to a book, since a book may come from
+/// someone else: SQLite's defensive mode, and no functions with side effects
+/// run from the file's own schema (views, triggers).
+pub(crate) fn harden(conn: &Connection) -> Result<()> {
+    conn.set_db_config(rusqlite::config::DbConfig::SQLITE_DBCONFIG_DEFENSIVE, true)?;
+    conn.pragma_update(None, "trusted_schema", false)?;
+    Ok(())
+}
+
+/// Names of the triggers and views Tallybook's migrations create.
+fn schema_object_names() -> Vec<String> {
+    let mut names = Vec::new();
+    for (_, sql) in MIGRATIONS {
+        let words: Vec<&str> = sql.split_whitespace().collect();
+        for (i, w) in words.iter().enumerate() {
+            if !w.eq_ignore_ascii_case("CREATE") {
+                continue;
+            }
+            let rest = words[i + 1..].iter().skip_while(|w| w.eq_ignore_ascii_case("TEMP") || w.eq_ignore_ascii_case("TEMPORARY"));
+            let mut rest = rest.peekable();
+            if rest.next_if(|w| w.eq_ignore_ascii_case("TRIGGER") || w.eq_ignore_ascii_case("VIEW")).is_none() {
+                continue;
+            }
+            if let Some(name) = rest.find(|w| !["IF", "NOT", "EXISTS"].iter().any(|k| w.eq_ignore_ascii_case(k))) {
+                names.push(name.trim_matches(|c: char| !(c.is_ascii_alphanumeric() || c == '_')).to_string());
+            }
+        }
+    }
+    names
+}
+
+/// Refuses, before anything writes to it, a file that isn't a Tallybook book:
+/// another program's database (by its application id, or for files from
+/// before v12 by its tables), or one holding triggers or views Tallybook
+/// didn't create. A new, empty file passes.
+pub(crate) fn check_is_book(conn: &Connection) -> Result<()> {
+    let application_id: i32 = conn.pragma_query_value(None, "application_id", |r| r.get(0))?;
+    let not_a_book = || rule("this file is another program's database, not a Tallybook book");
+    if application_id != 0 && application_id != APPLICATION_ID {
+        return not_a_book();
+    }
+    let mut stmt = conn.prepare("SELECT type, name FROM sqlite_master WHERE type IN ('table', 'view', 'trigger') AND name NOT LIKE 'sqlite\\_%' ESCAPE '\\'")?;
+    let objects: Vec<(String, String)> = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?.collect::<rusqlite::Result<_>>()?;
+    let has = |t: &str| objects.iter().any(|(ty, n)| ty == "table" && n == t);
+    if application_id == 0 && objects.iter().any(|(ty, _)| ty == "table") && !BOOK_TABLES.iter().all(|t| has(t)) {
+        return not_a_book();
+    }
+    let known = schema_object_names();
+    if let Some((ty, name)) = objects.iter().find(|(ty, n)| ty != "table" && !known.contains(n)) {
+        return rule(format!("this book contains a {ty} ({name}) that Tallybook didn't create, so it won't be opened"));
+    }
+    Ok(())
+}
 
 /// Settings key for the sides this book keeps: `Scope` names joined by
 /// commas, business first, e.g. `business,household`. Missing means a book
@@ -261,6 +319,14 @@ fn check_not_locked(conn: &Connection, date: NaiveDate) -> Result<()> {
     Ok(())
 }
 
+/// [`check_not_locked`] for an existing entry, by its date. `NotFound` when
+/// there is no such entry.
+fn check_entry_not_locked(conn: &Connection, entry_id: EntryId) -> Result<()> {
+    let date: Option<NaiveDate> =
+        conn.query_row("SELECT date FROM journal_entries WHERE id = ?1", [entry_id], |r| r.get(0)).optional()?;
+    check_not_locked(conn, date.ok_or(StoreError::NotFound("entry", entry_id))?)
+}
+
 // ---------------------------------------------------------------- store
 
 pub struct Store {
@@ -278,6 +344,9 @@ impl Store {
             return Err(StoreError::Locked);
         }
         let conn = Connection::open(path)?;
+        harden(&conn)?;
+        // Before WAL mode or migrations write anything to the file.
+        check_is_book(&conn)?;
         conn.query_row("PRAGMA journal_mode = WAL", [], |_| Ok(()))?;
         // The desktop app and an agent (tally-mcp) may have the same book open;
         // wait out the other's write instead of failing with "database is locked".
@@ -286,7 +355,9 @@ impl Store {
     }
 
     pub fn open_in_memory() -> Result<Store> {
-        Store::init(Connection::open_in_memory()?, None)
+        let conn = Connection::open_in_memory()?;
+        harden(&conn)?;
+        Store::init(conn, None)
     }
 
     fn init(conn: Connection, key: Option<crypto::BookKey>) -> Result<Store> {
@@ -314,7 +385,7 @@ impl Store {
         }
         for &(step, sql) in MIGRATIONS {
             if version < step {
-                let tx = self.conn.transaction()?;
+                let tx = self.conn.savepoint()?;
                 tx.execute_batch(sql)?;
                 tx.pragma_update(None, "user_version", step)?;
                 tx.commit()?;
@@ -335,6 +406,29 @@ impl Store {
             None => {
                 self.conn.execute("VACUUM INTO ?1", [path.to_string_lossy()])?;
                 Ok(())
+            }
+        }
+    }
+
+    /// Runs `f` as one unit: every change it makes is kept, or, if it fails
+    /// (or panics), none is. For operations made of several steps, such as
+    /// creating an account with its opening balance. The steps' own
+    /// transactions nest inside it as savepoints.
+    pub fn atomically<T>(&mut self, f: impl FnOnce(&mut Store) -> Result<T>) -> Result<T> {
+        self.conn.execute_batch("SAVEPOINT atomically")?;
+        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| f(self)));
+        match outcome {
+            Ok(Ok(v)) => {
+                self.conn.execute_batch("RELEASE atomically")?;
+                Ok(v)
+            }
+            Ok(Err(e)) => {
+                self.conn.execute_batch("ROLLBACK TO atomically; RELEASE atomically")?;
+                Err(e)
+            }
+            Err(panic) => {
+                let _ = self.conn.execute_batch("ROLLBACK TO atomically; RELEASE atomically");
+                std::panic::resume_unwind(panic)
             }
         }
     }
@@ -441,7 +535,7 @@ impl Store {
             sides.push(scope);
         }
         sides.sort_by_key(|s| *s as u8);
-        let tx = self.conn.transaction()?;
+        let tx = self.conn.savepoint()?;
         for t in chart::chart_for(scope) {
             tx.execute(
                 "INSERT INTO accounts(code, name, subtype, scope, flex) VALUES (?1, ?2, ?3, ?4, ?5)
@@ -533,7 +627,7 @@ impl Store {
 
     /// `source` records where the entry came from (`manual`, `bank_feed`, `invoice`, ...).
     pub fn post_entry_from(&mut self, entry: &NewEntry, source: &str) -> Result<EntryId> {
-        let tx = self.conn.transaction()?;
+        let tx = self.conn.savepoint()?;
         let id = post_in(&tx, entry, source, None)?;
         tx.commit()?;
         Ok(id)
@@ -554,7 +648,7 @@ impl Store {
 
     /// Cancels an entry by posting its exact reversal on `date`. History is kept.
     pub fn void_entry(&mut self, id: EntryId, date: NaiveDate) -> Result<EntryId> {
-        let tx = self.conn.transaction()?;
+        let tx = self.conn.savepoint()?;
         let original = entry_in(&tx, id)?;
         if original.voided_by_id.is_some() {
             return rule(format!("entry #{id} is already voided"));
@@ -693,7 +787,7 @@ impl Store {
 /// Writes a validated entry inside `tx`, the one place every posting goes
 /// through. Its lines must name live accounts; when they cross sides of the
 /// book, `bridge_lines` are added so each side still balances on its own.
-fn post_in(tx: &Transaction, entry: &NewEntry, source: &str, reverses: Option<EntryId>) -> Result<EntryId> {
+fn post_in(tx: &Connection, entry: &NewEntry, source: &str, reverses: Option<EntryId>) -> Result<EntryId> {
     entry.validate()?;
     check_not_locked(tx, entry.date)?;
     // Sum of the business lines; checked, since imported amounts can be huge.
@@ -735,7 +829,7 @@ fn post_in(tx: &Transaction, entry: &NewEntry, source: &str, reverses: Option<En
 /// that is credit-heavy paid for something at home: an owner's draw, which
 /// the household sees as money from the business. Debit-heavy is the reverse,
 /// an owner's contribution.
-fn bridge_lines(tx: &Transaction, business: Cents) -> Result<Vec<EntryLine>> {
+fn bridge_lines(tx: &Connection, business: Cents) -> Result<Vec<EntryLine>> {
     if business.is_zero() {
         return Ok(vec![]);
     }

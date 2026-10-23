@@ -9,9 +9,9 @@
 //! Posting or matching marks the bank line `cleared`, so it shows up
 //! pre-checked at reconciliation time. Every action can be undone.
 
-use crate::{Result, StoreError, Store, check_not_locked, conversion_err, BadValue, entry_in, post_in, rule};
+use crate::{Result, StoreError, Store, check_entry_not_locked, check_not_locked, conversion_err, BadValue, entry_in, post_in, rule};
 use chrono::NaiveDate;
-use rusqlite::{OptionalExtension, Row, params};
+use rusqlite::{Connection, OptionalExtension, Row, params};
 use serde::{Deserialize, Serialize};
 use tally_core::bank::{FeedBatch, FeedTransaction, normalize_description};
 use tally_core::journal::EntryId;
@@ -369,7 +369,7 @@ impl Store {
     /// Unlinks every account and marks the connection disconnected. Imported
     /// transactions and posted entries are kept.
     pub fn disconnect(&mut self, id: ConnectionId) -> Result<()> {
-        let tx = self.conn.transaction()?;
+        let tx = self.conn.savepoint()?;
         tx.execute("DELETE FROM bank_links WHERE connection_id = ?1", [id])?;
         tx.execute("UPDATE bank_connections SET status = 'disconnected', secret_ref = NULL WHERE id = ?1", [id])?;
         tx.commit()?;
@@ -452,7 +452,7 @@ impl Store {
         let mut summary = ImportSummary::default();
         let mut fresh: Vec<BankTxnId> = Vec::new();
 
-        let tx = self.conn.transaction()?;
+        let tx = self.conn.savepoint()?;
         for t in batch.added.iter().chain(&batch.modified) {
             if start.is_some_and(|s| t.date < s) {
                 summary.skipped += 1;
@@ -689,7 +689,7 @@ impl Store {
             entry = entry.line(EntryLine { account_id: s.account_id, amount: -s.amount, memo: s.memo.clone() });
         }
 
-        let tx = self.conn.transaction()?;
+        let tx = self.conn.savepoint()?;
         let entry_id = post_in(&tx, &entry, "bank_feed", None)?;
         let bank_line: crate::LineId =
             tx.query_row("SELECT MIN(id) FROM journal_lines WHERE entry_id = ?1", [entry_id], |r| r.get(0))?;
@@ -714,7 +714,7 @@ impl Store {
             return rule("that register line doesn't match this transaction's account, amount, and date");
         }
         let entry_id: EntryId = self.conn.query_row("SELECT entry_id FROM journal_lines WHERE id = ?1", [line_id], |r| r.get(0))?;
-        let tx = self.conn.transaction()?;
+        let tx = self.conn.savepoint()?;
         tx.execute(
             "UPDATE journal_lines SET cleared = 'cleared' WHERE id = ?1 AND cleared = 'uncleared'",
             [line_id],
@@ -738,6 +738,11 @@ impl Store {
     /// Sends a reviewed transaction back to the inbox. A posted entry is
     /// voided (same date), a match is unlinked.
     pub fn undo_review(&mut self, id: BankTxnId) -> Result<()> {
+        // Voiding the entry and resetting the transaction happen together or not at all.
+        self.atomically(|s| s.undo_review_steps(id))
+    }
+
+    fn undo_review_steps(&mut self, id: BankTxnId) -> Result<()> {
         let t = self.bank_txn(id)?;
         match t.status {
             BankTxnStatus::New | BankTxnStatus::Removed => return rule("this transaction hasn't been reviewed"),
@@ -752,6 +757,9 @@ impl Store {
             }
             BankTxnStatus::Matched => {
                 let line_id = t.line_id.ok_or_else(|| StoreError::Rule("matched transaction has no line".into()))?;
+                // Unmatching changes the matched entry's line, so its period must be open.
+                let entry_id: EntryId = self.conn.query_row("SELECT entry_id FROM journal_lines WHERE id = ?1", [line_id], |r| r.get(0))?;
+                check_entry_not_locked(&self.conn, entry_id)?;
                 let cleared: String = self.conn.query_row("SELECT cleared FROM journal_lines WHERE id = ?1", [line_id], |r| r.get(0))?;
                 if cleared == "reconciled" {
                     return rule("that line is reconciled; undo the reconciliation first");
@@ -828,7 +836,7 @@ impl Store {
     }
 
     pub fn delete_rule(&mut self, id: RuleId) -> Result<()> {
-        let tx = self.conn.transaction()?;
+        let tx = self.conn.savepoint()?;
         tx.execute("UPDATE bank_transactions SET rule_id = NULL WHERE rule_id = ?1", [id])?;
         tx.execute("DELETE FROM rules WHERE id = ?1", [id])?;
         tx.commit()?;
@@ -849,7 +857,7 @@ impl Store {
         let entry = NewEntry::new(date, format!("Opening balance: {}", account.name))
             .line(EntryLine { account_id, amount: raw, memo: None })
             .line(EntryLine { account_id: equity.id, amount: -raw, memo: None });
-        let tx = self.conn.transaction()?;
+        let tx = self.conn.savepoint()?;
         let id = post_in(&tx, &entry, "opening_balance", None)?;
         // The bank already counted this money; pre-clear it for the first reconciliation.
         tx.execute("UPDATE journal_lines SET cleared = 'cleared' WHERE entry_id = ?1 AND account_id = ?2", params![id, account_id])?;
@@ -879,7 +887,7 @@ fn validate_rule(store: &Store, r: &NewRule) -> Result<()> {
     Ok(())
 }
 
-fn insert_txn(tx: &rusqlite::Transaction, ledger_account_id: AccountId, t: &FeedTransaction) -> Result<()> {
+fn insert_txn(tx: &Connection, ledger_account_id: AccountId, t: &FeedTransaction) -> Result<()> {
     tx.execute(
         "INSERT INTO bank_transactions(ledger_account_id, external_id, date, amount, description, normalized,
                                        merchant, category_hint, pending)

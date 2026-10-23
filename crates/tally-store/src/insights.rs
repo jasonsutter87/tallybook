@@ -7,7 +7,7 @@
 //! the books each time they're asked for. The pure arithmetic (goal
 //! projections, the score's weights) lives in `tally_core::insights`.
 
-use crate::{BudgetTarget, DueState, Result, Store, StoreError, month_of, month_range, rule};
+use crate::{BudgetTarget, DueState, Result, Store, StoreError, check_entry_not_locked, month_of, month_range, rule};
 use chrono::{Months, NaiveDate};
 use rusqlite::{OptionalExtension, Row, params};
 use serde::{Deserialize, Serialize};
@@ -332,6 +332,7 @@ impl Store {
         let before: Option<Option<GoalId>> =
             self.conn.query_row("SELECT goal_id FROM journal_entries WHERE id = ?1", [entry_id], |r| r.get(0)).optional()?;
         let Some(before) = before else { return Err(StoreError::NotFound("entry", entry_id)) };
+        check_entry_not_locked(&self.conn, entry_id)?;
         if let Some(g) = goal {
             let account: AccountId = self
                 .conn
