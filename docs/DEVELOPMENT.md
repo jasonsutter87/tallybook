@@ -103,10 +103,61 @@ way the browser preview pairs them. It starts its own dev server and Vite on
 ports 1441 and 1440 (stop yours first; it refuses to reuse them, so a test
 run can never touch your own books) and keeps everything in `app/e2e/.data`.
 
+Each spec makes its own book, so tests never share state. They drive the
+screen and check the books afterwards through the same API the app uses.
+
 - `smoke.spec.ts` opens every screen, light and dark, and fails on console
   errors, error banners and serious accessibility problems (axe-core, WCAG AA).
 - `flows.spec.ts` does what people do: make a book, review the inbox, invoice
   and get paid, plan a month, export a tax package, and the license gates.
+- `import.spec.ts` brings in a CSV and an OFX statement, and shows importing
+  the same file twice adds nothing.
+- `review.spec.ts` categorizes by keyboard, remembers a rule, splits a payment
+  and takes a decision back.
+- `reconcile.spec.ts` reconciles an account to its statement; Finish waits for
+  a zero difference.
+- `rules.spec.ts` makes a rule that files the next statement for you.
+- `billing.spec.ts` enters and pays a vendor bill, and drafts then issues an
+  invoice.
+- `books.spec.ts` voids an entry (history stays), closes the books, and backs
+  up.
+- `household.spec.ts` adds a monthly bill and a savings goal and puts money
+  toward it.
+- `settings.spec.ts` saves the business profile and invoice defaults (under
+  the `settings.set` key allowlist), refuses other keys, and keeps the theme
+  choice across reloads.
+- `closed-periods.spec.ts` shows a closed period refusing a changed payee,
+  person or goal and an undone bank match, in words, with the books unchanged.
+- `delete-book.spec.ts` shows deleting a book needs its exact name (a wrong
+  name leaves it open and on disk). The dev server sends the file to the OS
+  Trash, so this only deletes throwaway books made inside `app/e2e/.data`.
+- `contacts.spec.ts` adds, edits and archives contacts, refuses an email with
+  several addresses or odd characters, and checks the `mailto:` link and a
+  vendor's contractor details.
+- `reports.spec.ts` checks the date-range presets, that A/R and A/P aging stay
+  on the business in a two-sided book, and the P&L side switch.
+- `money-display.spec.ts` puts millions on the dashboard and checks the cards
+  and chart axis read sensibly (never "$1000k").
+- `banking.spec.ts` shows a SimpleFIN setup token that isn't https to SimpleFIN
+  Bridge is refused before any connection is made (a local listener stands in
+  for the network and must see nothing).
+- `taxes.spec.ts` sets up the quarterly estimates plan, records and voids a
+  payment, and edits a contractor's W-9, legal name and tax ID on the 1099 tab.
+- `accounts.spec.ts` adds an account with an opening balance, refuses a
+  duplicate code, renames, and archives (not while it holds money).
+- `month.spec.ts` steps through the household Month view and carries a plan
+  forward.
+- `log-money.spec.ts` logs a sale, a contractor expense and a deposit with
+  Log cash on the business side.
+- `welcome.spec.ts` answers the browser preview's path prompt for Open a book:
+  a missing file, another program's database, a locked file, a good book, and
+  cancelling. (The one test that needs `sqlite3` on the PATH is the foreign
+  database.)
+
+Never drive encryption, recovery keys, a real bank connection, Plaid setup or
+license activation from a test: the dev server keeps those secrets in your real
+keychain (service `app.tallybook.dev`). Write the license with `license()`
+instead.
 
 `npm run test:e2e:ui` opens Playwright's UI to watch or debug a run. The first
 time, install the browser with `npx playwright install chromium`.
