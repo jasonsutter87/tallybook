@@ -37,6 +37,36 @@ pub struct Options {
     pub book: Option<PathBuf>,
 }
 
+/// Command-line arguments for an MCP server, parsed in order so that a
+/// value (the path after `--book`) is never mistaken for a flag.
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct Args {
+    pub write: bool,
+    pub book: Option<PathBuf>,
+    pub dev: bool,
+    pub config_dir: Option<PathBuf>,
+    pub help: bool,
+}
+
+/// Parses `tallybook-mcp`'s arguments (without the program name). `--mcp`,
+/// which selects the server mode of the desktop app, is accepted and ignored.
+pub fn parse_args(args: impl IntoIterator<Item = String>) -> Result<Args, String> {
+    let mut out = Args::default();
+    let mut args = args.into_iter();
+    while let Some(a) = args.next() {
+        match a.as_str() {
+            "--mcp" => {}
+            "--write" => out.write = true,
+            "--dev" => out.dev = true,
+            "--book" => out.book = Some(args.next().ok_or("--book needs a path")?.into()),
+            "--config-dir" => out.config_dir = Some(args.next().ok_or("--config-dir needs a folder")?.into()),
+            "-h" | "--help" => out.help = true,
+            other => return Err(format!("unknown argument {other}")),
+        }
+    }
+    Ok(out)
+}
+
 /// Where the installed desktop app keeps its config (recent books, license):
 /// Tauri's app-config dir for the `app.tallybook.desktop` identifier.
 pub fn desktop_config_dir() -> PathBuf {
@@ -638,6 +668,18 @@ mod tests {
         let mut out = Vec::new();
         serve(app, Options { write, book: None }, input.as_bytes(), &mut out).await.unwrap();
         String::from_utf8(out).unwrap().lines().map(|l| serde_json::from_str(l).unwrap()).collect()
+    }
+
+    #[test]
+    fn arguments_are_parsed_in_order() {
+        let parse = |a: &[&str]| parse_args(a.iter().map(|s| s.to_string()));
+        let a = parse(&["--mcp", "--book", "--write"]).unwrap();
+        assert!(!a.write, "the path after --book is a value, not a flag");
+        assert_eq!(a.book, Some(PathBuf::from("--write")));
+        let a = parse(&["--write", "--book", "/x/Shop.tallybook"]).unwrap();
+        assert!(a.write && a.book == Some(PathBuf::from("/x/Shop.tallybook")));
+        assert!(parse(&["--book"]).is_err());
+        assert!(parse(&["--nope"]).is_err());
     }
 
     fn text(reply: &Value) -> &str {
