@@ -14,6 +14,11 @@ SimpleFIN, or CSV/OFX import.
   boundary at report time.
 - **Your data, your keys.** Bank credentials live in the OS keychain, never in
   the book file, and go only to the provider. See [BANK_FEEDS.md](BANK_FEEDS.md).
+- **A file that explains itself.** A book is a SQLite database that says
+  what it is (`PRAGMA application_id`, `user_version`). The schema only
+  grows, one append-only `schema_vN.sql` at a time, and
+  [FILE_FORMAT.md](FILE_FORMAT.md) explains every table to someone without
+  the app. Change the schema, change that document.
 - **Taxes: prepare and explain, never file.** Tax tables are year-versioned,
   sourced, and pinned by tests against IRS-published figures. See
   [TAXES.md](TAXES.md).
