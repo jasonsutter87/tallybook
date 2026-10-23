@@ -102,7 +102,8 @@ impl App {
             }
             "inbox.accept" => {
                 let p: Accept = params(p)?;
-                self.with(|s| {
+                // Posting, tagging and the remembered rule happen together or not at all.
+                self.with(|s| s.atomically(|s| {
                     let t = s.bank_txn(p.id)?;
                     let entry = s.accept(p.id, p.account_id, p.memo)?;
                     if p.payee_id.is_some() {
@@ -115,7 +116,7 @@ impl App {
                         remember_rule(s, &t, p.account_id, p.person_id)?;
                     }
                     Ok(entry)
-                })
+                }))
             }
             "inbox.split" => {
                 let p: AcceptSplit = params(p)?;
@@ -192,9 +193,12 @@ fn accept_suggested(s: &mut Store, ids: &[BankTxnId]) -> Result<BatchResult, Sto
 
 /// Accepts into a category and tags who it was for; `false` if it didn't post.
 fn accept_for(s: &mut Store, id: BankTxnId, account_id: AccountId, memo: Option<String>, person: Option<PersonId>) -> Result<bool, StoreError> {
-    let Ok(entry) = s.accept(id, account_id, memo) else { return Ok(false) };
-    if person.is_some() {
-        s.set_entry_person(entry, person)?;
-    }
-    Ok(true)
+    let accepted = s.atomically(|s| {
+        let entry = s.accept(id, account_id, memo)?;
+        if person.is_some() {
+            s.set_entry_person(entry, person)?;
+        }
+        Ok(())
+    });
+    Ok(accepted.is_ok())
 }
