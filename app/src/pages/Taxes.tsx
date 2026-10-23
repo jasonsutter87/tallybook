@@ -3,6 +3,7 @@ import { lazy, Suspense } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useApi } from "../api";
 import { Loading, PageHeader, Tabs } from "../components/ui";
+import { UpgradeOffer, useLicense, yearSpan } from "../flows/License";
 import type { TaxYears } from "../types";
 
 const Overview = lazy(() => import("./tax/Overview"));
@@ -25,8 +26,9 @@ export default function Taxes() {
   const navigate = useNavigate();
   const [search, setSearch] = useSearchParams();
   const years = useApi<TaxYears>("tax.years");
+  const lic = useLicense();
 
-  if (years.isLoading || !years.data) return <Loading />;
+  if (years.isLoading || !years.data || lic.isLoading) return <Loading />;
   const supported = years.data.supported;
   const fallback = supported.includes(years.data.current) ? years.data.current : supported[supported.length - 1];
   const requested = Number(search.get("year"));
@@ -57,6 +59,19 @@ export default function Taxes() {
         <span style={{ fontWeight: 500 }}>{years.data.disclaimer}</span>
       </div>
 
+      {!lic.has("tax") ? (
+        <div style={{ maxWidth: 640 }}>
+          <UpgradeOffer need="tax" />
+        </div>
+      ) : !lic.coversTaxYear(year) ? (
+        <div style={{ maxWidth: 640 }}>
+          <UpgradeOffer
+            need="renewal"
+            note={`Your Business + Tax license covers ${yearSpan(lic.taxYears)}. Tax prep for ${year} is a new tax season.`}
+          />
+        </div>
+      ) : (
+      <>
       <div className="no-print" style={{ marginBottom: 20 }}>
         <Tabs<Tab>
           value={tab}
@@ -78,6 +93,8 @@ export default function Taxes() {
         {tab === "1099" && <Ten99 {...props} />}
         {tab === "export" && <ExportTab {...props} />}
       </Suspense>
+      </>
+      )}
     </div>
   );
 }

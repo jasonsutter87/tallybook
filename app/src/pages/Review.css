@@ -35,7 +35,7 @@
 
 .rv-chip .rv-chip-count {
   font-size: 11px;
-  opacity: 0.75;
+  color: var(--ink-3);
 }
 
 .rv-row {

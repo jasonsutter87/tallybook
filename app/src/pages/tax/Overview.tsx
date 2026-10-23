@@ -218,7 +218,7 @@ function Step(props: {
 }) {
   return (
     <div className="tx-step">
-      <span className={`icon-bubble ${props.done ? "pos" : ""}`} aria-label={props.done ? "Done" : `Step ${props.n}`}>
+      <span className={`icon-bubble ${props.done ? "pos" : ""}`} role="img" aria-label={props.done ? "Done" : `Step ${props.n}`}>
         {props.done ? <Check size={18} strokeWidth={3} /> : props.icon}
       </span>
       <div className="grow">

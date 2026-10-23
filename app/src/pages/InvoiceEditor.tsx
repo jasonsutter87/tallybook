@@ -323,6 +323,7 @@ function Editor(props: { prefs: Record<string, string>; existing?: InvoiceDetail
                   <td>
                     <input
                       className="input"
+                      aria-label="Description"
                       placeholder="What did you do or sell?"
                       value={r.description}
                       onChange={(e) => setRow(r.key, { description: e.target.value })}
@@ -332,13 +333,14 @@ function Editor(props: { prefs: Record<string, string>; existing?: InvoiceDetail
                     <input
                       className="input num"
                       inputMode="decimal"
+                      aria-label="Quantity"
                       value={r.qtyText}
                       style={qtyBad ? { borderColor: "var(--neg)" } : undefined}
                       onChange={(e) => setRow(r.key, { qtyText: e.target.value })}
                     />
                   </td>
                   <td>
-                    <MoneyInput value={r.price} onChange={(c) => setRow(r.key, { price: c })} />
+                    <MoneyInput value={r.price} onChange={(c) => setRow(r.key, { price: c })} aria-label="Price" />
                   </td>
                   <td>
                     <AccountSelect kinds={["income"]} value={r.accountId} onChange={(a) => setRow(r.key, { accountId: a })} placeholder="Income category" />

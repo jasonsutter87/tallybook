@@ -137,7 +137,7 @@ export default function PlanModal(props: { open: boolean; onClose: () => void; m
                   <option value="floor">At least</option>
                 </select>
                 <div className="plan-amount">
-                  <MoneyInput value={l.amount} onChange={(v) => set(i, { amount: v })} />
+                  <MoneyInput value={l.amount} onChange={(v) => set(i, { amount: v })} aria-label={`Amount for ${nameOf(l.target)}`} />
                 </div>
                 <button className="btn btn-ghost btn-icon" aria-label={`Remove ${nameOf(l.target)}`} onClick={() => setLines((ls) => ls.filter((_, j) => j !== i))}>
                   <Trash2 size={16} />

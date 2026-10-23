@@ -13,7 +13,7 @@
   --surface-hover: #f1f4f9;
   --ink: #0b1b33;
   --ink-2: #4a5a75;
-  --ink-3: #8592a8;
+  --ink-3: #5f6b82; /* AA (4.5:1) for small text on white and on --bg */
   --line: #e6eaf1;
   --line-strong: #d5dbe6;
 
@@ -23,13 +23,13 @@
   --brand-soft: #e2f5f9;
   --brand-soft-ink: #076a80;
 
-  --pos: #0e9f6e;
+  --pos: #0a7d56;
   --pos-soft: #e3f6ee;
-  --neg: #e0474c;
+  --neg: #c73539;
   --neg-soft: #fdecec;
-  --warn: #c77700;
+  --warn: #9a5c00;
   --warn-soft: #fff4e0;
-  --violet: #6d5bd0;
+  --violet: #5b49c0;
   --violet-soft: #efecfb;
 
   --hero: linear-gradient(135deg, #0b1b33 0%, #12355e 58%, #0b8aa8 100%);
@@ -58,7 +58,7 @@
     --surface-hover: #172539;
     --ink: #eef3fa;
     --ink-2: #a9b6ca;
-    --ink-3: #6f7f97;
+    --ink-3: #8a99b0;
     --line: #1f2d43;
     --line-strong: #2a3a54;
     --brand: #22b8d6;
@@ -88,7 +88,7 @@
   --surface-hover: #172539;
   --ink: #eef3fa;
   --ink-2: #a9b6ca;
-  --ink-3: #6f7f97;
+  --ink-3: #8a99b0;
   --line: #1f2d43;
   --line-strong: #2a3a54;
   --brand: #22b8d6;
@@ -353,7 +353,7 @@ textarea {
 
 .nav-badge {
   margin-left: auto;
-  background: var(--brand);
+  background: var(--brand-strong);
   color: var(--brand-ink);
   font-size: 11px;
   font-weight: 700;
@@ -577,13 +577,14 @@ textarea {
   cursor: not-allowed;
 }
 
+/* --brand-strong, not --brand: white on --brand is only 3:1. */
 .btn-primary {
-  background: var(--brand);
+  background: var(--brand-strong);
   color: var(--brand-ink);
 }
 
 .btn-primary:hover:not(:disabled) {
-  background: var(--brand-strong);
+  background: var(--brand-soft-ink);
 }
 
 .btn-dark {
@@ -1270,4 +1271,40 @@ kbd {
 .choice > svg {
   flex-shrink: 0;
   margin-top: 2px;
+}
+
+/* An offer to unlock a paid tier (flows/License.tsx). */
+.upgrade {
+  padding: 16px 18px;
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+}
+
+.upgrade-price {
+  font-weight: 800;
+  font-size: 18px;
+  letter-spacing: -0.02em;
+}
+
+.upgrade-perks {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px 16px;
+  font-size: 13px;
+}
+
+.upgrade-perks li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+@media (max-width: 640px) {
+  .upgrade-perks {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
