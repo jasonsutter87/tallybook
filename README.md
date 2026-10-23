@@ -8,9 +8,10 @@
 
 Bank feeds, invoices, bills, reports and tax prep for the business. Budgets,
 bills and savings goals for the household. All of it in one file that you
-own. Free and open source.
+own. Free for your household; add your business for $19.99, once, and tax
+prep for $49.99 a tax season.
 
-[**Download**](https://github.com/jasonsutter87/tallybook/releases/latest) · [See it in action](#a-quick-tour) · [Household budget](#your-household-budget) · [Questions](#questions)
+[**Download**](https://tallybook.app/download/) · [Pricing](https://tallybook.app/pricing/) · [See it in action](#a-quick-tour) · [Household budget](#your-household-budget) · [Questions](#questions)
 
 <br />
 
@@ -97,7 +98,7 @@ For sole proprietors and single-member LLCs:
 
 > Tallybook prepares worksheets and estimates; it isn't tax advice and never
 > files anything for you. Have a tax professional review before you file.
-> [What it does and doesn't cover →](docs/TAXES.md)
+> [What it does and doesn't cover →](https://tallybook.app/help/taxes/)
 
 ### Light or dark
 Follows your system, or pick one in Settings.
@@ -161,12 +162,12 @@ adds only what's new.
 ## Getting started
 
 1. **Download** the installer for your computer from the
-   [latest release](https://github.com/jasonsutter87/tallybook/releases/latest).
+   [download page](https://tallybook.app/download/).
 2. **Open Tallybook** and create a book for your business, your household,
    or both.
 3. **Bring in your transactions**, any of these ways:
    - **Connect your bank** through Plaid or SimpleFIN. See the
-     [bank connection guide](docs/BANK_FEEDS.md).
+     [bank connection guide](https://tallybook.app/help/bank-connections/).
    - **Import a statement**: download a CSV or OFX/QFX file from your bank's
      website and drop it into Review.
    - **Log cash** by hand for anything the bank won't see.
@@ -189,6 +190,15 @@ computer asks before opening it the first time.
 You only need to do this once.
 
 </details>
+
+---
+
+## Use it from Claude
+
+Tallybook can run without its window as an MCP server, so Claude (Desktop,
+Code, or your own agent) can answer questions about your books and, if you
+allow it, keep them: categorize the review inbox, record cash, plan the month.
+Read-only unless you say otherwise. [Set it up →](https://tallybook.app/help/claude/)
 
 ---
 
@@ -218,7 +228,11 @@ You only need to do this once.
 ## Questions
 
 **Is it really free?**
-Yes. Tallybook is open source under the [AGPL-3.0](LICENSE) license. Bank
+The household budget is, for good: budgets, bills, goals, bank import,
+reports and encryption. Keeping a business is a one-time $19.99, yours for
+good. Business plus tax prep is $49.99 a tax season (it covers the year you buy
+it in and the one before), and returning customers renew for $29.99. Nothing
+renews by itself, and there's no account. Bank
 connections use your own Plaid or SimpleFIN account; SimpleFIN costs about
 $15/year, Plaid is free for personal use, and file import is always free.
 
@@ -234,7 +248,7 @@ the wishlist.
 **Does it work for my accountant?**
 Yes. It's standard double-entry bookkeeping, and **Taxes → For your
 accountant** exports your Schedule C worksheet, general ledger and more as
-spreadsheets.
+readable PDFs and spreadsheets.
 
 **Does it do payroll or file my taxes?**
 No. Tallybook keeps your books and prepares your tax numbers. It doesn't run
@@ -247,9 +261,21 @@ on Windows or Linux.
 
 ---
 
+## License
+
+Tallybook's source is public under the [Functional Source License](LICENSE)
+(FSL-1.1-ALv2): read it, build it, change it and use it for yourself, but
+don't sell it or build a competing product with it. Each release becomes
+Apache-2.0 two years after it's published. Versions 0.2.0 and earlier were
+released under the AGPL-3.0 and remain available under it.
+
+Want to dig in? See the [developer guide](docs/DEVELOPMENT.md).
+
+---
+
 <div align="center">
 
 Built with care for freelancers, small businesses, and the households behind them.
-Want to contribute? See the [developer guide](docs/DEVELOPMENT.md).
+[tallybook.app](https://tallybook.app)
 
 </div>
