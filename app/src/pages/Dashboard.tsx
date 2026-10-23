@@ -1,3 +1,6 @@
+// Home for a business book: cash on hand, card balances, money in and out,
+// where money went, and the things waiting for the owner.
+
 import {
   AlertCircle,
   Banknote,
