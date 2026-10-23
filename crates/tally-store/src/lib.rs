@@ -261,6 +261,14 @@ fn check_not_locked(conn: &Connection, date: NaiveDate) -> Result<()> {
     Ok(())
 }
 
+/// [`check_not_locked`] for an existing entry, by its date. `NotFound` when
+/// there is no such entry.
+fn check_entry_not_locked(conn: &Connection, entry_id: EntryId) -> Result<()> {
+    let date: Option<NaiveDate> =
+        conn.query_row("SELECT date FROM journal_entries WHERE id = ?1", [entry_id], |r| r.get(0)).optional()?;
+    check_not_locked(conn, date.ok_or(StoreError::NotFound("entry", entry_id))?)
+}
+
 // ---------------------------------------------------------------- store
 
 pub struct Store {
