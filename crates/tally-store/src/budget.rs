@@ -379,7 +379,7 @@ impl Store {
         if from.as_deref() == Some(month) {
             return Ok(());
         }
-        let tx = self.conn.transaction()?;
+        let tx = self.conn.savepoint()?;
         match &from {
             Some(prev) => {
                 tx.execute("INSERT INTO budget_months(month, available) SELECT ?1, available FROM budget_months WHERE month = ?2", params![month, prev])?;
