@@ -62,7 +62,7 @@ async fn reread(app: &App, snap: &Value) -> Value {
     if snap.get("budget_2026_10").is_some() {
         let month = call(app, "budget.month", json!({ "month": "2026-10" })).await;
         let mut lines: Vec<Value> = month["lines"].as_array().unwrap().iter().map(|l| json!([l["name"], l["amount"], l["progress"]])).collect();
-        lines.sort_by(|a, b| a.to_string().cmp(&b.to_string()));
+        lines.sort_by_key(|a| a.to_string());
         now["budget_2026_10"] = json!(lines);
     }
     now
@@ -79,7 +79,7 @@ async fn upgrade(book: &str) {
     expected.as_object_mut().unwrap().retain(|k, _| !matches!(k.as_str(), "made_by" | "as_of"));
     if let Some(lines) = expected.get_mut("budget_2026_10") {
         let mut sorted = lines.as_array().unwrap().clone();
-        sorted.sort_by(|a, b| a.to_string().cmp(&b.to_string()));
+        sorted.sort_by_key(|a| a.to_string());
         *lines = json!(sorted);
     }
     assert_eq!(reread(&app, &snap).await, expected, "{book} reads differently than {} reported", snap["made_by"]);
