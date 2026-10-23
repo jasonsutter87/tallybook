@@ -156,7 +156,7 @@ fn build_estimate(s: &Store, year: i32, ty: &'static TaxYear) -> ApiResult<Estim
     let profit_to_date = home_office_probe.schedule.line29_tentative_profit - home_office;
 
     let now = today();
-    let (start, end) = year_range(year);
+    let (start, end) = year_range(year)?;
     let profit_annualized = if now < start {
         Cents::ZERO
     } else if now >= end {
@@ -301,6 +301,7 @@ impl App {
             "tax.confirm_all" => {
                 // Accept every current suggestion as confirmed.
                 let year = year_of(p)?;
+                require_year(year)?;
                 self.with(|s| {
                     let r = s.schedule_c(year, Cents::ZERO)?;
                     for row in r.rows.iter().filter(|r| !r.confirmed) {
@@ -355,7 +356,7 @@ impl App {
         // since each side balances on its own the business lines still balance.
         let names: std::collections::HashMap<i64, String> =
             s.accounts_in(Some(tally_core::Scope::Business))?.into_iter().map(|a| (a.id, a.name)).collect();
-        let (from, to) = year_range(year);
+        let (from, to) = year_range(year)?;
         let write = |name: &str, body: &[u8]| std::fs::write(dir.join(name), body).map_err(|e| ApiError::new("io", e.to_string()));
 
         // Schedule C worksheet.
