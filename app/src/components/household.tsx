@@ -83,6 +83,7 @@ export function PersonSelect(props: { value: number | null; onChange: (id: numbe
       value={props.value ?? 0}
       onChange={(v) => props.onChange(v ? v : null)}
       placeholder={props.placeholder ?? "Who was it for?"}
+      aria-label="Who was it for?"
     />
   );
 }
