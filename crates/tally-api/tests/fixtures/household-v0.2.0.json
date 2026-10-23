@@ -1,0 +1,325 @@
+{
+  "made_by": "v0.2.0",
+  "as_of": "2026-10-23",
+  "accounts": [
+    [
+      1,
+      "Opening Balances",
+      1472000
+    ],
+    [
+      2,
+      "Paychecks",
+      1110000
+    ],
+    [
+      3,
+      "Child Support",
+      0
+    ],
+    [
+      4,
+      "Side Income",
+      0
+    ],
+    [
+      5,
+      "Gifts Received",
+      0
+    ],
+    [
+      6,
+      "Refunds & Reimbursements",
+      0
+    ],
+    [
+      7,
+      "From the Business",
+      0
+    ],
+    [
+      8,
+      "Interest & Dividends",
+      0
+    ],
+    [
+      9,
+      "Uncategorized Income",
+      0
+    ],
+    [
+      10,
+      "Rent or Mortgage",
+      245000
+    ],
+    [
+      11,
+      "Renters or Home Insurance",
+      0
+    ],
+    [
+      12,
+      "Home Repairs & Supplies",
+      0
+    ],
+    [
+      13,
+      "Furnishings & Home Goods",
+      0
+    ],
+    [
+      14,
+      "Gas & Electric",
+      11840
+    ],
+    [
+      15,
+      "Water, Sewer & Garbage",
+      0
+    ],
+    [
+      16,
+      "Internet & TV",
+      7999
+    ],
+    [
+      17,
+      "Phones",
+      0
+    ],
+    [
+      18,
+      "Groceries",
+      56646
+    ],
+    [
+      19,
+      "Dining Out",
+      18260
+    ],
+    [
+      20,
+      "Coffee & Treats",
+      2725
+    ],
+    [
+      21,
+      "Car Payment",
+      0
+    ],
+    [
+      22,
+      "Car Insurance",
+      13200
+    ],
+    [
+      23,
+      "Gas & Fuel",
+      11930
+    ],
+    [
+      24,
+      "Car Maintenance & Registration",
+      0
+    ],
+    [
+      25,
+      "Health Insurance",
+      0
+    ],
+    [
+      26,
+      "Medical & Dental",
+      0
+    ],
+    [
+      27,
+      "Fitness & Wellness",
+      0
+    ],
+    [
+      28,
+      "Life & Disability Insurance",
+      0
+    ],
+    [
+      29,
+      "Childcare & School",
+      0
+    ],
+    [
+      30,
+      "Kids' Activities & Sports",
+      18500
+    ],
+    [
+      31,
+      "Pet Supplies",
+      0
+    ],
+    [
+      32,
+      "Vet",
+      0
+    ],
+    [
+      33,
+      "Clothing",
+      7432
+    ],
+    [
+      34,
+      "Personal Care",
+      2389
+    ],
+    [
+      35,
+      "Shopping",
+      0
+    ],
+    [
+      36,
+      "Subscriptions & Streaming",
+      1549
+    ],
+    [
+      37,
+      "Fun & Entertainment",
+      0
+    ],
+    [
+      38,
+      "Gifts & Holidays",
+      0
+    ],
+    [
+      39,
+      "Travel",
+      0
+    ],
+    [
+      40,
+      "Giving & Tithing",
+      0
+    ],
+    [
+      41,
+      "Taxes & Tax Prep",
+      0
+    ],
+    [
+      42,
+      "Loan & Card Interest",
+      0
+    ],
+    [
+      43,
+      "Into the Business",
+      0
+    ],
+    [
+      44,
+      "Uncategorized Spending",
+      0
+    ],
+    [
+      45,
+      "Joint Checking",
+      1294530
+    ],
+    [
+      46,
+      "Savings",
+      890000
+    ]
+  ],
+  "trial_balance": {
+    "total_debits": 2582000,
+    "total_credits": 2582000
+  },
+  "pnl": {
+    "from": "2026-01-01",
+    "to": "2026-10-23",
+    "total_income": 1110000,
+    "total_expenses": 397470,
+    "net_income": 712530
+  },
+  "counts": {
+    "entries": 25,
+    "contacts": 0,
+    "invoices": 0,
+    "bills": 0,
+    "rules": 0,
+    "inbox": 0,
+    "recurring": 6,
+    "goals": 1,
+    "people": 3
+  },
+  "budget_2026_10": [
+    [
+      "Car Insurance",
+      13200,
+      13200
+    ],
+    [
+      "Clothing",
+      15000,
+      7432
+    ],
+    [
+      "Coffee & Treats",
+      6000,
+      2725
+    ],
+    [
+      "Dining Out",
+      25000,
+      18260
+    ],
+    [
+      "Gas & Electric",
+      15000,
+      11840
+    ],
+    [
+      "Gas & Fuel",
+      20000,
+      11930
+    ],
+    [
+      "Groceries",
+      90000,
+      56646
+    ],
+    [
+      "Internet & TV",
+      8000,
+      7999
+    ],
+    [
+      "Kids' Activities & Sports",
+      20000,
+      18500
+    ],
+    [
+      "Paychecks",
+      1110000,
+      1110000
+    ],
+    [
+      "Rent or Mortgage",
+      245000,
+      245000
+    ],
+    [
+      "Sam",
+      30000,
+      25932
+    ],
+    [
+      "Subscriptions & Streaming",
+      4000,
+      1549
+    ]
+  ]
+}
