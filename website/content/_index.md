@@ -4,6 +4,6 @@ description: 'Bookkeeping and budgeting on your own computer. A household budget
 image: /images/brand/share.png
 priority: 1.0
 cta: true
-js: []
+js: ['home.js']
 css: ['home.css']
 ---
