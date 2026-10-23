@@ -1,3 +1,6 @@
+// The first screen, before a book is open: recent books, opening one, and
+// creating a business, household or combined book.
+
 import { BookOpen, Briefcase, FolderOpen, Home, Lock, MoreHorizontal, Plus, Sparkles } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { ApiError, isTauri, useAction, useApi } from "../api";
