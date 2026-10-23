@@ -88,7 +88,8 @@ export default function Review() {
   const sync = useAction<SyncReport[]>("bank.sync");
   const acceptSuggested = useAction<{ accepted: number; skipped: number }, { ids: number[] }>("inbox.accept_suggested");
 
-  const items = inbox.data ?? [];
+  // Keeps its identity while the data is unchanged, so the lists below don't recompute every render.
+  const items = useMemo(() => inbox.data ?? [], [inbox.data]);
   const visible = accountFilter == null ? items : items.filter((i) => i.ledger_account_id === accountFilter);
   const reviewable = visible.filter((i) => !i.pending);
   const suggestedIds = reviewable.filter((i) => i.suggestion).map((i) => i.id);
@@ -511,7 +512,7 @@ function RowEditor({ item, onDone }: { item: InboxItem; onDone: (id: number, tex
   if (matches.length > 0) modes.push({ value: "match", label: <><Link2 size={13} /> Match ({matches.length})</> });
 
   return (
-    <div className="rv-editor" onClick={(e) => e.stopPropagation()}>
+    <div className="rv-editor">
       <div className="row-between" style={{ marginBottom: 14, flexWrap: "wrap" }}>
         <Tabs<Mode> value={effectiveMode} onChange={setMode} tabs={modes} />
         <span className="subtle small">
@@ -523,6 +524,8 @@ function RowEditor({ item, onDone }: { item: InboxItem; onDone: (id: number, tex
       {effectiveMode === "categorize" && (
         <div className="stack" style={{ gap: 14 }}>
           <div className="rv-editor-grid">
+            {/* Not interactive itself: it listens for keys from the category picker inside. */}
+            {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions */}
             <div className="field" onKeyDownCapture={onComboKeyCapture} onKeyDown={onComboKey}>
               <span className="label">{inflow ? "Where did this come from?" : "Where did this go?"}</span>
               <AccountSelect
