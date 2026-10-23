@@ -9,6 +9,7 @@ use std::fmt::Write as _;
 use std::path::PathBuf;
 use std::result::Result;
 use tally_core::Cents;
+use tally_core::report::ProfitAndLoss;
 use tally_core::tax::{self, EstimateInputs, FilingStatus, ScheduleCLine, TaxYear};
 use tally_store::*;
 
@@ -261,6 +262,123 @@ fn dollars(c: Cents) -> String {
     format!("{sign}{}.{:02}", c.0.abs() / 100, c.0.abs() % 100)
 }
 
+// ---- the files in an accountant package (see `App::export`)
+
+/// Schedule C worksheet: the form's lines in order, one row each.
+fn schedule_c_worksheet_csv(c: &tax::ScheduleC) -> String {
+    let mut out = String::from("line,description,amount\n");
+    for (n, label, v) in [
+        ("1", "Gross receipts or sales", c.line1_gross_receipts),
+        ("2", "Returns and allowances", c.line2_returns),
+        ("3", "Subtract line 2 from line 1", c.line3),
+        ("4", "Cost of goods sold", c.line4_cogs),
+        ("5", "Gross profit", c.line5_gross_profit),
+        ("6", "Other income", c.line6_other_income),
+        ("7", "Gross income", c.line7_gross_income),
+    ] {
+        let _ = writeln!(out, "{n},{},{}", csv_cell(label), dollars(v));
+    }
+    for e in &c.expenses {
+        let _ = writeln!(out, "{},{},{}", e.number, csv_cell(e.label), dollars(e.amount));
+    }
+    for (n, label, v) in [
+        ("28", "Total expenses", c.line28_total_expenses),
+        ("29", "Tentative profit", c.line29_tentative_profit),
+        ("30", "Home office (simplified method)", c.line30_home_office),
+        ("31", "Net profit", c.line31_net_profit),
+    ] {
+        let _ = writeln!(out, "{n},{},{}", csv_cell(label), dollars(v));
+    }
+    let _ = writeln!(out, ",Meals not deductible (50%),{}", dollars(c.meals_disallowed));
+    out
+}
+
+/// Account to line mapping, so a preparer can audit every number.
+fn schedule_c_mapping_csv(sc: &ScheduleCReport) -> String {
+    let mut out = String::from("account,line,confirmed,amount\n");
+    for r in &sc.rows {
+        let _ = writeln!(out, "{},{},{},{}", csv_cell(&r.name), tax::line_info(r.line).number, r.confirmed, dollars(r.amount));
+    }
+    out
+}
+
+/// The year's business journal lines, one row per line.
+fn general_ledger_csv(entries: &[Entry], names: &std::collections::HashMap<i64, String>) -> String {
+    let mut out = String::from("entry,date,memo,account,debit,credit,line_memo\n");
+    for e in entries {
+        // Business lines only; a crossing entry's household half is left out.
+        for l in e.lines.iter().filter(|l| names.contains_key(&l.account_id)) {
+            let (dr, cr) = if l.amount.0 > 0 { (dollars(l.amount), String::new()) } else { (String::new(), dollars(-l.amount)) };
+            let _ = writeln!(
+                out,
+                "{},{},{},{},{dr},{cr},{}",
+                e.id,
+                e.date,
+                csv_cell(&e.memo),
+                csv_cell(names.get(&l.account_id).map_or("", |n| n.as_str())),
+                csv_cell(l.memo.as_deref().unwrap_or(""))
+            );
+        }
+    }
+    out
+}
+
+/// 1099 summary. Full TINs are deliberately not stored or exported.
+fn form_1099_csv(r: &Report1099) -> String {
+    let mut out = String::from("name,legal_name,tin_last4,w9_on_file,marked_1099,paid_from_bank,paid_by_card,needs_1099_nec\n");
+    for p in &r.rows {
+        let _ = writeln!(
+            out,
+            "{},{},{},{},{},{},{},{}",
+            csv_cell(&p.name),
+            csv_cell(p.legal_name.as_deref().unwrap_or("")),
+            p.tin_last4.as_deref().unwrap_or(""),
+            p.w9_on_file,
+            p.is_1099,
+            dollars(p.paid_reportable),
+            dollars(p.paid_by_card),
+            p.over_threshold
+        );
+    }
+    out
+}
+
+fn estimated_payments_csv(payments: &[TaxPayment]) -> String {
+    let mut out = String::from("date,quarter,jurisdiction,amount,voided\n");
+    for p in payments {
+        let j = if p.jurisdiction == Jurisdiction::Federal { "federal" } else { "state" };
+        let _ = writeln!(out, "{},Q{},{j},{},{}", p.date, p.quarter, dollars(p.amount), p.voided);
+    }
+    out
+}
+
+/// README.txt: what each file is, how to read the CSVs, and the headline figures.
+fn export_readme(year: i32, ty: &TaxYear, book_file: &str, (from, to): (NaiveDate, NaiveDate), pnl: &ProfitAndLoss, sc: &ScheduleCReport) -> String {
+    format!(
+        "Tallybook tax package · {year}\n\
+         Made {made} by Tallybook {version} from the book \"{book_file}\".\n\n{DISCLAIMER}\n\nFiles\n- Tax summary.pdf: a readable overview with the Schedule C worksheet, account mapping, 1099s and estimated payments.\n\
+         - General ledger.pdf: every entry for the year, ready to read or print.\n\
+         - Schedule C worksheet.csv: line-by-line figures (meals already limited to 50%).\n\
+         - Schedule C mapping.csv: which account feeds which line, and whether you confirmed it.\n\
+         - General ledger.csv: every entry dated {from} to {to}.\n\
+         - 1099 summary.csv: payees, amounts paid from bank vs. card, and who crosses the ${} threshold.\n\
+         - Estimated tax payments.csv: what you paid toward {year} estimates.\n\n\
+         The .csv files are UTF-8 text, comma-separated, with a header row and quotes around any cell \
+         that has a comma, quote or line break. Amounts are US dollars with two decimals and a leading \
+         minus when negative, with no $ or thousands separators. Dates are YYYY-MM-DD. The general \
+         ledger's entry numbers are the entry ids in the book, so any line can be traced back.\n\n\
+         From the books: income {}, expenses {}, net income {}.\nUnconfirmed Schedule C mappings: {}.\nTax tables: {}.\n",
+        ty.nec_threshold,
+        dollars(pnl.total_income),
+        dollars(pnl.total_cost_of_goods_sold + pnl.total_expenses),
+        dollars(pnl.net_income),
+        sc.unconfirmed,
+        ty.source,
+        made = today(),
+        version = env!("CARGO_PKG_VERSION"),
+    )
+}
+
 impl App {
     pub(crate) async fn tax(&self, method: &str, p: Value) -> ApiResult<Value> {
         let year_of = |p: Value| -> ApiResult<i32> { Ok(params::<Year>(p)?.year.unwrap_or_else(|| today().year())) };
@@ -377,91 +495,19 @@ impl App {
         let (from, to) = year_range(year)?;
         let write = |name: &str, body: &[u8]| std::fs::write(dir.join(name), body).map_err(|e| ApiError::new("io", e.to_string()));
 
-        // Schedule C worksheet.
         let est = build_estimate(s, year, ty)?;
         let probe = s.schedule_c(year, Cents::ZERO)?;
         let home = tax::simplified_home_office(est.profile.home_office_sqft, probe.schedule.line29_tentative_profit);
         let sc = s.schedule_c(year, home)?;
-        let c = &sc.schedule;
-        let mut out = String::from("line,description,amount\n");
-        for (n, label, v) in [
-            ("1", "Gross receipts or sales", c.line1_gross_receipts),
-            ("2", "Returns and allowances", c.line2_returns),
-            ("3", "Subtract line 2 from line 1", c.line3),
-            ("4", "Cost of goods sold", c.line4_cogs),
-            ("5", "Gross profit", c.line5_gross_profit),
-            ("6", "Other income", c.line6_other_income),
-            ("7", "Gross income", c.line7_gross_income),
-        ] {
-            let _ = writeln!(out, "{n},{},{}", csv_cell(label), dollars(v));
-        }
-        for e in &c.expenses {
-            let _ = writeln!(out, "{},{},{}", e.number, csv_cell(e.label), dollars(e.amount));
-        }
-        for (n, label, v) in [
-            ("28", "Total expenses", c.line28_total_expenses),
-            ("29", "Tentative profit", c.line29_tentative_profit),
-            ("30", "Home office (simplified method)", c.line30_home_office),
-            ("31", "Net profit", c.line31_net_profit),
-        ] {
-            let _ = writeln!(out, "{n},{},{}", csv_cell(label), dollars(v));
-        }
-        let _ = writeln!(out, ",Meals not deductible (50%),{}", dollars(c.meals_disallowed));
-        write("Schedule C worksheet.csv", out.as_bytes())?;
+        write("Schedule C worksheet.csv", schedule_c_worksheet_csv(&sc.schedule).as_bytes())?;
+        write("Schedule C mapping.csv", schedule_c_mapping_csv(&sc).as_bytes())?;
 
-        // Account → line mapping, so a preparer can audit every number.
-        let mut out = String::from("account,line,confirmed,amount\n");
-        for r in &sc.rows {
-            let _ = writeln!(out, "{},{},{},{}", csv_cell(&r.name), tax::line_info(r.line).number, r.confirmed, dollars(r.amount));
-        }
-        write("Schedule C mapping.csv", out.as_bytes())?;
-
-        // General ledger for the year.
-        let mut out = String::from("entry,date,memo,account,debit,credit,line_memo\n");
         let entries = s.entries(from, to)?;
-        for e in &entries {
-            // Business lines only; a crossing entry's household half is left out.
-            for l in e.lines.iter().filter(|l| names.contains_key(&l.account_id)) {
-                let (dr, cr) = if l.amount.0 > 0 { (dollars(l.amount), String::new()) } else { (String::new(), dollars(-l.amount)) };
-                let _ = writeln!(
-                    out,
-                    "{},{},{},{},{dr},{cr},{}",
-                    e.id,
-                    e.date,
-                    csv_cell(&e.memo),
-                    csv_cell(names.get(&l.account_id).map_or("", |n| n.as_str())),
-                    csv_cell(l.memo.as_deref().unwrap_or(""))
-                );
-            }
-        }
-        write("General ledger.csv", out.as_bytes())?;
+        write("General ledger.csv", general_ledger_csv(&entries, &names).as_bytes())?;
 
-        // 1099 summary. Full TINs are deliberately not stored or exported.
         let r = s.report_1099(year)?;
-        let mut out = String::from("name,legal_name,tin_last4,w9_on_file,marked_1099,paid_from_bank,paid_by_card,needs_1099_nec\n");
-        for p in &r.rows {
-            let _ = writeln!(
-                out,
-                "{},{},{},{},{},{},{},{}",
-                csv_cell(&p.name),
-                csv_cell(p.legal_name.as_deref().unwrap_or("")),
-                p.tin_last4.as_deref().unwrap_or(""),
-                p.w9_on_file,
-                p.is_1099,
-                dollars(p.paid_reportable),
-                dollars(p.paid_by_card),
-                p.over_threshold
-            );
-        }
-        write("1099 summary.csv", out.as_bytes())?;
-
-        // Estimated payments.
-        let mut out = String::from("date,quarter,jurisdiction,amount,voided\n");
-        for p in &est.payments {
-            let j = if p.jurisdiction == Jurisdiction::Federal { "federal" } else { "state" };
-            let _ = writeln!(out, "{},Q{},{j},{},{}", p.date, p.quarter, dollars(p.amount), p.voided);
-        }
-        write("Estimated tax payments.csv", out.as_bytes())?;
+        write("1099 summary.csv", form_1099_csv(&r).as_bytes())?;
+        write("Estimated tax payments.csv", estimated_payments_csv(&est.payments).as_bytes())?;
 
         // The same figures, laid out for people to read.
         let company = s.pref("company.name")?.unwrap_or_else(|| "Your business".into());
@@ -470,30 +516,7 @@ impl App {
 
         let pnl = s.profit_and_loss_in(from, to, Some(tally_core::Scope::Business))?;
         let book_file = book.path.file_name().map_or_else(String::new, |n| n.to_string_lossy().into_owned());
-        let readme = format!(
-            "Tallybook tax package · {year}\n\
-             Made {made} by Tallybook {version} from the book \"{book_file}\".\n\n{DISCLAIMER}\n\nFiles\n- Tax summary.pdf: a readable overview with the Schedule C worksheet, account mapping, 1099s and estimated payments.\n\
-             - General ledger.pdf: every entry for the year, ready to read or print.\n\
-             - Schedule C worksheet.csv: line-by-line figures (meals already limited to 50%).\n\
-             - Schedule C mapping.csv: which account feeds which line, and whether you confirmed it.\n\
-             - General ledger.csv: every entry dated {from} to {to}.\n\
-             - 1099 summary.csv: payees, amounts paid from bank vs. card, and who crosses the ${} threshold.\n\
-             - Estimated tax payments.csv: what you paid toward {year} estimates.\n\n\
-             The .csv files are UTF-8 text, comma-separated, with a header row and quotes around any cell \
-             that has a comma, quote or line break. Amounts are US dollars with two decimals and a leading \
-             minus when negative, with no $ or thousands separators. Dates are YYYY-MM-DD. The general \
-             ledger's entry numbers are the entry ids in the book, so any line can be traced back.\n\n\
-             From the books: income {}, expenses {}, net income {}.\nUnconfirmed Schedule C mappings: {}.\nTax tables: {}.\n",
-            ty.nec_threshold,
-            dollars(pnl.total_income),
-            dollars(pnl.total_cost_of_goods_sold + pnl.total_expenses),
-            dollars(pnl.net_income),
-            sc.unconfirmed,
-            ty.source,
-            made = today(),
-            version = env!("CARGO_PKG_VERSION"),
-        );
-        write("README.txt", readme.as_bytes())?;
+        write("README.txt", export_readme(year, ty, &book_file, (from, to), &pnl, &sc).as_bytes())?;
         ok(dir)
     }
 }
