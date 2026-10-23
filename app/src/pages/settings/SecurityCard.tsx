@@ -192,6 +192,9 @@ export default function SecurityCard() {
         ) : (
           <div className="muted">
             Tallybook will make an encrypted copy, check that it matches your book exactly, and then replace the original. It takes a moment. You'll see your recovery key next.
+            <p className="small" style={{ marginTop: 8 }}>
+              Earlier, unencrypted versions of the file may still exist in Time Machine or your sync service's version history.
+            </p>
           </div>
         )}
       </Modal>
