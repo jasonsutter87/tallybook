@@ -1301,7 +1301,7 @@ fn remember_rule(s: &mut Store, t: &BankTxn, account_id: AccountId, person_id: O
     }
     s.create_rule(&NewRule {
         name: pattern.trim().to_string(),
-        priority: 100,
+        priority: tally_core::rules::DEFAULT_PRIORITY,
         op: tally_core::rules::MatchOp::Contains,
         pattern: pattern.trim().to_string(),
         direction: if t.amount.0 > 0 { tally_core::rules::Direction::Inflow } else { tally_core::rules::Direction::Outflow },
