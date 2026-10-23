@@ -85,23 +85,6 @@ fn sibling(path: &Path, suffix: &str) -> PathBuf {
     PathBuf::from(s)
 }
 
-fn hex(key: &BookKey) -> String {
-    key.iter().map(|b| format!("{b:02x}")).collect()
-}
-
-fn unhex(s: &str) -> Option<BookKey> {
-    // Checked up front: slicing a non-ASCII string below would panic, and
-    // `from_str_radix` would accept a leading "+".
-    if s.len() != 64 || !s.bytes().all(|b| b.is_ascii_hexdigit()) {
-        return None;
-    }
-    let mut key = [0u8; 32];
-    for (i, k) in key.iter_mut().enumerate() {
-        *k = u8::from_str_radix(&s[i * 2..i * 2 + 2], 16).ok()?;
-    }
-    Some(key)
-}
-
 impl App {
     // ------------------------------------------------------------ key registry
     //
@@ -118,7 +101,7 @@ impl App {
         self.key_ids()
             .iter()
             .filter_map(|id| self.secrets.get(&format!("book-key:{id}")).ok().flatten())
-            .filter_map(|h| unhex(&h))
+            .filter_map(|h| crypto::unhex(&h))
             .collect()
     }
 
@@ -127,7 +110,7 @@ impl App {
             return Ok(());
         }
         let id = uuid::Uuid::new_v4().to_string();
-        self.secrets.set(&format!("book-key:{id}"), &hex(key)).map_err(|e| ApiError::new("keychain", e))?;
+        self.secrets.set(&format!("book-key:{id}"), &crypto::hex(key)).map_err(|e| ApiError::new("keychain", e))?;
         let mut ids = self.key_ids();
         ids.push(id);
         let _ = std::fs::create_dir_all(&self.config_dir);
@@ -377,18 +360,4 @@ pub fn move_to_trash(path: &Path) -> std::io::Result<()> {
     #[cfg(not(target_os = "macos"))]
     let ctx = trash::TrashContext::default();
     ctx.delete(path).map_err(|e| std::io::Error::other(e.to_string()))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn unhex_round_trips_and_rejects_junk() {
-        let key: BookKey = std::array::from_fn(|i| i as u8 * 7);
-        assert_eq!(unhex(&hex(&key)), Some(key));
-        assert_eq!(unhex(&"é".repeat(32)), None, "64 bytes but not hex must not panic");
-        assert_eq!(unhex(&format!("+1{}", "00".repeat(31))), None);
-        assert_eq!(unhex("abcd"), None);
-    }
 }
