@@ -92,6 +92,28 @@ pub fn today() -> NaiveDate {
 pub(crate) struct OpenBook {
     pub(crate) store: Store,
     pub(crate) path: PathBuf,
+    /// Which file on disk was opened, to notice when another process swaps it.
+    file_id: Option<(u64, u64)>,
+}
+
+impl OpenBook {
+    pub(crate) fn new(store: Store, path: PathBuf) -> OpenBook {
+        OpenBook { store, file_id: file_id(&path), path }
+    }
+}
+
+/// The file's identity on disk (device and inode): it changes when the file is
+/// replaced, not when it's written to. `None` where that isn't available; on
+/// Windows a book can't be replaced while it's open anyway.
+#[cfg(unix)]
+fn file_id(path: &Path) -> Option<(u64, u64)> {
+    use std::os::unix::fs::MetadataExt;
+    std::fs::metadata(path).ok().map(|m| (m.dev(), m.ino()))
+}
+
+#[cfg(not(unix))]
+fn file_id(_path: &Path) -> Option<(u64, u64)> {
+    None
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -566,8 +588,31 @@ impl App {
         self.lock().is_some()
     }
 
+    /// The desktop app can swap the book file for an encrypted or decrypted copy
+    /// while an agent (tally-mcp) has it open. Without this, the agent would keep
+    /// reading and writing the replaced file, and its changes would be lost.
+    fn follow_replaced_book(&self) {
+        let mut guard = self.lock();
+        let Some(book) = guard.as_mut() else { return };
+        let now = file_id(&book.path);
+        if now.is_none() || now == book.file_id {
+            return;
+        }
+        match self.open_any(&book.path) {
+            Ok(store) => {
+                book.store = store;
+                book.file_id = now;
+            }
+            // Can't open what's there now (no key for it here, say): stop using
+            // the replaced file, so the next call says "no book is open" rather
+            // than writing somewhere nobody will ever read.
+            Err(_) => *guard = None,
+        }
+    }
+
     /// The single entry point.
     pub async fn call(&self, method: &str, p: Value) -> ApiResult<Value> {
+        self.follow_replaced_book();
         match method {
             // ---------------------------------------------------- book
             "book.status" => {
@@ -1182,7 +1227,7 @@ impl App {
     pub(crate) fn install(&self, store: Store, path: &Path) -> ApiResult<Value> {
         let name = store.pref("company.name")?.unwrap_or_else(|| "My Business".into());
         let path = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
-        *self.lock() = Some(OpenBook { store, path: path.clone() });
+        *self.lock() = Some(OpenBook::new(store, path.clone()));
         let mut recent = self.recent();
         recent.retain(|r| r.path != path);
         recent.insert(0, RecentBook { path: path.clone(), name: name.clone(), last_opened: Local::now().to_rfc3339(), encrypted: false });
