@@ -53,10 +53,11 @@ const MIGRATIONS: &[(i64, &str)] = &[
     (8, include_str!("schema_v8.sql")),  // savings goals
     (9, include_str!("schema_v9.sql")),  // import_links, for re-importing
     (10, include_str!("schema_v10.sql")), // bills whose amount varies
+    (11, include_str!("schema_v11.sql")), // matching register lines by account and amount
 ];
 
 /// The newest schema this build knows: the last step of `MIGRATIONS`.
-const SCHEMA_VERSION: i64 = 10;
+const SCHEMA_VERSION: i64 = 11;
 const _: () = assert!(MIGRATIONS[MIGRATIONS.len() - 1].0 == SCHEMA_VERSION);
 
 /// Settings key for the sides this book keeps: `Scope` names joined by

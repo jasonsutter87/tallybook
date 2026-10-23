@@ -154,6 +154,8 @@ export default function ImportModal({ open, onClose, defaultAccountId }: { open:
     setOfxIndex(0);
     setError(null);
     setSummary(null);
+    // Only on open: re-running when defaultAccountId changes would wipe a file the user is mapping.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   const readFile = async (file: File) => {

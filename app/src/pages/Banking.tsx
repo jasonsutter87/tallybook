@@ -605,16 +605,16 @@ function ConnectModal(props: { initial: "choose" | "simplefin"; onClose: () => v
                 {config.data?.configured && (
                   <div className="subtle tiny" style={{ marginTop: 6 }}>
                     Using keys {config.data.client_id_hint} · {config.data.environment}{" "}
-                    <a
-                      href="#"
+                    <button
+                      type="button"
+                      className="link-button"
                       onClick={(e) => {
-                        e.preventDefault();
                         e.stopPropagation();
                         setStep("plaid_setup");
                       }}
                     >
                       Change keys
-                    </a>
+                    </button>
                   </div>
                 )}
               </div>

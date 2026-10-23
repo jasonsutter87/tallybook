@@ -209,15 +209,18 @@ export function Modal(props: {
   // readers announce "Import complete, dialog" rather than just "dialog".
   const titleId = useId();
   const subtitleId = useId();
+  const { open, onClose } = props;
   useEffect(() => {
-    if (!props.open) return;
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && props.onClose();
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [props.open, props.onClose]);
-  if (!props.open) return null;
+  }, [open, onClose]);
+  if (!open) return null;
   return (
-    <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && props.onClose()}>
+    // Clicking outside closes, as a mouse convenience; Escape (above) is the keyboard's way.
+    // eslint-disable-next-line jsx-a11y/no-static-element-interactions
+    <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div
         className="modal"
         style={{ maxWidth: props.width ?? 520 }}
@@ -427,11 +430,20 @@ export function Combobox(props: {
   };
 
   let lastGroup: string | undefined;
+  // The ARIA combobox pattern: focus stays in the input, and the highlighted
+  // option is announced through aria-activedescendant.
+  const listId = `${id}-list`;
+  const optionId = (i: number) => `${id}-option-${i}`;
   return (
     <div className="combo" ref={wrap}>
       <input
         id={id}
         className="input"
+        role="combobox"
+        aria-expanded={open}
+        aria-controls={listId}
+        aria-autocomplete="list"
+        aria-activedescendant={open && filtered[active] ? optionId(active) : undefined}
         autoFocus={props.autoFocus}
         aria-label={props["aria-label"]}
         aria-labelledby={props["aria-label"] ? undefined : fieldLabelId}
@@ -467,16 +479,22 @@ export function Combobox(props: {
         }}
       />
       {open && (
-        <div className="combo-menu" role="listbox">
+        <div className="combo-menu" role="listbox" id={listId}>
           {filtered.length === 0 && <div className="combo-empty">No matches</div>}
           {filtered.map((o, i) => {
             const header = o.group && o.group !== lastGroup ? o.group : null;
             lastGroup = o.group;
             return (
-              <div key={o.value}>
-                {header && <div className="combo-group">{header}</div>}
+              <div key={o.value} role="presentation">
+                {header && (
+                  <div className="combo-group" role="presentation">
+                    {header}
+                  </div>
+                )}
                 <div
                   role="option"
+                  id={optionId(i)}
+                  tabIndex={-1}
                   aria-selected={o.value === props.value}
                   className={`combo-option ${i === active ? "active" : ""}`}
                   onMouseEnter={() => setActive(i)}

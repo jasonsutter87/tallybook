@@ -168,13 +168,3 @@
     width: calc(50% - 30px);
   }
 }
-
-.link-button {
-  border: 0;
-  background: none;
-  padding: 0;
-  color: var(--brand-strong);
-  font: inherit;
-  font-weight: 700;
-  cursor: pointer;
-}
