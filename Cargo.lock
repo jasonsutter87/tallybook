@@ -4293,6 +4293,7 @@ dependencies = [
  "serde_json",
  "tally-api",
  "tokio",
+ "tower",
 ]
 
 [[package]]
