@@ -193,12 +193,13 @@ You only need to do this once.
 
 ---
 
-## Use it from Claude
+## Use it with AI agents
 
-Tallybook can run without its window as an MCP server, so Claude (Desktop,
-Code, or your own agent) can answer questions about your books and, if you
-allow it, keep them: categorize the review inbox, record cash, plan the month.
-Read-only unless you say otherwise. [Set it up →](https://tallybook.app/help/claude/)
+Tallybook can run without its window as an MCP server, so an AI agent (Claude,
+OpenAI's Codex and Agents SDK, OpenClaw, or anything else that speaks MCP) can
+answer questions about your books and, if you allow it, keep them: categorize
+the review inbox, record cash, plan the month. Read-only unless you say
+otherwise. [Set it up →](docs/AGENTS.md)
 
 ---
 

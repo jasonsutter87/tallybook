@@ -64,12 +64,13 @@
     All three. Mac is the most tested so far, so please report anything odd on
     Windows or Linux on GitHub.
 
-- q: Can I use it with Claude or another AI assistant?
+- q: Can I use it with Claude, ChatGPT's Codex or another AI agent?
   a: >-
-    Yes. Tallybook can run as an MCP server, so Claude Desktop, Claude Code or
-    your own agent can answer questions about your books and, if you allow it,
-    categorize transactions and plan the month. It's read-only unless you say
-    otherwise. <a href="/help/claude/">Set it up</a>.
+    Yes. Tallybook runs as an MCP server, the open standard most agents speak, so
+    Claude, OpenAI's Codex and Agents SDK, OpenClaw and others can answer
+    questions about your books and, if you allow it, categorize transactions and
+    plan the month. It's read-only unless you say otherwise.
+    <a href="/help/agents/">Set it up</a>.
 
 - q: Can I see the source code?
   a: >-

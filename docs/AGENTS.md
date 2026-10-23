@@ -1,13 +1,17 @@
-# Tallybook for agents
+# Tallybook for AI agents
 
 Tallybook can run without its window as an [MCP](https://modelcontextprotocol.io)
-server, so Claude, or any agent that speaks MCP, can read your books and,
-if you allow it, keep them: categorize the review inbox, record cash, set a
-month's budget, check what's due.
+server, so an AI agent can read your books and, if you allow it, keep them:
+categorize the review inbox, record cash, set a month's budget, check what's
+due.
+
+MCP is an open standard, so this isn't tied to one company's AI. It works with
+anything that can start a **local** MCP server: Claude, OpenAI's Codex and
+Agents SDK, OpenClaw, and most coding tools and agent frameworks.
 
 It runs on your computer, against your book file, like the app does. Nothing
-is uploaded anywhere by Tallybook; what the agent does with the answers is up
-to the agent you connect.
+is uploaded anywhere by Tallybook; what an agent does with the answers is up
+to the agent you connect, and to the AI service behind it.
 
 ## Turn it on
 
@@ -25,19 +29,19 @@ It opens your most recently used book, read-only. Add:
 - `--book /path/to/Your.tallybook` to open a specific book.
 
 It shares the app's recent books, license and keychain, so encrypted books
-open as they do in the app.
+open as they do in the app. The examples below use the Mac path; swap in
+yours.
 
-### Claude Code
+## Claude
+
+**Claude Code:**
 
 ```sh
 claude mcp add tallybook -- /Applications/Tallybook.app/Contents/MacOS/tallybook-desktop --mcp
-# or, to allow changes:
-claude mcp add tallybook -- /Applications/Tallybook.app/Contents/MacOS/tallybook-desktop --mcp --write
 ```
 
-### Claude Desktop
-
-Settings → Developer → Edit Config, then add to `claude_desktop_config.json`:
+**Claude Desktop:** Settings → Developer → Edit Config, then add to
+`claude_desktop_config.json`:
 
 ```json
 {
@@ -50,9 +54,7 @@ Settings → Developer → Edit Config, then add to `claude_desktop_config.json`
 }
 ```
 
-### Your own agent (Claude Agent SDK, or any MCP client)
-
-Point the client at the same command as a stdio server. In the Agent SDK:
+**Claude Agent SDK** (Python):
 
 ```python
 from claude_agent_sdk import ClaudeAgentOptions
@@ -61,18 +63,77 @@ options = ClaudeAgentOptions(
     mcp_servers={
         "tallybook": {
             "command": "/Applications/Tallybook.app/Contents/MacOS/tallybook-desktop",
-            "args": ["--mcp", "--write"],
+            "args": ["--mcp"],
         }
     },
     allowed_tools=["mcp__tallybook"],
 )
 ```
 
-### From source
+## OpenAI
 
-`cargo build --release -p tally-mcp` builds a standalone `target/release/tallybook-mcp`
-that takes the same flags, plus `--dev` (use the development build's books and
-keychain) and `--config-dir <dir>`.
+**Codex** (the CLI, the IDE extension, and Codex in the ChatGPT desktop app):
+
+```sh
+codex mcp add tallybook -- /Applications/Tallybook.app/Contents/MacOS/tallybook-desktop --mcp
+```
+
+or in `~/.codex/config.toml`:
+
+```toml
+[mcp_servers.tallybook]
+command = "/Applications/Tallybook.app/Contents/MacOS/tallybook-desktop"
+args = ["--mcp"]
+```
+
+**OpenAI Agents SDK** (Python):
+
+```python
+import asyncio
+from agents import Agent, Runner
+from agents.mcp import MCPServerStdio
+
+async def main():
+    async with MCPServerStdio(
+        params={
+            "command": "/Applications/Tallybook.app/Contents/MacOS/tallybook-desktop",
+            "args": ["--mcp"],
+        }
+    ) as tallybook:
+        agent = Agent(
+            name="Bookkeeper",
+            instructions="Use Tallybook to answer questions about my books.",
+            mcp_servers=[tallybook],
+        )
+        result = await Runner.run(agent, "What was my net profit this year?")
+        print(result.final_output)
+
+asyncio.run(main())
+```
+
+**ChatGPT on the web** only connects to MCP servers on the internet, and
+Tallybook deliberately doesn't put your books on the internet, so it isn't
+supported there.
+
+## OpenClaw
+
+```sh
+openclaw mcp add tallybook \
+  --command /Applications/Tallybook.app/Contents/MacOS/tallybook-desktop \
+  --arg=--mcp
+```
+
+Then check the connection with `openclaw mcp doctor tallybook --probe`.
+
+## Anything else
+
+Any agent or app that can launch a local ("stdio") MCP server works the same
+way: give it the command and `--mcp` as its argument. That covers Cursor,
+VS Code, Windsurf, Gemini CLI, Goose and most agent frameworks; look for
+"MCP servers" in their settings.
+
+Agents that run only in the cloud can't start a program on your computer, so
+they can't use Tallybook directly.
 
 ## What the agent can do
 
@@ -111,3 +172,12 @@ Money is integer cents (`12345` is $123.45) and dates are `YYYY-MM-DD`.
   those in the app.
 - **The app and an agent can have the same book open.** Each waits briefly for the other's
   write to finish. Screens in the app show an agent's changes the next time they load.
+- **Your books go to the agent's AI.** Whatever the agent reads is sent to the AI
+  service it uses. Pick one you trust with your finances, and stay read-only unless
+  you want it making changes.
+
+## From source
+
+`cargo build --release -p tally-mcp` builds a standalone `target/release/tallybook-mcp`
+that takes the same flags, plus `--dev` (use the development build's books and
+keychain) and `--config-dir <dir>`.
