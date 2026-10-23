@@ -131,6 +131,18 @@ fn clean(s: &Option<String>) -> Option<&str> {
     s.as_deref().map(str::trim).filter(|s| !s.is_empty())
 }
 
+/// A contact's email must be one plain address (`name@example.com`): no
+/// spaces, extra recipients or `mailto:` query parts.
+fn check_email(email: Option<&str>) -> Result<()> {
+    let Some(e) = email else { return Ok(()) };
+    let plain = e.split_once('@').is_some_and(|(local, domain)| !local.is_empty() && !domain.is_empty() && !domain.contains('@'))
+        && !e.chars().any(|c| c.is_whitespace() || c.is_control() || "?&,;<>\"()[]\\:/".contains(c));
+    if !plain {
+        return rule(format!("{e:?} isn't an email address"));
+    }
+    Ok(())
+}
+
 // ---------------------------------------------------------------- documents
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -387,6 +399,7 @@ impl Store {
         if c.name.trim().is_empty() {
             return rule("a name is required");
         }
+        check_email(clean(&c.email))?;
         self.conn.execute(
             "INSERT INTO contacts(kind, name, company, email, phone, address, notes) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
             params![c.kind.as_str(), c.name.trim(), clean(&c.company), clean(&c.email), clean(&c.phone), clean(&c.address), clean(&c.notes)],
@@ -398,6 +411,7 @@ impl Store {
         if c.name.trim().is_empty() {
             return rule("a name is required");
         }
+        check_email(clean(&c.email))?;
         let n = self.conn.execute(
             "UPDATE contacts SET kind = ?1, name = ?2, company = ?3, email = ?4, phone = ?5, address = ?6, notes = ?7 WHERE id = ?8",
             params![c.kind.as_str(), c.name.trim(), clean(&c.company), clean(&c.email), clean(&c.phone), clean(&c.address), clean(&c.notes), id],
