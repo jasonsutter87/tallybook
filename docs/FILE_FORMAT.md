@@ -476,14 +476,16 @@ ORDER BY e.date, e.id, l.id;
 **Unpaid invoices:**
 
 ```sql
-SELECT i.number, c.name, i.issue_date, i.due_date,
-       printf('%.2f', (i.total - IFNULL((SELECT SUM(pa.amount)
-                                         FROM payment_applications pa
-                                         JOIN payments p ON p.id = pa.payment_id
-                                         WHERE pa.invoice_id = i.id AND p.voided = 0), 0)) / 100.0) AS balance_due
-FROM invoices i JOIN contacts c ON c.id = i.customer_id
-WHERE i.status = 'open'
-ORDER BY i.due_date;
+SELECT number, customer, due_date, printf('%.2f', due / 100.0) AS balance_due
+FROM (SELECT i.number, c.name AS customer, i.due_date,
+             i.total - IFNULL((SELECT SUM(pa.amount)
+                               FROM payment_applications pa
+                               JOIN payments p ON p.id = pa.payment_id
+                               WHERE pa.invoice_id = i.id AND p.voided = 0), 0) AS due
+      FROM invoices i JOIN contacts c ON c.id = i.customer_id
+      WHERE i.status = 'open')
+WHERE due > 0
+ORDER BY due_date;
 ```
 
 **Household spending by category for a month:**
