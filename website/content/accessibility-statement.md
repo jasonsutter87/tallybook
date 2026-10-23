@@ -29,6 +29,5 @@ improved for screen readers. If something gets in your way, we'd like to fix it.
 
 ## Tell us
 
-Email [{{< param supportEmail >}}](mailto:{{< param supportEmail >}}) or open an issue
-on [GitHub]({{< param github >}}/issues). Tell us what you were trying to do and
+Open an issue on [GitHub]({{< param github >}}/issues). Tell us what you were trying to do and
 what you use (for example, VoiceOver on a Mac), and we'll respond.

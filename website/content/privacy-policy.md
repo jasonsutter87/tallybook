@@ -53,8 +53,9 @@ secure. Downloads are served by GitHub.
 ## Your choices
 
 You can export or delete your books at any time; they're files you own. To ask
-about the information we hold from a purchase, or to have it deleted, email
-[{{< param supportEmail >}}](mailto:{{< param supportEmail >}}).
+about the information we hold from a purchase, or to have it deleted, reply to
+your purchase receipt email; replies reach us privately. Please don't put
+personal details in a public GitHub issue.
 
 ## Changes
 

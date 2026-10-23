@@ -11,7 +11,7 @@ bills and savings goals for the household. All of it in one file that you
 own. Free for your household; add your business for $19.99, once, and tax
 prep for $49.99 a tax season.
 
-[**Download**](https://tallybook.app/download/) · [Pricing](https://tallybook.app/pricing/) · [See it in action](#a-quick-tour) · [Household budget](#your-household-budget) · [Questions](#questions)
+[**Download**](https://tallybook-app.netlify.app/download/) · [Pricing](https://tallybook-app.netlify.app/pricing/) · [See it in action](#a-quick-tour) · [Household budget](#your-household-budget) · [Questions](#questions)
 
 <br />
 
@@ -98,7 +98,7 @@ For sole proprietors and single-member LLCs:
 
 > Tallybook prepares worksheets and estimates; it isn't tax advice and never
 > files anything for you. Have a tax professional review before you file.
-> [What it does and doesn't cover →](https://tallybook.app/help/taxes/)
+> [What it does and doesn't cover →](https://tallybook-app.netlify.app/help/taxes/)
 
 ### Light or dark
 Follows your system, or pick one in Settings.
@@ -162,7 +162,7 @@ adds only what's new.
 ## Getting started
 
 1. **Download** the installer for your computer from the
-   [download page](https://tallybook.app/download/).
+   [download page](https://tallybook-app.netlify.app/download/).
 2. **Open Tallybook** and create a book for your business, your household,
    or both.
 3. **Bring in your transactions**, any of these ways:
@@ -277,6 +277,6 @@ Want to dig in? See the [developer guide](docs/DEVELOPMENT.md).
 <div align="center">
 
 Built with care for freelancers, small businesses, and the households behind them.
-[tallybook.app](https://tallybook.app)
+[tallybook-app.netlify.app](https://tallybook-app.netlify.app)
 
 </div>
