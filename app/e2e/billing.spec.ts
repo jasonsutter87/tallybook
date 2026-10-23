@@ -58,3 +58,10 @@ test("an invoice draft is edited before it's issued", async ({ page, request }) 
   expect(issued.total).toBe(240000);
   expect(issued.status).not.toBe("draft");
 });
+
+test("a contact's email link is just that address", async ({ page, request }) => {
+  const id = await api<number>(request, "contacts.create", { kind: "customer", name: "Ann O'Neil", email: "ann.o'neil+tax@example.com" });
+  await go(page, `/contacts?contact=${id}`);
+  const link = page.getByRole("link", { name: "ann.o'neil+tax@example.com" });
+  await expect(link).toHaveAttribute("href", `mailto:${encodeURIComponent("ann.o'neil+tax@example.com")}`);
+});
