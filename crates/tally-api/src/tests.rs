@@ -361,6 +361,44 @@ async fn opening_a_book_removes_conversion_leftovers() {
     assert!(tally_store::crypto::is_encrypted_file(&path).unwrap());
 }
 
+/// A call that does several things does all of them or none: an error never
+/// hides a half-made change that a retry would then duplicate.
+#[tokio::test]
+async fn compound_calls_change_nothing_when_they_fail() {
+    let (app, dir) = app("atomic");
+    app.call("book.create_demo", json!({ "path": dir.join("demo.tallybook") })).await.unwrap();
+    app.call("settings.set", json!({ "lock_date": "2020-12-31" })).await.unwrap();
+    let count = |v: Value| v.as_array().unwrap().len();
+
+    let accounts = count(app.call("accounts.list", Value::Null).await.unwrap());
+    let err = app
+        .call("accounts.create", json!({ "name": "Old savings", "subtype": "bank", "opening_balance": 5000, "opening_date": "2020-06-30" }))
+        .await
+        .unwrap_err();
+    assert_eq!(err.code, "rule");
+    assert_eq!(count(app.call("accounts.list", Value::Null).await.unwrap()), accounts, "no account without its opening balance");
+
+    let list = app.call("accounts.list", Value::Null).await.unwrap();
+    let id = |code: &str| list.as_array().unwrap().iter().find(|a| a["code"] == code).unwrap()["id"].clone();
+    let range = json!({ "from": "2000-01-01", "to": "2100-01-01" });
+    let entries = count(app.call("entries.list", range.clone()).await.unwrap());
+    let err = app
+        .call("entries.post", json!({ "date": today(), "memo": "Lunch", "payee_id": 999_999, "lines": [
+            { "account_id": id("6250"), "amount": 1500 }, { "account_id": id("4000"), "amount": -1500 }
+        ] }))
+        .await
+        .unwrap_err();
+    assert_eq!(err.code, "not_found", "{err:?}");
+    assert_eq!(count(app.call("entries.list", range.clone()).await.unwrap()), entries, "no entry without its payee");
+
+    let waiting = app.call("inbox.count", Value::Null).await.unwrap();
+    let txn = app.call("inbox.list", Value::Null).await.unwrap()[0]["id"].clone();
+    let err = app.call("inbox.accept", json!({ "id": txn, "account_id": id("6250"), "person_id": 999_999 })).await.unwrap_err();
+    assert_eq!(err.code, "not_found");
+    assert_eq!(app.call("inbox.count", Value::Null).await.unwrap(), waiting, "the transaction is still waiting");
+    assert_eq!(count(app.call("entries.list", range).await.unwrap()), entries);
+}
+
 #[tokio::test]
 async fn encryption_lifecycle_and_new_machine_recovery() {
     let (app, dir) = app("encrypt");
