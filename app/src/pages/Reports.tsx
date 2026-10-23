@@ -1,5 +1,6 @@
-// Financial reports (profit and loss, balance sheet, who owes whom and more)
-// for a chosen date range, ready to print.
+// Financial reports (income and spending, net worth, profit and loss,
+// balance sheet, who owes you, who you owe, trial balance) for a chosen date
+// range, ready to print.
 
 import { keepPreviousData } from "@tanstack/react-query";
 import { ArrowDownLeft, ArrowUpRight, BookOpenCheck, ChevronRight, Clock, Hourglass, PiggyBank, Printer, Scale, TrendingUp, Wallet } from "lucide-react";
