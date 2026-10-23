@@ -170,9 +170,8 @@ impl App {
 
     pub(crate) fn save_recent(&self, recent: &[RecentBook]) {
         // Best effort: losing the recent list is an inconvenience, not data loss.
-        let _ = std::fs::create_dir_all(&self.config_dir);
         if let Ok(json) = serde_json::to_vec_pretty(recent) {
-            let _ = std::fs::write(self.config_dir.join("recent.json"), json);
+            let _ = crate::write_private(&self.config_dir.join("recent.json"), &json);
         }
     }
 
