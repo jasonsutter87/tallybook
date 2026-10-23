@@ -39,7 +39,8 @@ app/src-tauri/      desktop shell: a single IPC command forwarding to tally-api
 ```
 
 The desktop app and the dev server both forward to the same `App::call`, so
-what you test in a browser is exactly what ships.
+what you test in a browser is exactly what ships. Every method, its params
+and its errors are documented in [API.md](API.md).
 
 ## Getting started
 
