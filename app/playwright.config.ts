@@ -35,7 +35,8 @@ export default defineConfig({
       port: 1441,
       reuseExistingServer: false,
       timeout: 600_000,
-      env: { TALLYBOOK_DIR: DATA_DIR },
+      // NO_TRASH: books the tests delete are removed outright, not sent to the real Trash.
+      env: { TALLYBOOK_DIR: DATA_DIR, TALLYBOOK_NO_TRASH: "1" },
     },
     {
       command: "npx vite --port 1440 --strictPort",

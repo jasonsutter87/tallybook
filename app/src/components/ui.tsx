@@ -134,7 +134,11 @@ export function Loading({ label = "Loading…" }: { label?: string }) {
 
 export function ErrorBanner({ error }: { error: ApiError | Error | null | undefined }) {
   if (!error) return null;
-  return <div className="banner error">{error.message}</div>;
+  return (
+    <div className="banner error" role="alert">
+      {error.message}
+    </div>
+  );
 }
 
 export function EmptyState(props: { icon: ReactNode; title: string; body?: ReactNode; action?: ReactNode }) {
@@ -163,7 +167,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   return (
     <ToastContext.Provider value={push}>
       {children}
-      <div className="toasts">
+      <div className="toasts" role="status" aria-live="polite">
         {toasts.map((t) => (
           <div key={t.id} className={`toast ${t.error ? "error" : ""}`}>
             {t.text}
