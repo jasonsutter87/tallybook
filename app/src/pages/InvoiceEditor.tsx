@@ -343,7 +343,13 @@ function Editor(props: { prefs: Record<string, string>; existing?: InvoiceDetail
                     <MoneyInput value={r.price} onChange={(c) => setRow(r.key, { price: c })} aria-label="Price" />
                   </td>
                   <td>
-                    <AccountSelect kinds={["income"]} value={r.accountId} onChange={(a) => setRow(r.key, { accountId: a })} placeholder="Income category" />
+                    <AccountSelect
+                      kinds={["income"]}
+                      value={r.accountId}
+                      onChange={(a) => setRow(r.key, { accountId: a })}
+                      placeholder="Income category"
+                      aria-label="Income category"
+                    />
                   </td>
                   <td className="center">
                     <input
