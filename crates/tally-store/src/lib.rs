@@ -11,7 +11,7 @@
 
 use chrono::{Datelike, NaiveDate};
 use rusqlite::types::Type;
-use rusqlite::{Connection, OptionalExtension, Row, Transaction, params};
+use rusqlite::{Connection, OptionalExtension, Row, params};
 use serde::Serialize;
 use std::path::Path;
 use tally_core::chart::{self, codes};
@@ -385,7 +385,7 @@ impl Store {
         }
         for &(step, sql) in MIGRATIONS {
             if version < step {
-                let tx = self.conn.transaction()?;
+                let tx = self.conn.savepoint()?;
                 tx.execute_batch(sql)?;
                 tx.pragma_update(None, "user_version", step)?;
                 tx.commit()?;
@@ -406,6 +406,29 @@ impl Store {
             None => {
                 self.conn.execute("VACUUM INTO ?1", [path.to_string_lossy()])?;
                 Ok(())
+            }
+        }
+    }
+
+    /// Runs `f` as one unit: every change it makes is kept, or, if it fails
+    /// (or panics), none is. For operations made of several steps, such as
+    /// creating an account with its opening balance. The steps' own
+    /// transactions nest inside it as savepoints.
+    pub fn atomically<T>(&mut self, f: impl FnOnce(&mut Store) -> Result<T>) -> Result<T> {
+        self.conn.execute_batch("SAVEPOINT atomically")?;
+        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| f(self)));
+        match outcome {
+            Ok(Ok(v)) => {
+                self.conn.execute_batch("RELEASE atomically")?;
+                Ok(v)
+            }
+            Ok(Err(e)) => {
+                self.conn.execute_batch("ROLLBACK TO atomically; RELEASE atomically")?;
+                Err(e)
+            }
+            Err(panic) => {
+                let _ = self.conn.execute_batch("ROLLBACK TO atomically; RELEASE atomically");
+                std::panic::resume_unwind(panic)
             }
         }
     }
@@ -512,7 +535,7 @@ impl Store {
             sides.push(scope);
         }
         sides.sort_by_key(|s| *s as u8);
-        let tx = self.conn.transaction()?;
+        let tx = self.conn.savepoint()?;
         for t in chart::chart_for(scope) {
             tx.execute(
                 "INSERT INTO accounts(code, name, subtype, scope, flex) VALUES (?1, ?2, ?3, ?4, ?5)
@@ -604,7 +627,7 @@ impl Store {
 
     /// `source` records where the entry came from (`manual`, `bank_feed`, `invoice`, ...).
     pub fn post_entry_from(&mut self, entry: &NewEntry, source: &str) -> Result<EntryId> {
-        let tx = self.conn.transaction()?;
+        let tx = self.conn.savepoint()?;
         let id = post_in(&tx, entry, source, None)?;
         tx.commit()?;
         Ok(id)
@@ -625,7 +648,7 @@ impl Store {
 
     /// Cancels an entry by posting its exact reversal on `date`. History is kept.
     pub fn void_entry(&mut self, id: EntryId, date: NaiveDate) -> Result<EntryId> {
-        let tx = self.conn.transaction()?;
+        let tx = self.conn.savepoint()?;
         let original = entry_in(&tx, id)?;
         if original.voided_by_id.is_some() {
             return rule(format!("entry #{id} is already voided"));
@@ -764,7 +787,7 @@ impl Store {
 /// Writes a validated entry inside `tx`, the one place every posting goes
 /// through. Its lines must name live accounts; when they cross sides of the
 /// book, `bridge_lines` are added so each side still balances on its own.
-fn post_in(tx: &Transaction, entry: &NewEntry, source: &str, reverses: Option<EntryId>) -> Result<EntryId> {
+fn post_in(tx: &Connection, entry: &NewEntry, source: &str, reverses: Option<EntryId>) -> Result<EntryId> {
     entry.validate()?;
     check_not_locked(tx, entry.date)?;
     // Sum of the business lines; checked, since imported amounts can be huge.
@@ -806,7 +829,7 @@ fn post_in(tx: &Transaction, entry: &NewEntry, source: &str, reverses: Option<En
 /// that is credit-heavy paid for something at home: an owner's draw, which
 /// the household sees as money from the business. Debit-heavy is the reverse,
 /// an owner's contribution.
-fn bridge_lines(tx: &Transaction, business: Cents) -> Result<Vec<EntryLine>> {
+fn bridge_lines(tx: &Connection, business: Cents) -> Result<Vec<EntryLine>> {
     if business.is_zero() {
         return Ok(vec![]);
     }
