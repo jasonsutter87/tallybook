@@ -307,7 +307,9 @@ function Lines({ lines, base, empty }: { lines: ReportLine[]; base?: Cents; empt
         <tr key={l.account_id} className="line clickable" onClick={() => navigate(`/accounts/${l.account_id}`)} title="See transactions">
           <td>
             {l.code && <span className="code">{l.code}</span>}
-            <span className="line-name">{l.name}</span>
+            <Link to={`/accounts/${l.account_id}`} className="row-link line-name">
+              {l.name}
+            </Link>
           </td>
           {base !== undefined && <td className="pct">{base > 0 ? `${Math.round((l.amount / base) * 1000) / 10}%` : ""}</td>}
           <td className="amt">
@@ -523,7 +525,11 @@ function TrialBalanceReport({ asOf, scope }: { asOf: ISODate; scope?: Scope }) {
             {data.rows.map((r) => (
               <tr key={r.account_id} className="clickable" onClick={() => navigate(`/accounts/${r.account_id}`)}>
                 <td className="subtle num">{r.code ?? "—"}</td>
-                <td className="bold">{r.name}</td>
+                <td className="bold">
+                  <Link to={`/accounts/${r.account_id}`} className="row-link">
+                    {r.name}
+                  </Link>
+                </td>
                 <td className="right num">{r.debit ? money(r.debit) : ""}</td>
                 <td className="right num">{r.credit ? money(r.credit) : ""}</td>
               </tr>

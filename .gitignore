@@ -14,3 +14,6 @@ app/playwright-report/
 
 # macOS
 .DS_Store
+
+# Test fixtures: books made by released versions, for the upgrade test.
+!crates/tally-api/tests/fixtures/*.tallybook

@@ -271,11 +271,37 @@ async fn encryption_lifecycle_and_new_machine_recovery() {
     assert_eq!(other.call("reports.trial_balance", Value::Null).await.unwrap(), before);
     other.call("book.close", Value::Null).await.unwrap();
     other.call("book.open", json!({ "path": path })).await.unwrap(); // remembered now
+    // Close it there before converting again: Windows won't replace a file another
+    // process has open (book_swap_that_fails_leaves_the_book_open covers that path).
+    other.call("book.close", Value::Null).await.unwrap();
 
     // And back to a plain book.
     app.call("book.decrypt", Value::Null).await.unwrap();
     assert!(!tally_store::crypto::is_encrypted_file(&path).unwrap());
     assert_eq!(app.call("reports.trial_balance", Value::Null).await.unwrap(), before);
+}
+
+/// When the converted file can't be swapped in (on Windows, because another
+/// Tallybook or an agent has the book open), nothing changes and the book stays
+/// open, rather than leaving the app with no book. A directory where the swap
+/// parks the original makes the swap fail on every platform.
+#[tokio::test]
+async fn book_swap_that_fails_leaves_the_book_open() {
+    let (app, dir) = app("swap-fails");
+    let path = dir.join("Stuck.tallybook");
+    app.call("book.create_demo", json!({ "path": path })).await.unwrap();
+    let before = app.call("reports.trial_balance", Value::Null).await.unwrap();
+    let blocker = PathBuf::from(format!("{}.previous", path.display()));
+    std::fs::create_dir_all(blocker.join("in-the-way")).unwrap();
+
+    let err = app.call("book.encrypt", Value::Null).await.unwrap_err();
+    assert_eq!(err.code, "io");
+    assert!(err.message.contains("nothing was changed"), "{}", err.message);
+
+    assert_eq!(app.call("book.status", Value::Null).await.unwrap()["open"], true, "the book is still open");
+    assert_eq!(app.call("reports.trial_balance", Value::Null).await.unwrap(), before, "and unchanged");
+    assert!(!tally_store::crypto::is_encrypted_file(&path).unwrap(), "the file on disk is the original");
+    assert!(!PathBuf::from(format!("{}.converting", path.display())).exists(), "no half-made copy left behind");
 }
 
 #[tokio::test]

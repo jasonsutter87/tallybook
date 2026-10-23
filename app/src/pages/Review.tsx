@@ -284,7 +284,18 @@ export default function Review() {
               <div key={item.id}>
                 <div
                   className={`rv-row ${openId === item.id ? "open" : ""} ${item.pending ? "pending" : ""}`}
+                  // A button to keyboard and screen-reader users too: Tab to it, Enter or Space opens it.
+                  role="button"
+                  tabIndex={item.pending ? -1 : 0}
+                  aria-expanded={openId === item.id}
+                  aria-disabled={item.pending || undefined}
                   onClick={() => !item.pending && setOpenId(openId === item.id ? null : item.id)}
+                  onKeyDown={(e) => {
+                    if ((e.key === "Enter" || e.key === " ") && e.target === e.currentTarget && !item.pending) {
+                      e.preventDefault();
+                      setOpenId(openId === item.id ? null : item.id);
+                    }
+                  }}
                   title={item.pending ? "Pending at the bank — you can review it once it clears" : undefined}
                 >
                   <DateTile iso={item.date} />
@@ -514,7 +525,14 @@ function RowEditor({ item, onDone }: { item: InboxItem; onDone: (id: number, tex
           <div className="rv-editor-grid">
             <div className="field" onKeyDownCapture={onComboKeyCapture} onKeyDown={onComboKey}>
               <span className="label">{inflow ? "Where did this come from?" : "Where did this go?"}</span>
-              <AccountSelect value={accountId} onChange={setAccountId} exclude={excludeSelf} prefer={preferKinds} autoFocus={suggested == null} />
+              <AccountSelect
+                value={accountId}
+                onChange={setAccountId}
+                exclude={excludeSelf}
+                prefer={preferKinds}
+                autoFocus={suggested == null}
+                aria-label={inflow ? "Where did this come from?" : "Where did this go?"}
+              />
             </div>
             <label className="field">
               <span className="label">Memo (optional)</span>
@@ -613,9 +631,21 @@ function RowEditor({ item, onDone }: { item: InboxItem; onDone: (id: number, tex
           </div>
           {splits.map((s) => (
             <div key={s.key} className="rv-split-row">
-              <AccountSelect value={s.account_id} onChange={(v) => setSplit(s.key, { account_id: v })} exclude={excludeSelf} prefer={preferKinds} />
-              <MoneyInput value={s.amount} onChange={(v) => setSplit(s.key, { amount: v })} />
-              <input className="input" placeholder="Memo" value={s.memo} onChange={(e) => setSplit(s.key, { memo: e.target.value })} />
+              <AccountSelect
+                value={s.account_id}
+                onChange={(v) => setSplit(s.key, { account_id: v })}
+                exclude={excludeSelf}
+                prefer={preferKinds}
+                aria-label="Split category"
+              />
+              <MoneyInput value={s.amount} onChange={(v) => setSplit(s.key, { amount: v })} aria-label="Split amount" />
+              <input
+                className="input"
+                aria-label="Split memo"
+                placeholder="Memo"
+                value={s.memo}
+                onChange={(e) => setSplit(s.key, { memo: e.target.value })}
+              />
               <button
                 className="btn btn-ghost btn-icon"
                 aria-label="Remove line"

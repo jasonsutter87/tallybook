@@ -113,8 +113,13 @@ pub struct ContactTax {
     pub tin_last4: Option<String>,
 }
 
-pub fn year_range(year: i32) -> (NaiveDate, NaiveDate) {
-    (NaiveDate::from_ymd_opt(year, 1, 1).expect("valid"), NaiveDate::from_ymd_opt(year, 12, 31).expect("valid"))
+/// January 1 through December 31 of `year`. The year can come straight from a
+/// request, so one outside the calendar's range is an error, not a panic.
+pub fn year_range(year: i32) -> Result<(NaiveDate, NaiveDate)> {
+    match (NaiveDate::from_ymd_opt(year, 1, 1), NaiveDate::from_ymd_opt(year, 12, 31)) {
+        (Some(first), Some(last)) => Ok((first, last)),
+        _ => rule(format!("{year} isn't a year Tallybook can work with")),
+    }
 }
 
 impl Store {
@@ -155,7 +160,7 @@ impl Store {
     /// Schedule C for a calendar year from the books plus the line mapping.
     /// `home_office` is a figure the user supplies (simplified method or Form 8829).
     pub fn schedule_c(&self, year: i32, home_office: Cents) -> Result<ScheduleCReport> {
-        let (from, to) = year_range(year);
+        let (from, to) = year_range(year)?;
         let balances = self.balances(Some(from), to)?;
         let confirmed = self.confirmed_lines()?;
         let mut rows = Vec::new();
@@ -222,7 +227,7 @@ impl Store {
     pub fn report_1099(&self, year: i32) -> Result<Report1099> {
         let ty = tax::tax_year(year).ok_or_else(|| StoreError::Rule(format!("Tallybook doesn't have {year} tax tables yet")))?;
         let threshold = Cents(ty.nec_threshold * 100);
-        let (from, to) = year_range(year);
+        let (from, to) = year_range(year)?;
         let mut stmt = self.conn.prepare(
             "SELECT c.id, c.name, c.legal_name, c.is_1099, c.w9_on_file, c.tin_last4,
                     IFNULL(SUM(CASE WHEN a.subtype = 'bank' THEN -l.amount END), 0),
