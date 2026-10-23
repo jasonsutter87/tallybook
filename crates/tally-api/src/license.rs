@@ -155,9 +155,24 @@ pub(crate) fn load(config_dir: &Path) -> Option<License> {
 }
 
 pub(crate) fn save(config_dir: &Path, l: &License) -> ApiResult<()> {
-    std::fs::create_dir_all(config_dir).map_err(|e| ApiError::new("io", e.to_string()))?;
     let json = serde_json::to_vec_pretty(l).map_err(|e| ApiError::new("internal", e.to_string()))?;
-    std::fs::write(file(config_dir), json).map_err(|e| ApiError::new("io", e.to_string()))
+    crate::write_private(&file(config_dir), &json).map_err(|e| ApiError::new("io", e.to_string()))
+}
+
+/// The keychain entry holding the key of one activation.
+fn key_entry(instance_id: &str) -> String {
+    format!("license-key:{instance_id}")
+}
+
+/// A key's last four characters: all `license.json` keeps of a key whose
+/// whole text is in the keychain.
+fn hint(key: &str) -> String {
+    key.chars().rev().take(4).collect::<Vec<_>>().into_iter().rev().collect()
+}
+
+/// Every (key, instance id) pair a license holds, the current one last.
+fn activations(l: &mut License) -> impl Iterator<Item = (&mut String, &String)> {
+    l.earlier.iter_mut().map(|a| (&mut a.key, &a.instance_id)).chain(std::iter::once((&mut l.key, &l.instance_id)))
 }
 
 /// What a Lemon Squeezy activation response is for and the year it was
@@ -238,6 +253,31 @@ impl App {
         ))
     }
 
+    /// `license.json` with each key read back from the keychain where it
+    /// was put there (files from older versions hold whole keys).
+    pub(crate) fn load_license(&self) -> Option<License> {
+        let mut l = load(&self.config_dir)?;
+        for (key, id) in activations(&mut l) {
+            if let Ok(Some(full)) = self.secrets.get(&key_entry(id)) {
+                *key = full;
+            }
+        }
+        Some(l)
+    }
+
+    /// Saves a license with its keys in the keychain (`license-key:<instance
+    /// id>`) and only their last four characters in `license.json`. A key the
+    /// keychain won't take stays whole in the file, which only this user can read.
+    pub(crate) fn save_license(&self, l: &License) -> ApiResult<()> {
+        let mut on_disk = l.clone();
+        for (key, id) in activations(&mut on_disk) {
+            if !id.is_empty() && self.secrets.set(&key_entry(id), key).is_ok() {
+                *key = hint(key);
+            }
+        }
+        save(&self.config_dir, &on_disk)
+    }
+
     pub(crate) async fn license(&self, method: &str, p: Value) -> ApiResult<Value> {
         match method {
             "license.status" => {
@@ -246,7 +286,7 @@ impl App {
                 ok(Status {
                     tier,
                     name: tier.name(),
-                    key_hint: l.as_ref().map(|l| l.key.chars().rev().take(4).collect::<Vec<_>>().into_iter().rev().collect()),
+                    key_hint: l.as_ref().map(|l| hint(&l.key)),
                     email: l.as_ref().and_then(|l| l.email.clone()),
                     activated_on: l.as_ref().map(|l| l.activated_on),
                     tax_years: l.as_ref().map(License::tax_years).unwrap_or_default(),
@@ -266,16 +306,17 @@ impl App {
                 let (product, bought) = product_from(&r)?;
                 let instance_id = r["instance"]["id"].as_str().unwrap_or_default().to_string();
                 let email = r["meta"]["customer_email"].as_str().map(str::to_string);
-                let license = apply(load(&self.config_dir), product, bought, key, instance_id, email, today())?;
-                save(&self.config_dir, &license)?;
+                let license = apply(self.load_license(), product, bought, key, instance_id, email, today())?;
+                self.save_license(&license)?;
                 Box::pin(self.license("license.status", Value::Null)).await
             }
             // -> null. Frees every key activated here so they can move to another computer.
             "license.deactivate" => {
-                if let Some(l) = load(&self.config_dir) {
+                if let Some(l) = self.load_license() {
                     // Best effort: forgetting the keys here matters more than telling Lemon Squeezy.
                     for a in l.earlier.iter().chain(std::iter::once(&Activation { key: l.key.clone(), instance_id: l.instance_id.clone() })) {
                         let _ = post("deactivate", &[("license_key", &a.key), ("instance_id", &a.instance_id)]).await;
+                        let _ = self.secrets.delete(&key_entry(&a.instance_id));
                     }
                     let _ = std::fs::remove_file(file(&self.config_dir));
                 }
