@@ -332,6 +332,35 @@ async fn config_files_are_private_and_license_keys_live_in_the_keychain() {
     }
 }
 
+/// What an interrupted encrypt or decrypt leaves beside a book (possibly a
+/// plain-text copy) is removed when the book next opens in the app.
+#[tokio::test]
+async fn opening_a_book_removes_conversion_leftovers() {
+    let (app, dir) = app("leftovers");
+    let path = dir.join("Vault.tallybook");
+    app.call("book.create", json!({ "path": path, "company_name": "Vault" })).await.unwrap();
+    app.call("book.backup", Value::Null).await.unwrap();
+    let plain_copy = std::fs::read_dir(dir.join("Backups")).unwrap().next().unwrap().unwrap().path();
+    app.call("book.encrypt", Value::Null).await.unwrap();
+    app.call("book.close", Value::Null).await.unwrap();
+    let previous = dir.join("Vault.tallybook.previous");
+    let converting = dir.join("Vault.tallybook.converting");
+    std::fs::copy(&plain_copy, &previous).unwrap();
+    std::fs::copy(&plain_copy, &converting).unwrap();
+    std::fs::write(dir.join("Vault.tallybook.previous-wal"), b"wal").unwrap();
+
+    // An agent session leaves them (it changes no files)...
+    app.set_update_recent(false);
+    app.call("book.open", json!({ "path": path })).await.unwrap();
+    assert!(previous.exists() && converting.exists());
+    // ...the app removes them.
+    app.set_update_recent(true);
+    app.call("book.open", json!({ "path": path })).await.unwrap();
+    assert!(!previous.exists() && !converting.exists() && !dir.join("Vault.tallybook.previous-wal").exists());
+    assert!(path.exists(), "the book itself stays");
+    assert!(tally_store::crypto::is_encrypted_file(&path).unwrap());
+}
+
 #[tokio::test]
 async fn encryption_lifecycle_and_new_machine_recovery() {
     let (app, dir) = app("encrypt");
