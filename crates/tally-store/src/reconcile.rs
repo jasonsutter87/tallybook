@@ -52,7 +52,7 @@ impl Store {
         if !account.kind().is_balance_sheet() {
             return rule("only balance-sheet accounts can be reconciled");
         }
-        let tx = self.conn.transaction()?;
+        let tx = self.conn.savepoint()?;
         let open: Option<ReconciliationId> = tx
             .query_row(
                 "SELECT id FROM reconciliations WHERE account_id = ?1 AND status = 'in_progress'",
@@ -180,7 +180,7 @@ impl Store {
         if !summary.is_balanced() {
             return rule(format!("still off by {}; the difference must be 0.00 to finish", summary.difference));
         }
-        let tx = self.conn.transaction()?;
+        let tx = self.conn.savepoint()?;
         tx.execute(
             "UPDATE journal_lines SET cleared = 'reconciled' WHERE reconciliation_id = ?1 AND cleared = 'cleared'",
             [id],
@@ -199,7 +199,7 @@ impl Store {
         if rec.status != ReconciliationStatus::InProgress {
             return rule("only an in-progress reconciliation can be cancelled");
         }
-        let tx = self.conn.transaction()?;
+        let tx = self.conn.savepoint()?;
         tx.execute("UPDATE journal_lines SET reconciliation_id = NULL WHERE reconciliation_id = ?1", [id])?;
         tx.execute("DELETE FROM reconciliations WHERE id = ?1", [id])?;
         tx.commit()?;
@@ -209,7 +209,7 @@ impl Store {
     /// Reopens the most recent completed statement for an account: its lines
     /// go back to cleared so they can be fixed and reconciled again.
     pub fn undo_last_reconciliation(&mut self, account_id: AccountId) -> Result<()> {
-        let tx = self.conn.transaction()?;
+        let tx = self.conn.savepoint()?;
         let open: bool = tx.query_row(
             "SELECT EXISTS(SELECT 1 FROM reconciliations WHERE account_id = ?1 AND status = 'in_progress')",
             [account_id],
