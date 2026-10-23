@@ -104,6 +104,9 @@ impl Source {
     fn open(path: &Path) -> Result<Source> {
         let conn = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX)
             .map_err(|e| StoreError::Rule(format!("couldn't open {}: {e}", path.display())))?;
+        // Someone else's file: run nothing its schema asks for, and never write.
+        crate::harden(&conn)?;
+        conn.pragma_update(None, "query_only", true)?;
         let src = Source { conn };
         for t in ["person", "entry", "month"] {
             if !src.has_table(t)? {
