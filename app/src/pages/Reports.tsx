@@ -1,3 +1,6 @@
+// Financial reports (profit and loss, balance sheet, who owes whom and more)
+// for a chosen date range, ready to print.
+
 import { keepPreviousData } from "@tanstack/react-query";
 import { ArrowDownLeft, ArrowUpRight, BookOpenCheck, ChevronRight, Clock, Hourglass, PiggyBank, Printer, Scale, TrendingUp, Wallet } from "lucide-react";
 import type { ReactNode } from "react";
