@@ -215,7 +215,7 @@ impl App {
 
         let mut report = DeleteReport::default();
         for conn in &connections {
-            let Some(key) = &conn.secret_ref else { continue };
+            let Some(key) = crate::sync::secret_key(conn) else { continue };
             if conn.provider == Provider::Plaid
                 && let Ok(Some(token)) = self.secrets.get(key)
             {
