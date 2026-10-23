@@ -1,3 +1,6 @@
+// Taxes → Schedule C: which business account feeds which form line, the
+// line-by-line worksheet, and confirming Tallybook's guesses.
+
 import { CheckCheck, Info, Pencil, Printer, X } from "lucide-react";
 import { useMemo, useRef, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
