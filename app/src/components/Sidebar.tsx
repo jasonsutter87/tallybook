@@ -1,3 +1,6 @@
+// The left-hand navigation: household, business and setup links, shown for
+// the sides this book keeps.
+
 import {
   BarChart3,
   CalendarClock,
