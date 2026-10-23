@@ -6,7 +6,7 @@
 //! the latest earlier plan, and editing it gives the month its own copy.
 //! Only household money is budgeted.
 
-use crate::{BadValue, DueState, Result, Store, StoreError, conversion_err, rule};
+use crate::{BadValue, DueState, Result, Store, StoreError, check_entry_not_locked, conversion_err, rule};
 use chrono::{Datelike, Months, NaiveDate};
 use rusqlite::{OptionalExtension, Row, params};
 use serde::{Deserialize, Serialize};
@@ -341,8 +341,10 @@ impl Store {
         Ok(())
     }
 
-    /// Who an entry's money was for. Metadata, so it may change after posting.
+    /// Who an entry's money was for. Metadata, so it may change after posting,
+    /// though not once the entry's period is closed.
     pub fn set_entry_person(&self, entry_id: EntryId, person_id: Option<PersonId>) -> Result<()> {
+        check_entry_not_locked(&self.conn, entry_id)?;
         if let Some(p) = person_id {
             self.person(p)?;
         }
