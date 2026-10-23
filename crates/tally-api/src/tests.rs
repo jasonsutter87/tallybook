@@ -8,9 +8,73 @@ fn temp_dir(name: &str) -> PathBuf {
     dir
 }
 
+/// An app licensed for everything, as most tests want.
 fn app(name: &str) -> (App, PathBuf) {
+    let (app, dir) = free_app(name);
+    let license = crate::license::License {
+        tier: crate::license::Tier::Tax,
+        key: "TEST-KEY-0000".into(),
+        instance_id: "test".into(),
+        email: None,
+        activated_on: today(),
+        tax_years: vec![],
+        earlier: vec![],
+    };
+    crate::license::save(&dir.join("config"), &license).unwrap();
+    (app, dir)
+}
+
+fn free_app(name: &str) -> (App, PathBuf) {
     let dir = temp_dir(name);
     (App::new(Arc::new(MemorySecrets::default()), dir.join("config")).with_file_remover(|p| std::fs::remove_file(p)), dir)
+}
+
+#[tokio::test]
+async fn free_copy_keeps_households_and_never_locks_a_book() {
+    let (app, dir) = free_app("free");
+    let st = app.call("license.status", Value::Null).await.unwrap();
+    assert_eq!(st["tier"], "free");
+    assert_eq!(app.call("book.create", json!({ "path": dir.join("b.tallybook"), "company_name": "Biz" })).await.unwrap_err().code, "license");
+    app.call("book.create", json!({ "path": dir.join("h.tallybook"), "company_name": "Home", "sides": ["household"] })).await.unwrap();
+    assert_eq!(app.call("book.add_side", json!({ "scope": "business" })).await.unwrap_err().code, "license");
+
+    // The demo, and any business book made before, still open and work; only tax prep is held back.
+    app.call("book.create_demo", json!({ "path": dir.join("demo.tallybook") })).await.unwrap();
+    app.call("dashboard", json!({})).await.unwrap();
+    let year = today().year();
+    assert_eq!(app.call("tax.schedule_c", json!({ "year": year })).await.unwrap_err().code, "license");
+    assert!(app.call("tax.years", Value::Null).await.is_ok(), "the Taxes page can still say what it offers");
+
+    // A Business license unlocks the side but not tax prep.
+    let business = crate::license::License {
+        tier: crate::license::Tier::Business,
+        key: "K".into(),
+        instance_id: "i".into(),
+        email: None,
+        activated_on: today(),
+        tax_years: vec![],
+        earlier: vec![],
+    };
+    crate::license::save(&dir.join("config"), &business).unwrap();
+    app.call("book.create", json!({ "path": dir.join("b.tallybook"), "company_name": "Biz" })).await.unwrap();
+    assert_eq!(app.call("tax.export", json!({ "year": year })).await.unwrap_err().code, "license");
+
+    // Business + Tax covers the season it was bought in, not every year after.
+    let tax = crate::license::License {
+        tier: crate::license::Tier::Tax,
+        key: "T".into(),
+        instance_id: "i".into(),
+        email: None,
+        activated_on: today(),
+        tax_years: vec![year - 1, year],
+        earlier: vec![],
+    };
+    crate::license::save(&dir.join("config"), &tax).unwrap();
+    app.call("tax.schedule_c", json!({ "year": year })).await.unwrap();
+    let next = app.call("tax.schedule_c", json!({ "year": year + 1 })).await.unwrap_err();
+    assert!(next.code == "license" || next.code == "unsupported_year", "{next:?}");
+    let years = app.call("tax.years", Value::Null).await.unwrap();
+    assert_eq!(years["licensed"], json!([year - 1, year]));
 }
 
 #[tokio::test]
@@ -131,10 +195,12 @@ async fn tax_center_end_to_end() {
 
     let out = app.call("tax.export", json!({ "year": year })).await.unwrap();
     let out = PathBuf::from(out.as_str().unwrap());
-    for f in ["README.txt", "Schedule C worksheet.csv", "Schedule C mapping.csv", "General ledger.csv", "1099 summary.csv", "Estimated tax payments.csv"] {
+    for f in ["README.txt", "Schedule C worksheet.csv", "Schedule C mapping.csv", "General ledger.csv", "1099 summary.csv", "Estimated tax payments.csv", "Tax summary.pdf", "General ledger.pdf"] {
         assert!(out.join(f).exists(), "{f}");
     }
     assert!(std::fs::read_to_string(out.join("README.txt")).unwrap().contains("not tax advice"));
+    let pdf = std::fs::read(out.join("Tax summary.pdf")).unwrap();
+    assert!(pdf.starts_with(b"%PDF-") && pdf.ends_with(b"%%EOF\n"));
 
     assert_eq!(app.call("tax.estimate", json!({ "year": 2019 })).await.unwrap_err().code, "unsupported_year");
 }

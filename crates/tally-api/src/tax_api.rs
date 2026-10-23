@@ -58,6 +58,8 @@ struct LineView {
 struct YearsView {
     supported: Vec<i32>,
     current: i32,
+    /// Tax years this copy's license covers; empty without Business + Tax.
+    licensed: Vec<i32>,
     disclaimer: &'static str,
 }
 
@@ -244,8 +246,27 @@ fn dollars(c: Cents) -> String {
 impl App {
     pub(crate) async fn tax(&self, method: &str, p: Value) -> ApiResult<Value> {
         let year_of = |p: Value| -> ApiResult<i32> { Ok(params::<Year>(p)?.year.unwrap_or_else(|| today().year())) };
+        // Contractor details and payees are everyday bookkeeping; the rest is tax prep.
+        if !matches!(method, "tax.years" | "tax.lines" | "tax.set_payee" | "tax.set_contact") {
+            self.require(crate::license::Tier::Tax)?;
+        }
+        // Business + Tax is bought per tax season, so a year's figures need that year
+        // licensed. A year with no tables at all gets that (truer) error from the method.
+        let year = match method {
+            "tax.schedule_c" | "tax.confirm_all" | "tax.estimate" | "tax.1099" | "tax.export" => Some(year_of(p.clone())?),
+            "tax.record_payment" => p.get("tax_year").and_then(Value::as_i64).map(|y| y as i32),
+            _ => None,
+        };
+        if let Some(year) = year.filter(|y| tax::tax_year(*y).is_some()) {
+            self.require_tax_year(year)?;
+        }
         match method {
-            "tax.years" => ok(YearsView { supported: tax::supported_years(), current: today().year(), disclaimer: DISCLAIMER }),
+            "tax.years" => ok(YearsView {
+                supported: tax::supported_years(),
+                current: today().year(),
+                licensed: self.tax_years_licensed(),
+                disclaimer: DISCLAIMER,
+            }),
             "tax.lines" => ok(tax::SCHEDULE_C_LINES
                 .iter()
                 .map(|l| LineView { line: l.line, number: l.number, label: l.label, help: l.help })
@@ -335,7 +356,7 @@ impl App {
         let names: std::collections::HashMap<i64, String> =
             s.accounts_in(Some(tally_core::Scope::Business))?.into_iter().map(|a| (a.id, a.name)).collect();
         let (from, to) = year_range(year);
-        let write = |name: &str, body: String| std::fs::write(dir.join(name), body).map_err(|e| ApiError::new("io", e.to_string()));
+        let write = |name: &str, body: &[u8]| std::fs::write(dir.join(name), body).map_err(|e| ApiError::new("io", e.to_string()));
 
         // Schedule C worksheet.
         let est = build_estimate(s, year, ty)?;
@@ -367,18 +388,19 @@ impl App {
             let _ = writeln!(out, "{n},{},{}", csv_cell(label), dollars(v));
         }
         let _ = writeln!(out, ",Meals not deductible (50%),{}", dollars(c.meals_disallowed));
-        write("Schedule C worksheet.csv", out)?;
+        write("Schedule C worksheet.csv", out.as_bytes())?;
 
         // Account → line mapping, so a preparer can audit every number.
         let mut out = String::from("account,line,confirmed,amount\n");
         for r in &sc.rows {
             let _ = writeln!(out, "{},{},{},{}", csv_cell(&r.name), tax::line_info(r.line).number, r.confirmed, dollars(r.amount));
         }
-        write("Schedule C mapping.csv", out)?;
+        write("Schedule C mapping.csv", out.as_bytes())?;
 
         // General ledger for the year.
         let mut out = String::from("entry,date,memo,account,debit,credit,line_memo\n");
-        for e in s.entries(from, to)? {
+        let entries = s.entries(from, to)?;
+        for e in &entries {
             // Business lines only; a crossing entry's household half is left out.
             for l in e.lines.iter().filter(|l| names.contains_key(&l.account_id)) {
                 let (dr, cr) = if l.amount.0 > 0 { (dollars(l.amount), String::new()) } else { (String::new(), dollars(-l.amount)) };
@@ -393,7 +415,7 @@ impl App {
                 );
             }
         }
-        write("General ledger.csv", out)?;
+        write("General ledger.csv", out.as_bytes())?;
 
         // 1099 summary. Full TINs are deliberately not stored or exported.
         let r = s.report_1099(year)?;
@@ -412,7 +434,7 @@ impl App {
                 p.over_threshold
             );
         }
-        write("1099 summary.csv", out)?;
+        write("1099 summary.csv", out.as_bytes())?;
 
         // Estimated payments.
         let mut out = String::from("date,quarter,jurisdiction,amount,voided\n");
@@ -420,11 +442,18 @@ impl App {
             let j = if p.jurisdiction == Jurisdiction::Federal { "federal" } else { "state" };
             let _ = writeln!(out, "{},Q{},{j},{},{}", p.date, p.quarter, dollars(p.amount), p.voided);
         }
-        write("Estimated tax payments.csv", out)?;
+        write("Estimated tax payments.csv", out.as_bytes())?;
+
+        // The same figures, laid out for people to read.
+        let company = s.pref("company.name")?.unwrap_or_else(|| "Your business".into());
+        write("Tax summary.pdf", &crate::tax_pdf::summary(&company, year, today(), &sc, &r, &est.payments))?;
+        write("General ledger.pdf", &crate::tax_pdf::ledger(&company, year, (from, to), today(), &entries, &names))?;
 
         let pnl = s.profit_and_loss_in(from, to, Some(tally_core::Scope::Business))?;
         let readme = format!(
-            "Tallybook tax package · {year}\n\n{DISCLAIMER}\n\nFiles\n- Schedule C worksheet.csv: line-by-line figures (meals already limited to 50%).\n\
+            "Tallybook tax package · {year}\n\n{DISCLAIMER}\n\nFiles\n- Tax summary.pdf: a readable overview with the Schedule C worksheet, account mapping, 1099s and estimated payments.\n\
+             - General ledger.pdf: every entry for the year, ready to read or print.\n\
+             - Schedule C worksheet.csv: line-by-line figures (meals already limited to 50%).\n\
              - Schedule C mapping.csv: which account feeds which line, and whether you confirmed it.\n\
              - General ledger.csv: every entry dated {from} to {to}.\n\
              - 1099 summary.csv: payees, amounts paid from bank vs. card, and who crosses the ${} threshold.\n\
@@ -437,7 +466,7 @@ impl App {
             sc.unconfirmed,
             ty.source
         );
-        write("README.txt", readme)?;
+        write("README.txt", readme.as_bytes())?;
         ok(dir)
     }
 }

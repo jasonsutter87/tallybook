@@ -1,11 +1,11 @@
 [workspace]
 resolver = "2"
-members = ["crates/tally-core", "crates/tally-store", "crates/tally-feed", "crates/tally-api", "crates/tally-devserver", "app/src-tauri"]
+members = ["crates/tally-core", "crates/tally-store", "crates/tally-feed", "crates/tally-api", "crates/tally-devserver", "crates/tally-mcp", "app/src-tauri"]
 
 [workspace.package]
 version = "0.2.0"
 edition = "2024"
-license = "AGPL-3.0-or-later"
+license = "FSL-1.1-ALv2"
 authors = ["Jason Sutter"]
 
 [workspace.dependencies]

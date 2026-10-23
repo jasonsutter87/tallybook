@@ -1,0 +1,17 @@
+[package]
+name = "tally-mcp"
+description = "Tallybook for agents: tally-api as an MCP server over stdio."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+publish = false
+
+[[bin]]
+name = "tallybook-mcp"
+path = "src/main.rs"
+
+[dependencies]
+tally-api = { path = "../tally-api" }
+serde_json = "1"
+tokio = { version = "1", features = ["io-std", "io-util", "macros", "rt-multi-thread"] }

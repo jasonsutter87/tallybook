@@ -12,6 +12,12 @@ async fn call(app: tauri::State<'_, Arc<App>>, method: String, params: serde_jso
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // `Tallybook --mcp [--write] [--book <path>]`: no window, just the books on
+    // stdin/stdout for an agent (see docs/AGENTS.md).
+    let args: Vec<String> = std::env::args().collect();
+    if args.iter().any(|a| a == "--mcp") {
+        return serve_mcp(&args);
+    }
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
@@ -33,4 +39,20 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![call])
         .run(tauri::generate_context!())
         .expect("error while running Tallybook");
+}
+
+/// Runs the MCP server with the same config dir and keychain this build of the app uses.
+fn serve_mcp(args: &[String]) {
+    let book = args.iter().position(|a| a == "--book").and_then(|i| args.get(i + 1)).map(std::path::PathBuf::from);
+    let opts = tally_mcp::Options { write: args.iter().any(|a| a == "--write"), book };
+    let (config_dir, service) = if cfg!(debug_assertions) {
+        (tally_mcp::desktop_config_dir().join("dev"), "app.tallybook.dev")
+    } else {
+        (tally_mcp::desktop_config_dir(), "app.tallybook")
+    };
+    let app = Arc::new(App::new(Arc::new(Keychain::new(service)), config_dir));
+    if let Err(e) = tauri::async_runtime::block_on(tally_mcp::serve_stdio(app, opts)) {
+        eprintln!("Tallybook --mcp: {e}");
+        std::process::exit(1);
+    }
 }

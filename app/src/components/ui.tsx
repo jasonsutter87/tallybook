@@ -298,6 +298,8 @@ export function MoneyInput(props: {
   large?: boolean;
   className?: string;
   allowNegative?: boolean;
+  /** For inputs without a visible label (inside a table row, say). */
+  "aria-label"?: string;
 }) {
   const [text, setText] = useState(() => centsToInput(props.value));
   const last = useRef(props.value);
@@ -312,6 +314,7 @@ export function MoneyInput(props: {
     <input
       className={`input money ${props.large ? "input-lg" : ""} ${props.className ?? ""}`}
       inputMode="decimal"
+      aria-label={props["aria-label"]}
       placeholder={props.placeholder ?? "0.00"}
       autoFocus={props.autoFocus}
       value={text}

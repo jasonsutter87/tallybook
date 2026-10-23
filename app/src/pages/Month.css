@@ -173,7 +173,7 @@
   border: 0;
   background: none;
   padding: 0;
-  color: var(--brand);
+  color: var(--brand-strong);
   font: inherit;
   font-weight: 700;
   cursor: pointer;

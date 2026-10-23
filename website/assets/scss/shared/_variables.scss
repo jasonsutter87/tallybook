@@ -1,0 +1,93 @@
+// ==========================================================================
+// VARIABLES
+// Tallybook's palette and type, matching the app (app/src/styles/app.css)
+// so the site and the product look like one thing.
+// ==========================================================================
+
+// Brand
+$ink: #0b1b33;
+$ink-2: #4a5a75;
+$ink-3: #66738a; // darker than the app's #8592a8 so small text passes WCAG AA (4.8:1) on white
+$bg: #f3f5f9;
+$surface: #ffffff;
+$surface-2: #f7f9fc;
+$line: #e6eaf1;
+$line-strong: #d5dbe6;
+
+$brand: #0aa2c0;
+$brand-strong: #087f99; // white text on this passes AA; plain $brand does not
+$brand-deep: #076a80;
+$brand-soft: #e2f5f9;
+$brand-glow: #5fd4ea;
+
+$pos: #0e9f6e;
+$pos-soft: #e3f6ee;
+$warn: #c77700;
+$violet: #6d5bd0;
+$violet-soft: #efecfb;
+
+$hero-ink-2: rgba(255, 255, 255, 0.74);
+$hero: linear-gradient(135deg, #0b1b33 0%, #12355e 58%, #0b8aa8 100%);
+
+// Bootstrap names, kept so the compatibility layer still works
+$primary: $brand-strong;
+$secondary: $ink-2;
+$success: $pos;
+$danger: #e0474c;
+$warning: $warn;
+$info: $brand;
+$light: $bg;
+$dark: $ink;
+
+// Grays
+$gray-100: #f8f9fa;
+$gray-200: #e9ecef;
+$gray-300: #dee2e6;
+$gray-400: #ced4da;
+$gray-500: #adb5bd;
+$gray-600: #6c757d;
+$gray-700: #495057;
+$gray-800: #343a40;
+$gray-900: #212529;
+
+// Typography
+$font-family-sans: 'Plus Jakarta Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+$font-mono: ui-monospace, 'SF Mono', Menlo, monospace;
+
+$font-weight-normal: 400;
+$font-weight-medium: 600;
+$font-weight-bold: 800;
+
+// Spacing (Bootstrap scale)
+$spacer: 1rem;
+$spacers: (
+  0: 0,
+  1: $spacer * 0.25,
+  2: $spacer * 0.5,
+  3: $spacer,
+  4: $spacer * 1.5,
+  5: $spacer * 3
+);
+
+// Breakpoints (matching Bootstrap/Tailwind config)
+$breakpoint-sm: 576px;
+$breakpoint-md: 768px;
+$breakpoint-lg: 992px;
+$breakpoint-xl: 1200px;
+$breakpoint-xxl: 1400px;
+
+// Borders
+$border-radius: 14px;
+$border-radius-sm: 10px;
+$border-radius-lg: 20px;
+$border-radius-xl: 28px;
+
+// Shadows
+$shadow-sm: 0 1px 2px rgba(11, 27, 51, 0.05);
+$shadow: 0 1px 2px rgba(11, 27, 51, 0.04), 0 6px 20px rgba(11, 27, 51, 0.06);
+$shadow-lg: 0 24px 60px rgba(11, 27, 51, 0.18);
+
+// Transitions
+$transition-fast: 150ms ease;
+$transition-base: 300ms ease;
+$transition-slow: 500ms ease;

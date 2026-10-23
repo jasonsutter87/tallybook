@@ -1,0 +1,53 @@
+baseURL = 'https://tallybook.app/'
+languageCode = 'en-us'
+title = 'Tallybook'
+enableRobotsTXT = true
+disableKinds = ['taxonomy', 'term']
+
+[params]
+CompanyName = 'Tallybook'
+repoName = 'tallybook'
+description = 'Bookkeeping and budgeting on your own computer. A household budget that is free for good; add your business for $19.99, once, and tax prep for $49.99 a tax season. No subscription.'
+github = 'https://github.com/jasonsutter87/tallybook'
+supportEmail = 'hello@tallybook.app'
+author = 'Jason Sutter'
+
+# The release the download page points at. Bump on every release.
+version = '0.2.0'
+
+# Keep in step with the app (crates/tally-api/src/license.rs, app/src/flows/License.tsx).
+[params.pricing]
+business = '$19.99'
+tax = '$49.99'
+taxRenewal = '$29.99'
+taxRenewalCheckout = 'https://tallybook.lemonsqueezy.com/buy/tax-renewal'
+businessCheckout = 'https://tallybook.lemonsqueezy.com/buy/business'
+taxCheckout = 'https://tallybook.lemonsqueezy.com/buy/business-tax'
+
+[menus]
+  [[menus.main]]
+    name = 'Household'
+    url = '/#household'
+    weight = 10
+  [[menus.main]]
+    name = 'Business'
+    url = '/#business'
+    weight = 20
+  [[menus.main]]
+    name = 'Taxes'
+    url = '/#taxes'
+    weight = 30
+  [[menus.main]]
+    name = 'Pricing'
+    url = '/pricing/'
+    weight = 40
+  [[menus.main]]
+    name = 'Blog'
+    url = '/blog/'
+    weight = 50
+
+[environments.development]
+baseURL = 'http://localhost:1313/'
+
+[environments.production]
+baseURL = 'https://tallybook.app/'

@@ -1,0 +1,34 @@
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>
+  {{- block "title" . -}}
+    {{- if .Params.PageTitle -}}{{ .Params.PageTitle }}{{- else if .IsHome -}}{{ .Site.Title }} · Bookkeeping and budgeting on your own computer{{- else -}}{{ .Title }} · {{ .Site.Title }}{{- end -}}
+  {{- end -}}
+</title>
+
+<!-- metatags -->
+{{ partial "seo_schema" . }}
+
+<!-- icons -->
+<link rel="icon" href="{{ "favicon.svg" | relURL }}" type="image/svg+xml">
+<link rel="icon" href="{{ "favicon-32x32.png" | relURL }}" sizes="32x32" type="image/png">
+<link rel="icon" href="{{ "favicon-16x16.png" | relURL }}" sizes="16x16" type="image/png">
+<link rel="apple-touch-icon" href="{{ "apple-touch-icon.png" | relURL }}" sizes="180x180">
+<meta name="theme-color" content="#0b1b33">
+
+<!-- fonts: Plus Jakarta Sans, the app's own face, served from here so no third party sees a visit -->
+<link rel="preload" href="{{ "fonts/plus-jakarta-sans-latin-wght-normal.woff2" | relURL }}" as="font" type="font/woff2" crossorigin>
+
+<!-- CSS - Tailwind with Bootstrap compatibility layer -->
+<link rel="stylesheet" href="{{ "css/main.css" | relURL }}">
+{{ range .Params.css }}
+  <link rel="stylesheet" href="{{ "css/pages/" | relURL }}{{ . }}">
+{{ end }}
+
+<!-- blog feed -->
+{{ with site.GetPage "/blog" }}{{ with .OutputFormats.Get "rss" }}<link rel="alternate" type="application/rss+xml" title="Tallybook blog" href="{{ .Permalink }}">{{ end }}{{ end }}
+
+<!-- canonical -->
+{{ if not .Params.canonical }}
+  <link rel="canonical" href="{{ .Permalink }}">
+{{ end }}

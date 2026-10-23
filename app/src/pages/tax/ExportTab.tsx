@@ -10,6 +10,8 @@ import "./tax.css";
 import { TaxError } from "./txShared";
 
 const FILES: { name: string; desc: string; icon: ReactNode }[] = [
+  { name: "Tax summary.pdf", desc: "The year at a glance: Schedule C, account mapping, 1099s and estimates.", icon: <FileText size={16} /> },
+  { name: "General ledger.pdf", desc: "Every entry for the year, laid out to read or print.", icon: <FileText size={16} /> },
   { name: "Schedule C worksheet.csv", desc: "Line-by-line figures, meals already limited to 50%.", icon: <Table size={16} /> },
   { name: "Schedule C mapping.csv", desc: "Which account feeds each line, and whether you confirmed it.", icon: <Table size={16} /> },
   { name: "General ledger.csv", desc: "Every entry for the year, so nothing has to be taken on faith.", icon: <BookOpen size={16} /> },
@@ -73,20 +75,20 @@ export default function ExportTab({ year, go }: TaxTabProps) {
       >
         <div className="stack" style={{ gap: 16 }}>
           <p className="muted" style={{ maxWidth: 680 }}>
-            One folder with everything a tax preparer usually asks for, saved next to your book file. Plain CSV files open in Excel, Numbers or
-            Google Sheets — nothing is sent anywhere, and nothing is filed.
+            One folder with everything a tax preparer usually asks for, saved next to your book file. The PDFs are for reading; the CSVs open in
+            Excel, Numbers or Google Sheets. Nothing is sent anywhere, and nothing is filed.
           </p>
 
-          <div className="tx-files">
+          <div className="tx-manifest">
             {FILES.map((f) => (
-              <div key={f.name} className="tx-file">
-                <span className="icon-bubble" style={{ width: 30, height: 30, borderRadius: 9 }}>
-                  {f.icon}
+              <div key={f.name} className="tx-manifest-row">
+                <span className="tx-manifest-name">
+                  <span className="icon-bubble" style={{ width: 28, height: 28, borderRadius: 8 }}>
+                    {f.icon}
+                  </span>
+                  {f.name}
                 </span>
-                <div className="grow">
-                  <div className="tx-file-name">{f.name}</div>
-                  <div className="tx-file-desc">{f.desc}</div>
-                </div>
+                <span className="tx-file-desc">{f.desc}</span>
               </div>
             ))}
           </div>

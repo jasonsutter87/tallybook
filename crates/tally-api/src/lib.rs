@@ -19,9 +19,12 @@ mod books;
 mod cloud;
 mod dashboard;
 mod demo;
+mod license;
+mod pdf;
 pub mod secrets;
 mod sync;
 mod tax_api;
+mod tax_pdf;
 
 use chrono::{Local, NaiveDate};
 use serde::de::DeserializeOwned;
@@ -577,7 +580,11 @@ impl App {
             }
             "book.create" => {
                 let p: CreateBook = params(p)?;
-                self.create_book(&p.path, &p.company_name, &p.sides.unwrap_or_else(|| vec![Scope::Business]))
+                let sides = p.sides.unwrap_or_else(|| vec![Scope::Business]);
+                if sides.contains(&Scope::Business) {
+                    self.require(license::Tier::Business)?;
+                }
+                self.create_book(&p.path, &p.company_name, &sides)
             }
             "book.create_demo" => {
                 let p: OpenPath = params(p)?;
@@ -605,6 +612,9 @@ impl App {
             // {scope} -> null. Adds a side and its default chart.
             "book.add_side" => {
                 let p: AddSide = params(p)?;
+                if p.scope == Scope::Business {
+                    self.require(license::Tier::Business)?;
+                }
                 self.with(|s| s.add_side(p.scope))
             }
             "book.backup" => self.backup(),
@@ -1004,6 +1014,7 @@ impl App {
             // ---------------------------------------------------- bank connections
             m if m.starts_with("bank.") => self.bank(m, p).await,
             m if m.starts_with("tax.") => self.tax(m, p).await,
+            m if m.starts_with("license.") => self.license(m, p).await,
             m if m.starts_with("cloud.") => self.cloud(m, p).await,
             "book.delete" | "book.unlock" | "book.encrypt" | "book.decrypt" | "book.recovery_key" | "book.delete_plain_backups" => {
                 self.books(method, p).await

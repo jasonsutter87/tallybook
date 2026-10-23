@@ -1,0 +1,36 @@
+{{/* Accessible header with mobile menu */}}
+<div class="container">
+  <nav class="site-nav" aria-label="Primary navigation">
+    <a href="/" class="brand" aria-label="{{ .Site.Title }} home">
+      <img src="{{ "images/brand/logo.svg" | relURL }}" alt="" width="34" height="34">
+      <span>{{ .Site.Title }}</span>
+    </a>
+
+    <ul class="nav-links d-none d-lg-flex">
+      {{ range .Site.Menus.main }}
+        <li><a href="{{ .URL }}">{{ .Name }}</a></li>
+      {{ end }}
+    </ul>
+
+    <div class="nav-actions">
+      <a href="/download/" class="btn btn-primary btn-sm">{{ partial "icon.html" (dict "name" "download" "size" 16) }} Download</a>
+      <button
+        type="button"
+        class="nav-icon d-lg-none"
+        aria-label="Toggle navigation menu"
+        aria-expanded="false"
+        aria-controls="mobile-menu"
+        onclick="document.getElementById('mobile-menu').classList.toggle('hidden'); this.setAttribute('aria-expanded', this.getAttribute('aria-expanded') === 'true' ? 'false' : 'true');"
+      >
+        {{ partial "icon.html" (dict "name" "menu" "size" 22) }}
+      </button>
+    </div>
+  </nav>
+
+  {{/* Mobile menu (hidden by default) */}}
+  <ul id="mobile-menu" class="hidden mobile-menu d-lg-none">
+    {{ range .Site.Menus.main }}
+      <li><a href="{{ .URL }}" onclick="document.getElementById('mobile-menu').classList.add('hidden')">{{ .Name }}</a></li>
+    {{ end }}
+  </ul>
+</div>

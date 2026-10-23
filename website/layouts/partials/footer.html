@@ -1,0 +1,46 @@
+<div class="container">
+  <div class="footer-grid">
+    <div class="footer-brand">
+      <a href="/" class="brand">
+        <img src="{{ "images/brand/logo.svg" | relURL }}" alt="" width="30" height="30">
+        <span>{{ .Site.Title }}</span>
+      </a>
+      <p>Bookkeeping and budgeting on your own computer. Your books stay in one file that you own.</p>
+    </div>
+    <nav aria-label="Product">
+      <h2>Product</h2>
+      <ul>
+        <li><a href="/#household">Household budget</a></li>
+        <li><a href="/#business">For your business</a></li>
+        <li><a href="/#taxes">Tax prep</a></li>
+        <li><a href="/pricing/">Pricing</a></li>
+        <li><a href="/download/">Download</a></li>
+        <li><a href="/blog/">Blog</a></li>
+      </ul>
+    </nav>
+    <nav aria-label="Help">
+      <h2>Help</h2>
+      <ul>
+        <li><a href="/pricing/#questions">Questions</a></li>
+        <li><a href="/help/bank-connections/">Connecting your bank</a></li>
+        <li><a href="/help/taxes/">Tax prep guide</a></li>
+        <li><a href="/help/agents/">Use it with AI agents</a></li>
+        <li><a href="{{ .Site.Params.github }}/releases">What's new</a></li>
+        <li><a href="{{ .Site.Params.github }}/issues">Report a problem</a></li>
+        <li><a href="{{ .Site.Params.github }}">Source code</a></li>
+      </ul>
+    </nav>
+    <nav aria-label="Policies">
+      <h2>Policies</h2>
+      <ul>
+        <li><a href="/privacy-policy/">Privacy</a></li>
+        <li><a href="/terms-of-use/">Terms of use</a></li>
+        <li><a href="/accessibility-statement/">Accessibility</a></li>
+      </ul>
+    </nav>
+  </div>
+  <div class="footer-base">
+    <p>&copy; {{ now.Year }} {{ .Site.Params.CompanyName }}. Source available under the <a href="{{ .Site.Params.github }}/blob/main/LICENSE">Functional Source License</a>.</p>
+    <p>Tallybook prepares worksheets and estimates. It isn't tax advice and never files anything for you.</p>
+  </div>
+</div>

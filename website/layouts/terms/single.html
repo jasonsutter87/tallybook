@@ -1,0 +1,14 @@
+{{ define "main" }}
+<section class="page-hero" aria-labelledby="page-title">
+  <div class="container">
+    <p class="eyebrow">Policies</p>
+    <h1 id="page-title">{{ .Title }}</h1>
+    {{ with .Params.updated }}<p class="page-lede">Last updated {{ dateFormat "January 2, 2006" . }}</p>{{ end }}
+  </div>
+</section>
+<section class="section tight">
+  <div class="container narrow prose">
+    {{ .Content }}
+  </div>
+</section>
+{{ end }}

@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { ApiError, isTauri, useAction, useApi } from "../api";
 import { Field, Modal, useToast } from "../components/ui";
 import DeleteBookModal from "../flows/DeleteBookModal";
+import { OFFERS, UpgradeOffer, useLicense } from "../flows/License";
 import UnlockBookModal from "../flows/UnlockBookModal";
 import type { RecentBook, Scope } from "../types";
 
@@ -48,6 +49,14 @@ export default function Welcome() {
   const [kind, setKind] = useState(0);
   // Word the form for a household when that's the book's main side.
   const household = KINDS[kind].sides[0] === "household";
+  const lic = useLicense();
+  // A business side needs a license; a household book never does.
+  const needsBusiness = KINDS[kind].sides.includes("business") && !lic.has("business");
+  // Free copies start on the free choice.
+  const licensed = lic.has("business");
+  useEffect(() => {
+    if (lic.data && !licensed) setKind(KINDS.findIndex((k) => !k.sides.includes("business")));
+  }, [lic.data, licensed]);
 
   const [locked, setLocked] = useState<string | null>(null);
   /** Opens a book, asking for its recovery key if it's encrypted and unknown here. */
@@ -143,7 +152,7 @@ export default function Welcome() {
             <button className="btn btn-secondary" onClick={() => setCreating(false)}>
               Cancel
             </button>
-            <button className="btn btn-primary" disabled={!name.trim() || create.isPending} onClick={doCreate}>
+            <button className="btn btn-primary" disabled={!name.trim() || create.isPending || needsBusiness} onClick={doCreate}>
               Create book
             </button>
           </>
@@ -161,6 +170,11 @@ export default function Welcome() {
               <k.icon size={18} />
               <span className="grow">
                 <span className="bold">{k.label}</span>
+                {k.sides.includes("business") && !lic.has("business") && (
+                  <span className="pill" style={{ marginLeft: 8 }}>
+                    {OFFERS.business.price}
+                  </span>
+                )}
                 <span className="muted small" style={{ display: "block" }}>
                   {k.body}
                 </span>
@@ -168,6 +182,11 @@ export default function Welcome() {
             </button>
           ))}
         </div>
+        {needsBusiness && (
+          <div style={{ marginBottom: 16 }}>
+            <UpgradeOffer need="business" compact />
+          </div>
+        )}
         <Field
           label={household ? "Household name" : "Business name"}
           hint={dir.data ? `Saved to ${joinPath(dir.data, name || "…")}` : household ? "Shown at the top of your book." : "This appears on your invoices and reports."}

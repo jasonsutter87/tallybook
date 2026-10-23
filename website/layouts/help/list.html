@@ -1,0 +1,22 @@
+{{ define "main" }}
+<section class="page-hero" aria-labelledby="page-title">
+  <div class="container">
+    <p class="eyebrow">Help</p>
+    <h1 id="page-title">Guides</h1>
+    <p class="page-lede">{{ .Description }}</p>
+  </div>
+</section>
+<section class="section tight">
+  <div class="container narrow">
+    <div class="card-list">
+      {{ range .Pages.ByWeight }}
+        <a class="link-card" href="{{ .RelPermalink }}">
+          <h2>{{ .Title }}</h2>
+          <p>{{ .Description }}</p>
+          <span class="link-card-more">Read the guide {{ partial "icon.html" (dict "name" "arrow-right" "size" 16) }}</span>
+        </a>
+      {{ end }}
+    </div>
+  </div>
+</section>
+{{ end }}

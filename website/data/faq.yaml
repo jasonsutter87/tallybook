@@ -1,0 +1,81 @@
+# Questions shown on the home page (home: true) and the pricing page (all of them).
+- q: Is the household budget really free?
+  home: true
+  a: >-
+    Yes, for good. Budgets, bills, goals, bank import, reports and encryption
+    cost nothing and never expire. You only pay if you want to keep a business,
+    or have Tallybook prepare your business taxes.
+
+- q: Is this a subscription?
+  home: true
+  a: >-
+    No, nothing renews by itself. Business is a one-time purchase that's yours for
+    good, updates included. Tax prep is bought per tax season, because the IRS
+    changes its numbers every year: a Business + Tax purchase covers the tax year
+    you buy it in and the one before (so buying in February to file last year
+    works), and returning customers get the next season for $29.99.
+
+- q: Do I need an account?
+  home: true
+  a: >-
+    No. There's nothing to sign up for. Your books live in a single file on your
+    computer. When you buy a license you get a key by email; paste it into
+    Settings → License and Tallybook checks it once. After that it works offline.
+
+- q: Where is my data stored?
+  home: true
+  a: >-
+    In one <code>.tallybook</code> file on your computer, in Documents/Tallybook
+    unless you pick somewhere else. Turn on encryption and the file is unreadable
+    without your key. Cloud copies are only ever sent encrypted, to a folder or Git
+    repository you choose.
+
+- q: How do I bring in my transactions?
+  a: >-
+    Import a CSV or OFX/QFX statement from your bank's website (always free), or
+    connect your bank through SimpleFIN (about $15 a year, paid to SimpleFIN) or
+    Plaid using your own account. Cash and anything else the bank won't see can
+    be logged by hand in a few taps.
+
+- q: Does it file my taxes or run payroll?
+  a: >-
+    No. Tallybook keeps your books and prepares your tax numbers: a Schedule C
+    worksheet, a quarterly estimate plan and 1099 tracking. It doesn't submit
+    anything to the IRS or run payroll. Have a tax professional review your
+    figures before you file.
+
+- q: Who is the tax prep for?
+  a: >-
+    Sole proprietors and single-member LLCs that file a Schedule C with their
+    personal return. It isn't built for partnerships or corporations.
+
+- q: I already use Tallybook for my business. Do I have to pay?
+  a: >-
+    Books that already keep a business keep working, as they always have. Tax
+    prep, and adding a business to a book that doesn't have one, need a license.
+
+- q: Who handles payments?
+  a: >-
+    Lemon Squeezy, our reseller, takes payment and handles sales tax and VAT.
+    Tallybook never sees your card details.
+
+- q: Mac, Windows or Linux?
+  a: >-
+    All three. Mac is the most tested so far, so please report anything odd on
+    Windows or Linux on GitHub.
+
+- q: Can I use it with Claude, ChatGPT's Codex or another AI agent?
+  a: >-
+    Yes. Tallybook runs as an MCP server, the open standard most agents speak, so
+    Claude, OpenAI's Codex and Agents SDK, OpenClaw and others can answer
+    questions about your books and, if you allow it, categorize transactions and
+    plan the month. It's read-only unless you say otherwise.
+    <a href="/help/agents/">Set it up</a>.
+
+- q: Can I see the source code?
+  a: >-
+    Yes. It's public on <a href="https://github.com/jasonsutter87/tallybook">GitHub</a>
+    under the Functional Source License: read it, build it and use it for yourself,
+    just don't sell it or build a competing product with it. Each release becomes
+    Apache-2.0 two years after it ships. Buying a license gets you the signed,
+    auto-updating app and supports the work.

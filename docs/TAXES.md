@@ -18,7 +18,7 @@ that file **Schedule C** with their Form 1040.
 | **Schedule C** | Each income/expense account is mapped to a Schedule C line. Tallybook suggests the line and you confirm it. You get a line-by-line worksheet with meals limited to 50% and an optional simplified home-office deduction. |
 | **Quarterly estimates** | A plan for federal estimated tax (Form 1040-ES) with due dates and payment tracking. Payments are recorded as owner's draws, because estimated income tax is personal, not a business expense. |
 | **1099s** | Totals paid to each payee, split into **bank payments** (reportable by you on 1099-NEC) and **card payments** (reported by the card networks, not you). Flags who's over the threshold and whose W-9 is missing. |
-| **Accountant package** | A folder with the Schedule C worksheet, the account mapping, the general ledger, a 1099 summary, estimated payments and a README. |
+| **Accountant package** | A folder with a readable tax summary and general ledger as PDFs, plus the Schedule C worksheet, account mapping, general ledger, 1099 summary and estimated payments as spreadsheets, and a README. |
 
 ## Two ways to plan estimates
 

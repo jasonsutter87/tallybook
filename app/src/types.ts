@@ -605,6 +605,8 @@ export type ScheduleCLine =
 export interface TaxYears {
   supported: number[];
   current: number;
+  /** Tax years this copy's license covers. */
+  licensed: number[];
   disclaimer: string;
 }
 
@@ -1065,4 +1067,21 @@ export interface LedgerImport {
   money_account_id: number;
   /** Plain-words remarks about anything that needed a judgment call. */
   notes: string[];
+}
+
+/** `license.status`. Tax includes Business. */
+export type LicenseTier = "free" | "business" | "tax";
+
+export interface LicenseStatus {
+  tier: LicenseTier;
+  name: string;
+  /** The key's last four characters. */
+  key_hint: string | null;
+  email: string | null;
+  activated_on: ISODate | null;
+  /** Tax years covered, oldest first; empty without Business + Tax. */
+  tax_years: number[];
+  business_checkout: string;
+  tax_checkout: string;
+  tax_renewal_checkout: string;
 }
