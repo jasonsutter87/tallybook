@@ -1,13 +1,31 @@
 //! Settings: preferences, fiscal year start and the books-closed lock date.
 //!
 //! Methods: `settings.get`, `settings.set`.
+//!
+//! `settings.set` writes only the preferences the Settings screen edits
+//! ([`PREF_KEYS`]). Everything else kept in the same table has its own method
+//! with its own checks: cloud copies (`cloud.set`), the tax profile
+//! (`tax.set_profile`), bank links (`bank.*`).
 
-use crate::{ApiResult, App, params, unknown_method};
+use crate::{ApiError, ApiResult, App, params, unknown_method};
 use chrono::NaiveDate;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 // The glob above brings in the store's one-arg `Result`; keep std's.
 use std::result::Result;
+
+/// The preference keys `settings.set` accepts: the business profile and the
+/// invoice defaults, as the Settings screen saves them.
+pub(crate) const PREF_KEYS: &[&str] = &[
+    "company.name",
+    "company.email",
+    "company.phone",
+    "company.address",
+    "invoice.next_number",
+    "invoice.default_terms_days",
+    "invoice.default_tax_bp",
+    "invoice.footer",
+];
 
 #[derive(Deserialize)]
 struct SetSettings {
@@ -37,6 +55,10 @@ impl App {
             }),
             "settings.set" => {
                 let p: SetSettings = params(p)?;
+                // Check every key before writing any, so a refused call changes nothing.
+                if let Some(k) = p.prefs.iter().flat_map(|m| m.keys()).find(|k| !PREF_KEYS.contains(&k.as_str())) {
+                    return Err(ApiError::new("bad_params", format!("{k} isn't a preference settings.set can change")));
+                }
                 self.with(|s| {
                     for (k, v) in p.prefs.unwrap_or_default() {
                         s.set_pref(&k, v.as_deref().map(str::trim).filter(|v| !v.is_empty()))?;
