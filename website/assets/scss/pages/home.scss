@@ -42,6 +42,24 @@
   text-align: center;
 }
 
+// Rotating headlines (js/pages/home.js), stacked in one cell so the heading
+// keeps the height of its longest line while they cross-fade.
+.hero-rotator {
+  display: grid;
+
+  > span {
+    grid-area: 1 / 1;
+    opacity: 0;
+    filter: blur(8px);
+    transition: opacity 0.7s ease, filter 0.7s ease;
+
+    &.is-on {
+      opacity: 1;
+      filter: none;
+    }
+  }
+}
+
 .hero-lede {
   max-width: 640px;
   margin: 1.5rem auto 0;
@@ -349,5 +367,34 @@
     margin-top: 1rem;
     text-align: center;
     color: $hero-ink-2;
+  }
+}
+
+// --------------------------------------------------------------------------
+// Scroll motion (js/pages/home.js)
+// --------------------------------------------------------------------------
+
+// The script adds .motion to <html> only when it runs and motion is allowed,
+// so without it everything is simply visible.
+.motion {
+  .feature-media,
+  .shot-strip figure,
+  .data-card,
+  .dark-shot,
+  .promise-grid > div {
+    opacity: 0;
+    transform: translateY(40px);
+    transition: opacity 0.8s ease, transform 0.8s cubic-bezier(0.2, 0.7, 0.2, 1);
+
+    &.is-in {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  .hero-shot img,
+  .feature-media img,
+  .dark-shot img {
+    will-change: transform;
   }
 }
