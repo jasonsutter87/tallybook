@@ -75,7 +75,13 @@ fn main() {
 async fn serve() {
     let config = tally_api::default_dir().join(".devserver");
     // Separate keychain service so dev never touches the real app's secrets.
-    let app = Arc::new(App::new(Arc::new(Keychain::new("app.tallybook.dev")), config));
+    let mut app = App::new(Arc::new(Keychain::new("app.tallybook.dev")), config);
+    // The end-to-end tests delete throwaway books; those shouldn't pile up in
+    // the developer's real Trash. Everyday dev use still goes through the Trash.
+    if std::env::var_os("TALLYBOOK_NO_TRASH").is_some() {
+        app = app.with_file_remover(|p| std::fs::remove_file(p));
+    }
+    let app = Arc::new(app);
     let listener = tokio::net::TcpListener::bind(ADDR).await.expect("port 1441 is free");
     println!("tally-devserver listening on http://{ADDR} (books in {})", tally_api::default_dir().display());
     axum::serve(listener, router(app)).await.expect("server runs");
