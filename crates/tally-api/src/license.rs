@@ -281,7 +281,7 @@ impl App {
                 }
                 ok(json!(null))
             }
-            _ => Err(ApiError::new("unknown_method", format!("no such method: {method}"))),
+            _ => Err(crate::unknown_method(method)),
         }
     }
 }
