@@ -175,6 +175,7 @@ export default function Invoices() {
                 </div>
               </div>
             ) : (
+              <div className="table-scroll" role="region" aria-label="Invoices" tabIndex={0}>
               <table className="table">
                 <thead>
                   <tr>
@@ -222,6 +223,7 @@ export default function Invoices() {
                   })}
                 </tbody>
               </table>
+              </div>
             )}
           </Card>
         </div>
