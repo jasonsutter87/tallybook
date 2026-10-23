@@ -161,6 +161,9 @@ they can't use Tallybook directly.
 
 Money is integer cents (`12345` is $123.45) and dates are `YYYY-MM-DD`.
 
+Every method `call` can reach, with its params, results, errors and whether it is
+read, write or never allowed for agents, is in the [API reference](API.md).
+
 ## Guardrails
 
 - **Read-only by default.** Without `--write`, nothing that changes the book is offered,
