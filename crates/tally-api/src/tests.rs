@@ -239,8 +239,8 @@ async fn delete_book_tears_everything_down() {
     app.call("book.create", json!({ "path": path, "company_name": "Gone Co" })).await.unwrap();
     app.call("book.backup", Value::Null).await.unwrap();
     // A bank connection whose credential lives in the keychain.
-    app.secrets.set("simplefin:test", "https://user:pass@bridge.example/simplefin").unwrap();
-    app.run(|s| s.create_connection(Provider::Simplefin, "CU", None, Some("simplefin:test"))).unwrap();
+    app.secrets.set("simplefin:00000000-0000-4000-8000-000000000001", "https://user:pass@bridge.example/simplefin").unwrap();
+    app.run(|s| s.create_connection(Provider::Simplefin, "CU", None, Some("simplefin:00000000-0000-4000-8000-000000000001"))).unwrap();
 
     let wrong = app.call("book.delete", json!({ "path": path, "confirm_name": "gone co" })).await.unwrap_err();
     assert_eq!(wrong.code, "rule", "the name must match exactly");
@@ -250,7 +250,7 @@ async fn delete_book_tears_everything_down() {
     let r = app.call("book.delete", json!({ "path": path, "confirm_name": "Gone Co", "include_backups": true })).await.unwrap();
     assert!(!path.exists());
     assert_eq!(r["keychain_entries_removed"], 1);
-    assert!(app.secrets.get("simplefin:test").unwrap().is_none(), "credential removed from the keychain");
+    assert!(app.secrets.get("simplefin:00000000-0000-4000-8000-000000000001").unwrap().is_none(), "credential removed from the keychain");
     assert!(std::fs::read_dir(dir.join("Backups")).unwrap().next().is_none(), "backups removed too");
     assert!(!app.is_open(), "the open book was closed first");
     assert!(app.call("book.recent", Value::Null).await.unwrap().as_array().unwrap().is_empty());
@@ -258,6 +258,41 @@ async fn delete_book_tears_everything_down() {
     let not_a_book = dir.join("notes.txt");
     std::fs::write(&not_a_book, "hi").unwrap();
     assert_eq!(app.call("book.delete", json!({ "path": not_a_book, "confirm_name": "x" })).await.unwrap_err().code, "rule");
+}
+
+/// A connection's keychain name comes from the book file. Names Tallybook
+/// didn't make (`<provider>:<uuid>`) are never read or deleted.
+#[tokio::test]
+async fn a_book_cant_name_keychain_entries_it_doesnt_own() {
+    let (app, dir) = app("secret-ref");
+    let path = dir.join("Shared.tallybook");
+    app.call("book.create", json!({ "path": path, "company_name": "Shared" })).await.unwrap();
+    app.secrets.set("plaid.credentials", "{\"client_id\":\"mine\"}").unwrap();
+    app.secrets.set("book-key:1234", "abcd").unwrap();
+    let plaid_ok = "plaid:00000000-0000-4000-8000-0000000000aa";
+    app.secrets.set(plaid_ok, "simplefin-looking").unwrap();
+    let (a, b, c) = app
+        .run(|s| {
+            Ok((
+                s.create_connection(Provider::Plaid, "Sneaky", None, Some("plaid.credentials"))?,
+                s.create_connection(Provider::Simplefin, "Sneaky 2", None, Some("book-key:1234"))?,
+                // A real-looking name, but for the other provider.
+                s.create_connection(Provider::Simplefin, "Sneaky 3", None, Some(plaid_ok))?,
+            ))
+        })
+        .unwrap();
+    for id in [a, b, c] {
+        let err = app.call("bank.feed_accounts", json!({ "connection_id": id })).await.unwrap_err();
+        assert!(err.message.contains("no saved credentials"), "{err:?}");
+    }
+    app.call("bank.disconnect", json!({ "connection_id": a })).await.unwrap();
+    assert!(app.secrets.get("plaid.credentials").unwrap().is_some(), "disconnecting left the Plaid keys alone");
+
+    let r = app.call("book.delete", json!({ "path": path, "confirm_name": "Shared" })).await.unwrap();
+    assert_eq!(r["keychain_entries_removed"], 0, "{r}");
+    for key in ["plaid.credentials", "book-key:1234", plaid_ok] {
+        assert!(app.secrets.get(key).unwrap().is_some(), "{key} survived deleting the book");
+    }
 }
 
 #[tokio::test]
@@ -597,9 +632,9 @@ async fn sync_all_reports_a_failing_connection_and_carries_on() {
     // The first connection has a link but its secret was never stored; the second has no links, so it syncs trivially.
     let (broken, fine) = app
         .run(|s| {
-            let broken = s.create_connection(Provider::Simplefin, "Broken CU", None, Some("simplefin:missing"))?;
+            let broken = s.create_connection(Provider::Simplefin, "Broken CU", None, Some("simplefin:00000000-0000-4000-8000-000000000002"))?;
             s.link_account(broken, "ext-1", account, "Checking", None, today())?;
-            let fine = s.create_connection(Provider::Simplefin, "Fine CU", None, Some("simplefin:fine"))?;
+            let fine = s.create_connection(Provider::Simplefin, "Fine CU", None, Some("simplefin:00000000-0000-4000-8000-000000000003"))?;
             Ok((broken, fine))
         })
         .unwrap();
