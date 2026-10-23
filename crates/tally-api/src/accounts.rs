@@ -63,7 +63,7 @@ struct PostEntry {
     person_id: Option<PersonId>,
     /// Who was paid, or who paid (business books; feeds 1099s).
     #[serde(default)]
-    payee_id: Option<i64>,
+    payee_id: Option<ContactId>,
 }
 
 /// `entries.set_person`: tag an entry as being for someone; null untags it.
