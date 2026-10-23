@@ -9,7 +9,7 @@
 //! Posting or matching marks the bank line `cleared`, so it shows up
 //! pre-checked at reconciliation time. Every action can be undone.
 
-use crate::{Result, StoreError, Store, check_not_locked, conversion_err, BadValue, entry_in, post_in, rule};
+use crate::{Result, StoreError, Store, check_entry_not_locked, check_not_locked, conversion_err, BadValue, entry_in, post_in, rule};
 use chrono::NaiveDate;
 use rusqlite::{OptionalExtension, Row, params};
 use serde::{Deserialize, Serialize};
@@ -752,6 +752,9 @@ impl Store {
             }
             BankTxnStatus::Matched => {
                 let line_id = t.line_id.ok_or_else(|| StoreError::Rule("matched transaction has no line".into()))?;
+                // Unmatching changes the matched entry's line, so its period must be open.
+                let entry_id: EntryId = self.conn.query_row("SELECT entry_id FROM journal_lines WHERE id = ?1", [line_id], |r| r.get(0))?;
+                check_entry_not_locked(&self.conn, entry_id)?;
                 let cleared: String = self.conn.query_row("SELECT cleared FROM journal_lines WHERE id = ?1", [line_id], |r| r.get(0))?;
                 if cleared == "reconciled" {
                     return rule("that line is reconciled; undo the reconciliation first");
