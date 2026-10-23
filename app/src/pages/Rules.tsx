@@ -1,3 +1,6 @@
+// Categorization rules: "when a bank description looks like this, file it
+// there." Listed lowest priority number first, the order they're tried.
+
 import { ArrowRight, Landmark, Pencil, Plus, Sparkles, Tag, Trash2, Wand2, Zap } from "lucide-react";
 import { useState } from "react";
 import { Link } from "react-router-dom";
