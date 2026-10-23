@@ -309,12 +309,30 @@ impl App {
             return Err(ApiError::new("internal", "the converted copy didn't match; your book was left unchanged"));
         }
         // Close the original (checkpoints its WAL), then swap files.
-        *guard = None;
-        let io = |e: std::io::Error| ApiError::new("io", e.to_string());
-        std::fs::rename(path, &old).map_err(io)?;
+        let original = guard.take().expect("checked above");
+        let original_path = original.path.clone();
+        drop(original);
+        // If the swap can't happen, put the original back open and say why in plain words.
+        // Windows refuses while another process has the file open: another Tallybook,
+        // or an agent connected with `--mcp`.
+        let restore = |guard: &mut Option<crate::OpenBook>, e: std::io::Error| -> ApiError {
+            let _ = std::fs::remove_file(&tmp);
+            if let Ok(store) = self.open_any(path) {
+                *guard = Some(crate::OpenBook { store, path: original_path.clone() });
+            }
+            ApiError::new(
+                "io",
+                format!(
+                    "couldn't replace the book file, so nothing was changed. It may be open in another copy of Tallybook or an AI agent; close it there and try again. ({e})"
+                ),
+            )
+        };
+        if let Err(e) = std::fs::rename(path, &old) {
+            return Err(restore(&mut guard, e));
+        }
         if let Err(e) = std::fs::rename(&tmp, path) {
             let _ = std::fs::rename(&old, path);
-            return Err(io(e));
+            return Err(restore(&mut guard, e));
         }
         for f in book_files(&old) {
             let _ = std::fs::remove_file(f);
