@@ -217,6 +217,81 @@ fn plan_from_row(r: &Row) -> rusqlite::Result<PlanRow> {
     })
 }
 
+/// Whether spending on this account lands once a month on its day (rent, a
+/// car payment), so it's counted as-is rather than projected.
+fn account_is_fixed(accounts: &HashMap<AccountId, tally_core::Account>, id: AccountId) -> bool {
+    accounts.get(&id).is_some_and(|a| a.flex == Some(Flex::Fixed))
+}
+
+/// A month's household movement, summed the ways the budget needs it.
+struct Spent {
+    income: Cents,
+    spending: Cents,
+    by_account: HashMap<AccountId, Cents>,
+    /// Expense spending and entry count per person (`None`: shared).
+    by_person: HashMap<Option<PersonId>, (Cents, i64)>,
+    /// Spending in fixed categories, in total and per person.
+    fixed: Cents,
+    fixed_by_person: HashMap<Option<PersonId>, Cents>,
+}
+
+fn sum_movement(movement: &[Movement], accounts: &HashMap<AccountId, tally_core::Account>) -> Spent {
+    let mut spent = Spent {
+        income: Cents::ZERO,
+        spending: Cents::ZERO,
+        by_account: HashMap::new(),
+        by_person: HashMap::new(),
+        fixed: Cents::ZERO,
+        fixed_by_person: HashMap::new(),
+    };
+    for (account, person, amount, n) in movement {
+        *spent.by_account.entry(*account).or_default() += *amount;
+        match accounts.get(account).map(|a| a.kind()) {
+            Some(AccountKind::Income) => spent.income += *amount,
+            Some(AccountKind::Expense) => {
+                spent.spending += *amount;
+                let p = spent.by_person.entry(*person).or_default();
+                p.0 += *amount;
+                p.1 += n;
+                if account_is_fixed(accounts, *account) {
+                    spent.fixed += *amount;
+                    *spent.fixed_by_person.entry(*person).or_default() += *amount;
+                }
+            }
+            _ => {}
+        }
+    }
+    spent
+}
+
+/// Spending per person (archived ones only if they spent), then everyone's shared spending.
+fn person_spend(people: &[Person], by_person: &HashMap<Option<PersonId>, (Cents, i64)>) -> Vec<PersonSpend> {
+    let mut people_spend: Vec<PersonSpend> = people
+        .iter()
+        .filter(|p| !p.archived || by_person.contains_key(&Some(p.id)))
+        .map(|p| {
+            let (spent, n) = by_person.get(&Some(p.id)).copied().unwrap_or_default();
+            PersonSpend { person_id: Some(p.id), name: p.name.clone(), spending: spent, entries: n }
+        })
+        .collect();
+    let (shared, n) = by_person.get(&None).copied().unwrap_or_default();
+    people_spend.push(PersonSpend { person_id: None, name: "Shared".into(), spending: shared, entries: n });
+    people_spend
+}
+
+/// Expense categories with spending, biggest first.
+fn category_spend(by_account: &HashMap<AccountId, Cents>, accounts: &HashMap<AccountId, tally_core::Account>) -> Vec<CategorySpend> {
+    let mut categories: Vec<CategorySpend> = by_account
+        .iter()
+        .filter_map(|(id, amount)| {
+            let a = accounts.get(id)?;
+            (a.kind() == AccountKind::Expense && !amount.is_zero()).then(|| CategorySpend { account_id: *id, name: a.name.clone(), flex: a.flex, spending: *amount })
+        })
+        .collect();
+    categories.sort_by(|a, b| b.spending.cmp(&a.spending).then_with(|| a.name.cmp(&b.name)));
+    categories
+}
+
 impl Store {
     // ------------------------------------------------------------ people
 
@@ -466,33 +541,8 @@ impl Store {
         let people = self.people()?;
         let movement = self.household_movement(from, to)?;
 
-        let kind_of = |id: AccountId| accounts.get(&id).map(|a| a.kind());
-        let mut income = Cents::ZERO;
-        let mut spending = Cents::ZERO;
-        let mut by_account: HashMap<AccountId, Cents> = HashMap::new();
-        let mut by_person: HashMap<Option<PersonId>, (Cents, i64)> = HashMap::new();
-        // Spending in fixed categories (rent, a car payment) lands once a
-        // month on its day, so it's counted as-is rather than projected.
-        let is_fixed = |id: AccountId| accounts.get(&id).is_some_and(|a| a.flex == Some(Flex::Fixed));
-        let mut fixed = Cents::ZERO;
-        let mut fixed_by_person: HashMap<Option<PersonId>, Cents> = HashMap::new();
-        for (account, person, amount, n) in &movement {
-            *by_account.entry(*account).or_default() += *amount;
-            match kind_of(*account) {
-                Some(AccountKind::Income) => income += *amount,
-                Some(AccountKind::Expense) => {
-                    spending += *amount;
-                    let p = by_person.entry(*person).or_default();
-                    p.0 += *amount;
-                    p.1 += n;
-                    if is_fixed(*account) {
-                        fixed += *amount;
-                        *fixed_by_person.entry(*person).or_default() += *amount;
-                    }
-                }
-                _ => {}
-            }
-        }
+        let Spent { income, spending, by_account, by_person, fixed, fixed_by_person } = sum_movement(&movement, &accounts);
+        let is_fixed = |id: AccountId| account_is_fixed(&accounts, id);
 
         let plan_month = self.plan_month(month)?;
         let available: Option<Cents> = match &plan_month {
@@ -553,25 +603,8 @@ impl Store {
             });
         }
 
-        let mut people_spend: Vec<PersonSpend> = people
-            .iter()
-            .filter(|p| !p.archived || by_person.contains_key(&Some(p.id)))
-            .map(|p| {
-                let (spent, n) = by_person.get(&Some(p.id)).copied().unwrap_or_default();
-                PersonSpend { person_id: Some(p.id), name: p.name.clone(), spending: spent, entries: n }
-            })
-            .collect();
-        let (shared, n) = by_person.get(&None).copied().unwrap_or_default();
-        people_spend.push(PersonSpend { person_id: None, name: "Shared".into(), spending: shared, entries: n });
-
-        let mut categories: Vec<CategorySpend> = by_account
-            .iter()
-            .filter_map(|(id, amount)| {
-                let a = accounts.get(id)?;
-                (a.kind() == AccountKind::Expense && !amount.is_zero()).then(|| CategorySpend { account_id: *id, name: a.name.clone(), flex: a.flex, spending: *amount })
-            })
-            .collect();
-        categories.sort_by(|a, b| b.spending.cmp(&a.spending).then_with(|| a.name.cmp(&b.name)));
+        let people_spend = person_spend(&people, &by_person);
+        let categories = category_spend(&by_account, &accounts);
 
         Ok(MonthBudget {
             month: month.to_string(),
