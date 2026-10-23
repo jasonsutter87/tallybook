@@ -178,8 +178,16 @@ function PaymentForm(props: {
                   const over = on && (applied[inv.id] ?? 0) > inv.balance;
                   return (
                     <div key={inv.id} className={`pay-invoice ${on ? "on" : ""}`}>
-                      <input type="checkbox" className="checkbox" checked={on} onChange={() => toggle(inv)} aria-label={`Apply to invoice ${inv.number}`} />
-                      <div className="grow" onClick={() => toggle(inv)} style={{ cursor: "pointer" }}>
+                      <input
+                        type="checkbox"
+                        className="checkbox"
+                        id={`apply-invoice-${inv.id}`}
+                        checked={on}
+                        onChange={() => toggle(inv)}
+                        aria-label={`Apply to invoice ${inv.number}`}
+                      />
+                      {/* A real label: clicking the text toggles the checkbox, for every kind of input. */}
+                      <label className="grow" htmlFor={`apply-invoice-${inv.id}`} style={{ cursor: "pointer" }}>
                         <div className="row">
                           <span className="bold">Invoice #{inv.number}</span>
                           <StatusPill status={inv.status} />
@@ -187,7 +195,7 @@ function PaymentForm(props: {
                         <div className={`small ${late > 0 ? "neg" : "subtle"}`}>
                           {late > 0 ? `${plural(late, "day")} late` : `Due ${date(inv.due_date)}`} · balance {money(inv.balance)}
                         </div>
-                      </div>
+                      </label>
                       <div style={{ width: 140 }}>
                         <MoneyInput
                           value={on ? (applied[inv.id] ?? null) : null}
