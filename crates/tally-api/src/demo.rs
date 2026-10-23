@@ -79,7 +79,7 @@ pub fn seed(s: &mut Store, today: NaiveDate) -> Result<(), StoreError> {
     for (pattern, target, auto) in [("figma", software, true), ("adobe", software, true), ("pge", utilities, false), ("google ads", ads, false)] {
         s.create_rule(&NewRule {
             name: pattern.to_uppercase(),
-            priority: 100,
+            priority: tally_core::rules::DEFAULT_PRIORITY,
             op: MatchOp::Contains,
             pattern: pattern.into(),
             direction: Direction::Outflow,

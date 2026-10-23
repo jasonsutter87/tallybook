@@ -31,6 +31,11 @@ pub enum Direction {
     Outflow,
 }
 
+/// The priority a rule gets unless someone chooses otherwise, the same as
+/// the `rules.priority` column's default. Lower runs first, so rules can be
+/// put ahead of (or behind) the ones made automatically.
+pub const DEFAULT_PRIORITY: i64 = 100;
+
 /// One categorization rule. Every condition set must hold for it to match.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Rule {

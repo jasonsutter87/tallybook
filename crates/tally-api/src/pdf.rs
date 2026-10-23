@@ -362,7 +362,9 @@ fn serialize(title: &str, pages: &[String]) -> Vec<u8> {
     let mut t = String::new();
     put_text(&mut t, 0.0, 0.0, 0.0, Font::Regular, INK, 0.0, title);
     let title = &t[t.find('(').unwrap_or(0)..t.rfind(')').map_or(t.len(), |i| i + 1)];
-    obj(&mut pdf, &format!("<< /Title {title} /Producer (Tallybook) >>"));
+    // Which release wrote it, so a PDF found years later can be traced to the
+    // code that laid it out.
+    obj(&mut pdf, &format!("<< /Title {title} /Producer (Tallybook {}) >>", env!("CARGO_PKG_VERSION")));
     for (i, content) in pages.iter().enumerate() {
         obj(
             &mut pdf,

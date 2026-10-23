@@ -1,3 +1,8 @@
+//! Tests of `App::call` as the UI uses it: method names and JSON in, JSON
+//! out, against real book files in fresh temp folders. Tests that need the
+//! crate's private pieces (licenses, recent books) live here; the rest are in
+//! `crates/tally-api/tests/`.
+
 use chrono::Datelike;
 use super::*;
 use serde_json::json;

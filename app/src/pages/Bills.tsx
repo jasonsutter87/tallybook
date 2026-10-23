@@ -1,3 +1,6 @@
+// Bills from vendors: what's due, overdue and paid this month, with a way to
+// pay several at once.
+
 import { AlertCircle, CalendarClock, CheckCircle2, Plus, Receipt, Search, Wallet } from "lucide-react";
 import { useMemo, useState, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";

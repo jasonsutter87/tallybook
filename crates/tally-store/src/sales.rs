@@ -84,6 +84,11 @@ pub struct Contact {
     pub tin_last4: Option<String>,
 }
 
+/// The first invoice number a book offers, when `pref.invoice.next_number`
+/// isn't set. Four digits look established on a customer's desk; the user can
+/// start anywhere by setting the preference.
+const FIRST_INVOICE_NUMBER: u64 = 1001;
+
 const CONTACT_COLS: &str = "c.id, c.kind, c.name, c.company, c.email, c.phone, c.address, c.notes, c.archived";
 /// Selected after the balance column.
 const CONTACT_TAX_COLS: &str = "c.is_1099, c.w9_on_file, c.legal_name, c.tin_last4";
@@ -425,7 +430,7 @@ impl Store {
     // ------------------------------------------------------------ invoices
 
     fn next_invoice_number(&self) -> Result<String> {
-        let mut n: u64 = self.pref("invoice.next_number")?.and_then(|s| s.parse().ok()).unwrap_or(1001);
+        let mut n: u64 = self.pref("invoice.next_number")?.and_then(|s| s.parse().ok()).unwrap_or(FIRST_INVOICE_NUMBER);
         loop {
             let candidate = n.to_string();
             let taken: bool = self.conn.query_row("SELECT EXISTS(SELECT 1 FROM invoices WHERE number = ?1)", [&candidate], |r| r.get(0))?;

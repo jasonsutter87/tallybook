@@ -85,3 +85,80 @@ fn backups_of_encrypted_books_stay_encrypted_and_decrypt_round_trips() {
     assert_eq!(p.pref("company.name").unwrap().as_deref(), Some("Secret Sauce LLC"));
     assert!(s.export_plain(&back).is_err(), "never overwrites");
 }
+
+/// Reads a header pragma straight from a file, unlocking it first if a key is given.
+fn header_value(path: &std::path::Path, key: Option<&crypto::BookKey>, pragma: &str) -> i64 {
+    let conn = rusqlite::Connection::open(path).unwrap();
+    if let Some(key) = key {
+        conn.pragma_update(None, "key", format!("x'{}'", key.iter().map(|b| format!("{b:02x}")).collect::<String>())).unwrap();
+    }
+    conn.pragma_query_value(None, pragma, |r| r.get(0)).unwrap()
+}
+
+#[test]
+fn every_copy_of_a_book_says_what_it_is() {
+    let d = dir("identity");
+    let plain = d.join("plain.tallybook");
+    let store = plain_book(&plain);
+    let key = generate_key().unwrap();
+    let enc = d.join("enc.tallybook");
+    store.export_encrypted(&enc, &key).unwrap();
+    let backup = d.join("backup.tallybook");
+    store.backup_to(&backup).unwrap();
+    drop(store);
+    let enc_store = Store::open_encrypted(&enc, &key).unwrap();
+    let decrypted = d.join("decrypted.tallybook");
+    enc_store.export_plain(&decrypted).unwrap();
+    drop(enc_store);
+
+    for (path, key) in [(&plain, None), (&backup, None), (&decrypted, None), (&enc, Some(&key))] {
+        assert_eq!(header_value(path, key, "application_id"), i64::from(APPLICATION_ID), "{}", path.display());
+        assert_eq!(header_value(path, key, "user_version"), 12, "{}", path.display());
+    }
+    // "TALY", so a hex dump of the header reads as the app's name.
+    assert_eq!(APPLICATION_ID.to_be_bytes(), *b"TALY");
+}
+
+#[test]
+fn another_programs_database_is_refused_and_left_alone() {
+    let d = dir("foreign");
+    let path = d.join("photos.sqlite");
+    let conn = rusqlite::Connection::open(&path).unwrap();
+    conn.execute_batch("PRAGMA application_id = 1234; CREATE TABLE photos (id INTEGER PRIMARY KEY);").unwrap();
+    drop(conn);
+    assert!(matches!(Store::open(&path), Err(StoreError::Rule(m)) if m.contains("not a Tallybook book")));
+    // Nothing of ours was written into it.
+    assert_eq!(header_value(&path, None, "user_version"), 0);
+}
+
+/// SQLCipher writes none of its settings into the file, so a book opens only
+/// with the exact settings it was written with. Tallybook uses SQLCipher 4's
+/// defaults, and docs/FILE_FORMAT.md promises any SQLCipher 4 tool can open a
+/// book with `PRAGMA cipher_compatibility = 4`. If a library upgrade ever
+/// changes a default, this fails before any book is written the new way.
+#[test]
+fn encrypted_books_use_plain_sqlcipher_4_settings() {
+    let d = dir("cipher");
+    let key = generate_key().unwrap();
+    let enc = d.join("enc.tallybook");
+    plain_book(&d.join("plain.tallybook")).export_encrypted(&enc, &key).unwrap();
+    let raw_key = format!("x'{}'", key.iter().map(|b| format!("{b:02x}")).collect::<String>());
+
+    let conn = rusqlite::Connection::open(&enc).unwrap();
+    conn.pragma_update(None, "key", &raw_key).unwrap();
+    let setting = |p: &str| -> String { conn.query_row(&format!("PRAGMA {p}"), [], |r| r.get(0)).unwrap() };
+    assert!(setting("cipher_version").starts_with("4."), "SQLCipher major version changed: {}", setting("cipher_version"));
+    assert_eq!(setting("cipher_page_size"), "4096");
+    assert_eq!(setting("kdf_iter"), "256000");
+    assert_eq!(setting("cipher_hmac_algorithm"), "HMAC_SHA512");
+    assert_eq!(setting("cipher_kdf_algorithm"), "PBKDF2_HMAC_SHA512");
+    assert_eq!(setting("cipher_plaintext_header_size"), "0");
+    drop(conn);
+
+    // What a stranger with only the file and its key would type.
+    let conn = rusqlite::Connection::open(&enc).unwrap();
+    conn.execute_batch("PRAGMA cipher_compatibility = 4;").unwrap();
+    conn.pragma_update(None, "key", &raw_key).unwrap();
+    let name: String = conn.query_row("SELECT value FROM settings WHERE key = 'pref.company.name'", [], |r| r.get(0)).unwrap();
+    assert_eq!(name, "Secret Sauce LLC");
+}

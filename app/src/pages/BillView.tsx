@@ -1,3 +1,5 @@
+// One vendor bill: its lines, the payments made against it, and voiding it.
+
 import { Ban, CheckCircle2, Printer, Wallet } from "lucide-react";
 import { useState } from "react";
 import { Link, useParams } from "react-router-dom";

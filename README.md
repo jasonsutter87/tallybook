@@ -167,7 +167,8 @@ adds only what's new.
    or both.
 3. **Bring in your transactions**, any of these ways:
    - **Connect your bank** through SimpleFIN. See the
-     [bank connection guide](https://tallybook.app/help/bank-connections/).
+     [bank connection guide](https://tallybook-app.netlify.app/help/bank-connections/)
+     (also in this repository as [BANK_FEEDS.md](docs/BANK_FEEDS.md)).
    - **Import a statement**: download a CSV or OFX/QFX file from your bank's
      website and drop it into Review.
    - **Log cash** by hand for anything the bank won't see.
@@ -206,7 +207,9 @@ otherwise. [Set it up →](docs/AGENTS.md)
 ## Your data, your rules
 
 - **One file.** Your books are a single `.tallybook` file, in
-  `Documents/Tallybook` unless you choose somewhere else.
+  `Documents/Tallybook` unless you choose somewhere else. It's a standard
+  SQLite database, and [its format is documented](docs/FILE_FORMAT.md) so
+  your books stay readable with or without Tallybook.
 - **Backups.** **Settings → Back up now** saves a complete copy next to your
   book. Copying the file works too.
 - **Encryption.** One click locks the whole book file with a random 256-bit

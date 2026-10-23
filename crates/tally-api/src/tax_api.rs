@@ -17,6 +17,19 @@ pub const DISCLAIMER: &str = "Tallybook prepares worksheets and estimates from y
 it does not file anything, and it can't know everything about your situation. Review these figures with a tax \
 professional (or carefully against the IRS instructions) before you file or pay.";
 
+/// The other way to avoid the federal underpayment penalty, besides the
+/// prior-year safe harbor: pay at least this share of the current year's tax
+/// through estimates (IRC §6654(d)(1)(B)(i); Form 1040-ES instructions).
+const CURRENT_YEAR_SAFE_HARBOR_PERCENT: i128 = 90;
+
+/// A quarterly payment whose due date is this close shows as "due soon".
+const DUE_SOON_DAYS: i64 = 30;
+
+/// The highest state income-tax rate a profile accepts, in basis points:
+/// 20%, well above any US state's top rate, so a bigger number is a typo
+/// (900 meant as 9%, say), not a real rate.
+const MAX_STATE_RATE_BP: i64 = 2_000;
+
 #[derive(Deserialize)]
 struct Year {
     year: Option<i32>,
@@ -63,7 +76,9 @@ struct YearsView {
     disclaimer: &'static str,
 }
 
-/// The tax profile, kept in book preferences (`tax.*` keys).
+/// The tax profile, kept as JSON in the book preference `tax.profile`
+/// (settings key `pref.tax.profile`), so its field names are part of the
+/// file format. Money fields are cents.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TaxProfile {
     pub filing_status: FilingStatus,
@@ -183,7 +198,7 @@ fn build_estimate(s: &Store, year: i32, ty: &'static TaxYear) -> ApiResult<Estim
         ty,
     );
     let safe_harbor = profile.last_year_tax.map(|t| tax::safe_harbor(t, profile.last_year_agi.unwrap_or_default(), profile.filing_status));
-    let ninety = Cents(tally_core::invoice::div_round(i128::from(estimate.total_tax.0) * 9, 10) as i64);
+    let ninety = Cents(tally_core::invoice::div_round(i128::from(estimate.total_tax.0) * CURRENT_YEAR_SAFE_HARBOR_PERCENT, 100) as i64);
     let (plan_total, plan_method) = match (profile.method.as_str(), safe_harbor) {
         ("safe_harbor", Some(sh)) => (sh, "safe_harbor"),
         _ => (estimate.total_tax, "current_year"),
@@ -206,7 +221,7 @@ fn build_estimate(s: &Store, year: i32, ty: &'static TaxYear) -> ApiResult<Estim
             "nothing_due"
         } else if now > *due {
             "late"
-        } else if (*due - now).num_days() <= 30 {
+        } else if (*due - now).num_days() <= DUE_SOON_DAYS {
             "due_soon"
         } else {
             "upcoming"
@@ -238,6 +253,9 @@ fn csv_cell(s: &str) -> String {
     if s.contains([',', '"', '\n']) { format!("\"{}\"", s.replace('"', "\"\"")) } else { s.to_string() }
 }
 
+/// Cents as plain dollars for the CSV files: `1234.50`, `-3.07`. No `$`,
+/// no thousands separators, a leading `-` when negative, so any spreadsheet
+/// reads it as a number.
 fn dollars(c: Cents) -> String {
     let sign = if c.0 < 0 { "-" } else { "" };
     format!("{sign}{}.{:02}", c.0.abs() / 100, c.0.abs() % 100)
@@ -277,7 +295,7 @@ impl App {
                 if !matches!(profile.method.as_str(), "safe_harbor" | "current_year") {
                     return Err(ApiError::new("bad_params", "method must be safe_harbor or current_year"));
                 }
-                if !(0..=2000).contains(&profile.state_rate_bp) {
+                if !(0..=MAX_STATE_RATE_BP).contains(&profile.state_rate_bp) {
                     return Err(ApiError::new("rule", "state rate looks wrong (0–20%)"));
                 }
                 let json = serde_json::to_string(&profile).map_err(|e| ApiError::new("internal", e.to_string()))?;
@@ -451,21 +469,29 @@ impl App {
         write("General ledger.pdf", &crate::tax_pdf::ledger(&company, year, (from, to), today(), &entries, &names))?;
 
         let pnl = s.profit_and_loss_in(from, to, Some(tally_core::Scope::Business))?;
+        let book_file = book.path.file_name().map_or_else(String::new, |n| n.to_string_lossy().into_owned());
         let readme = format!(
-            "Tallybook tax package · {year}\n\n{DISCLAIMER}\n\nFiles\n- Tax summary.pdf: a readable overview with the Schedule C worksheet, account mapping, 1099s and estimated payments.\n\
+            "Tallybook tax package · {year}\n\
+             Made {made} by Tallybook {version} from the book \"{book_file}\".\n\n{DISCLAIMER}\n\nFiles\n- Tax summary.pdf: a readable overview with the Schedule C worksheet, account mapping, 1099s and estimated payments.\n\
              - General ledger.pdf: every entry for the year, ready to read or print.\n\
              - Schedule C worksheet.csv: line-by-line figures (meals already limited to 50%).\n\
              - Schedule C mapping.csv: which account feeds which line, and whether you confirmed it.\n\
              - General ledger.csv: every entry dated {from} to {to}.\n\
              - 1099 summary.csv: payees, amounts paid from bank vs. card, and who crosses the ${} threshold.\n\
              - Estimated tax payments.csv: what you paid toward {year} estimates.\n\n\
+             The .csv files are UTF-8 text, comma-separated, with a header row and quotes around any cell \
+             that has a comma, quote or line break. Amounts are US dollars with two decimals and a leading \
+             minus when negative, with no $ or thousands separators. Dates are YYYY-MM-DD. The general \
+             ledger's entry numbers are the entry ids in the book, so any line can be traced back.\n\n\
              From the books: income {}, expenses {}, net income {}.\nUnconfirmed Schedule C mappings: {}.\nTax tables: {}.\n",
             ty.nec_threshold,
             dollars(pnl.total_income),
             dollars(pnl.total_cost_of_goods_sold + pnl.total_expenses),
             dollars(pnl.net_income),
             sc.unconfirmed,
-            ty.source
+            ty.source,
+            made = today(),
+            version = env!("CARGO_PKG_VERSION"),
         );
         write("README.txt", readme.as_bytes())?;
         ok(dir)

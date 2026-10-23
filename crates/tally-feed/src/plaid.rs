@@ -20,6 +20,17 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tally_core::bank::{FeedAccount, FeedAccountKind, FeedBatch, FeedTransaction};
 
+/// History asked for when a bank is first linked: two years, the most
+/// Plaid's `transactions.days_requested` allows.
+const HISTORY_DAYS_REQUESTED: u32 = 730;
+
+/// Transactions per `/transactions/sync` page: Plaid's maximum.
+const SYNC_PAGE_SIZE: u32 = 500;
+
+/// Attempts at a full sync when Plaid keeps saying the data changed while
+/// paging; after the last, the sync fails and asks to be tried again.
+const SYNC_RESTARTS: u32 = 3;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Environment {
@@ -144,7 +155,7 @@ impl Client {
             Some(token) => body["access_token"] = json!(token),
             None => {
                 body["products"] = json!(["transactions"]);
-                body["transactions"] = json!({ "days_requested": 730 });
+                body["transactions"] = json!({ "days_requested": HISTORY_DAYS_REQUESTED });
             }
         }
         #[derive(Deserialize)]
@@ -175,10 +186,10 @@ impl Client {
     /// Restarts the whole drain if Plaid reports data changed mid-pagination,
     /// as its docs require.
     pub async fn sync(&self, access_token: &str, cursor: &str) -> Result<SyncResult, PlaidError> {
-        'restart: for _ in 0..3 {
+        'restart: for _ in 0..SYNC_RESTARTS {
             let mut result = SyncResult { batch: FeedBatch::default(), account_of: Default::default(), next_cursor: cursor.to_string() };
             loop {
-                let mut body = json!({ "access_token": access_token, "count": 500 });
+                let mut body = json!({ "access_token": access_token, "count": SYNC_PAGE_SIZE });
                 if !result.next_cursor.is_empty() {
                     body["cursor"] = json!(result.next_cursor);
                 }

@@ -41,6 +41,13 @@ use std::result::Result;
 
 pub use secrets::{Keychain, MemorySecrets, Secrets};
 
+/// How many books the welcome screen remembers in `recent.json`.
+const RECENT_BOOKS_KEPT: usize = 10;
+
+/// How many already-reviewed bank transactions Review lists, newest first:
+/// enough to find and undo a recent decision without loading years of them.
+const REVIEWED_SHOWN: u32 = 200;
+
 /// Error shape the UI receives. `code` is machine-readable; `message` is
 /// written for humans and safe to show as-is.
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -116,10 +123,13 @@ fn file_id(_path: &Path) -> Option<(u64, u64)> {
     None
 }
 
+/// One entry of `recent.json` in the app-config dir, a JSON array of these,
+/// newest first (see docs/FILE_FORMAT.md).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct RecentBook {
     path: PathBuf,
     name: String,
+    /// RFC 3339, local time.
     last_opened: String,
     /// Computed when listing, from the file header.
     #[serde(default)]
@@ -935,7 +945,7 @@ impl App {
             "inbox.reviewed" => {
                 let p: MaybeAccount = params(p)?;
                 self.with(|s| {
-                    s.reviewed(p.account_id, 200)?
+                    s.reviewed(p.account_id, REVIEWED_SHOWN)?
                         .into_iter()
                         .map(|txn| {
                             // Where a posted transaction was filed: every line but the bank's own.
@@ -1231,7 +1241,7 @@ impl App {
         let mut recent = self.recent();
         recent.retain(|r| r.path != path);
         recent.insert(0, RecentBook { path: path.clone(), name: name.clone(), last_opened: Local::now().to_rfc3339(), encrypted: false });
-        recent.truncate(10);
+        recent.truncate(RECENT_BOOKS_KEPT);
         self.save_recent(&recent);
         ok(json!({ "path": path, "company_name": name }))
     }
@@ -1301,7 +1311,7 @@ fn remember_rule(s: &mut Store, t: &BankTxn, account_id: AccountId, person_id: O
     }
     s.create_rule(&NewRule {
         name: pattern.trim().to_string(),
-        priority: 100,
+        priority: tally_core::rules::DEFAULT_PRIORITY,
         op: tally_core::rules::MatchOp::Contains,
         pattern: pattern.trim().to_string(),
         direction: if t.amount.0 > 0 { tally_core::rules::Direction::Inflow } else { tally_core::rules::Direction::Outflow },

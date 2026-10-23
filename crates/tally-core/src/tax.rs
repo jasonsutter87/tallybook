@@ -304,6 +304,7 @@ pub fn schedule_c(amounts: &[(ScheduleCLine, Cents)], home_office: Cents) -> Sch
             continue;
         }
         let amount = if info.line == L24bMeals {
+            // Business meals are only 50% deductible (IRC §274(n)(1)).
             let half = pct(booked, 5000);
             meals_disallowed = booked - half;
             half
@@ -332,7 +333,8 @@ pub fn schedule_c(amounts: &[(ScheduleCLine, Cents)], home_office: Cents) -> Sch
 }
 
 /// IRS simplified home-office method: $5 per square foot, up to 300 sq ft,
-/// limited to the tentative profit.
+/// limited to the tentative profit (Rev. Proc. 2013-13; Form 8829
+/// instructions). Both figures are fixed, not indexed for inflation.
 pub fn simplified_home_office(square_feet: i64, tentative_profit: Cents) -> Cents {
     let allowed = Cents(square_feet.clamp(0, 300) * 500);
     allowed.min(tentative_profit.max(Cents::ZERO))
@@ -354,18 +356,27 @@ pub struct SeTax {
 /// Schedule SE. `w2_ss_wages` are Social Security wages from any job, which
 /// use up part of the wage base.
 pub fn se_tax(net_profit: Cents, w2_ss_wages: Cents, ty: &TaxYear) -> SeTax {
+    // Schedule SE line 4a: only 92.35% of profit counts, i.e. profit less
+    // the employer half (7.65%) of the 15.3% rate (IRC §1402(a)(12)).
     let net_earnings = pct(net_profit, 9235);
+    // Schedule SE line 4c: under $400 of net earnings, no SE tax is due.
     if net_earnings < Cents(400_00) {
         return SeTax { net_earnings, social_security: Cents::ZERO, medicare: Cents::ZERO, total: Cents::ZERO, deductible_half: Cents::ZERO };
     }
+    // 12.4% Social Security, only up to the year's wage base less what W-2
+    // jobs already paid on; 2.9% Medicare on all of it (IRC §1401).
     let base_left = (Cents(ty.ss_wage_base * 100) - w2_ss_wages).max(Cents::ZERO);
     let social_security = pct(net_earnings.min(base_left), 1240);
     let medicare = pct(net_earnings, 290);
     let total = social_security + medicare;
+    // Half of SE tax is an above-the-line deduction (IRC §164(f)).
     SeTax { net_earnings, social_security, medicare, total, deductible_half: pct(total, 5000) }
 }
 
-/// Additional Medicare tax (Form 8959) on self-employment earnings above the threshold.
+/// Additional Medicare tax (Form 8959) on self-employment earnings above the
+/// threshold: 0.9%. The thresholds are written into the statute (IRC
+/// §1401(b)(2)) and aren't indexed for inflation, so they don't vary by
+/// year like the tables in [`TAX_YEARS`].
 pub fn additional_medicare(se_net_earnings: Cents, w2_medicare_wages: Cents, status: FilingStatus) -> Cents {
     let threshold = Cents(match status {
         MarriedJoint => 250_000_00,
@@ -490,7 +501,8 @@ pub fn estimate(inputs: &EstimateInputs, ty: &TaxYear) -> Estimate {
 /// Prior-year safe harbor: paying this much during the year (in four equal
 /// installments, counting withholding) avoids the federal underpayment
 /// penalty regardless of this year's income. 110% applies when last year's
-/// AGI was over $150,000 ($75,000 married filing separately).
+/// AGI was over $150,000 ($75,000 married filing separately). IRC
+/// §6654(d)(1)(B)(ii) and (C); the thresholds are fixed in the statute.
 pub fn safe_harbor(last_year_total_tax: Cents, last_year_agi: Cents, status: FilingStatus) -> Cents {
     let limit = Cents(if status == MarriedSeparate { 75_000_00 } else { 150_000_00 });
     if last_year_agi > limit { pct(last_year_total_tax, 11_000) } else { last_year_total_tax }

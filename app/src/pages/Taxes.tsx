@@ -1,3 +1,6 @@
+// The tax center: tabs for the overview, Schedule C, quarterly estimates,
+// 1099s and the accountant package, for one tax year. Prepares, never files.
+
 import { ShieldAlert } from "lucide-react";
 import { lazy, Suspense } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";

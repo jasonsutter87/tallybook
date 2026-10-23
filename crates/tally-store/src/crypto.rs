@@ -163,8 +163,14 @@ impl Store {
         self.conn.execute("ATTACH DATABASE ?1 AS export KEY ?2", rusqlite::params![dest.to_string_lossy(), key])?;
         let result = (|| -> Result<()> {
             self.conn.query_row("SELECT sqlcipher_export('export')", [], |_| Ok(()))?;
-            // sqlcipher_export copies schema and data, not the schema version.
-            self.conn.execute_batch(&format!("PRAGMA export.user_version = {version};"))?;
+            // sqlcipher_export copies schema and data, not the header fields
+            // that say what the file is: the schema version and the
+            // application id. Without them a copy would look like a stranger's
+            // database at schema 0.
+            self.conn.execute_batch(&format!(
+                "PRAGMA export.user_version = {version}; PRAGMA export.application_id = {};",
+                crate::APPLICATION_ID
+            ))?;
             Ok(())
         })();
         self.conn.execute("DETACH DATABASE export", [])?;

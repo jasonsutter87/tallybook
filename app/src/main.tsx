@@ -1,3 +1,6 @@
+// Entry point: applies the saved light/dark theme, then mounts the app
+// inside React Query, toasts and a hash router.
+
 import "@fontsource-variable/plus-jakarta-sans";
 import "./styles/app.css";
 import { QueryClientProvider } from "@tanstack/react-query";

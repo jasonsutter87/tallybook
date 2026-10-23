@@ -1,3 +1,6 @@
+// Customers and vendors: the list, and a profile panel with their invoices,
+// bills, balance and 1099 details.
+
 import { Archive, ArchiveRestore, FileText, Mail, MapPin, Pencil, Phone, Plus, Receipt, Search, StickyNote, Users, X } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link, useSearchParams } from "react-router-dom";
