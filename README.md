@@ -167,7 +167,8 @@ adds only what's new.
    or both.
 3. **Bring in your transactions**, any of these ways:
    - **Connect your bank** through SimpleFIN. See the
-     [bank connection guide](https://tallybook.app/help/bank-connections/).
+     [bank connection guide](https://tallybook-app.netlify.app/help/bank-connections/)
+     (also in this repository as [BANK_FEEDS.md](docs/BANK_FEEDS.md)).
    - **Import a statement**: download a CSV or OFX/QFX file from your bank's
      website and drop it into Review.
    - **Log cash** by hand for anything the bank won't see.
