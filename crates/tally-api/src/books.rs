@@ -113,8 +113,7 @@ impl App {
         self.secrets.set(&format!("book-key:{id}"), &crypto::hex(key)).map_err(|e| ApiError::new("keychain", e))?;
         let mut ids = self.key_ids();
         ids.push(id);
-        let _ = std::fs::create_dir_all(&self.config_dir);
-        std::fs::write(self.config_dir.join("keys.json"), serde_json::to_vec(&ids).unwrap_or_default())
+        crate::write_private(&self.config_dir.join("keys.json"), &serde_json::to_vec(&ids).unwrap_or_default())
             .map_err(|e| ApiError::new("io", e.to_string()))
     }
 
