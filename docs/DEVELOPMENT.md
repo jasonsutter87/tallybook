@@ -129,8 +129,9 @@ screen and check the books afterwards through the same API the app uses.
 - `closed-periods.spec.ts` shows a closed period refusing a changed payee,
   person or goal and an undone bank match, in words, with the books unchanged.
 - `delete-book.spec.ts` shows deleting a book needs its exact name (a wrong
-  name leaves it open and on disk). The dev server sends the file to the OS
-  Trash, so this only deletes throwaway books made inside `app/e2e/.data`.
+  name leaves it open and on disk). It deletes only throwaway books made
+  inside `app/e2e/.data`, and removes them outright: the test servers run
+  with `TALLYBOOK_NO_TRASH`, so nothing lands in your real Trash.
 - `contacts.spec.ts` adds, edits and archives contacts, refuses an email with
   several addresses or odd characters, and checks the `mailto:` link and a
   vendor's contractor details.
