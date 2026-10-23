@@ -38,7 +38,9 @@ business, a household, or both.
 - **Journal mode** is WAL while Tallybook has the book open, so you may see
   `-wal` and `-shm` files next to it. They hold recent writes. Copy a book
   only while Tallybook is closed, or copy all three files together; SQLite
-  folds them back in when the book is next opened.
+  folds them back in when the book is next opened. Opening a book in any
+  SQLite tool creates these two files too, even just to read. To explore
+  safely, work on a copy.
 
 ### What is *not* in the file
 
