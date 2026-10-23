@@ -6,7 +6,7 @@
 //! base32 with a checksum, so a mistyped character is caught instead of
 //! producing a confusing "wrong key".
 
-use crate::{Result, Store, StoreError, rule};
+use crate::{Result, Store, StoreError, check_is_book, harden, rule};
 use rusqlite::Connection;
 use std::path::Path;
 use sha2::{Digest, Sha256};
@@ -140,6 +140,8 @@ impl Store {
     pub fn open_encrypted(path: impl AsRef<Path>, key: &BookKey) -> Result<Store> {
         let conn = Connection::open(path)?;
         unlock(&conn, key)?;
+        harden(&conn)?;
+        check_is_book(&conn)?;
         conn.query_row("PRAGMA journal_mode = WAL", [], |_| Ok(()))?;
         // The desktop app and an agent (tally-mcp) may have the same book open;
         // wait out the other's write instead of failing with "database is locked".
