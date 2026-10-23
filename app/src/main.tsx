@@ -1,6 +1,5 @@
 // Entry point: applies the saved light/dark theme, then mounts the app
-// inside React Query, toasts and a hash router (hash URLs work from a file://
-// page inside the desktop shell).
+// inside React Query, toasts and a hash router.
 
 import "@fontsource-variable/plus-jakarta-sans";
 import "./styles/app.css";
