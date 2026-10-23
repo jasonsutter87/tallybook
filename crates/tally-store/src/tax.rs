@@ -289,7 +289,7 @@ impl Store {
         let entry = NewEntry::new(p.date, format!("{who} estimated tax · Q{} {}", p.quarter, p.tax_year))
             .line(EntryLine::debit(draw.id, p.amount))
             .line(EntryLine::credit(p.account_id, p.amount));
-        let tx = self.conn.transaction()?;
+        let tx = self.conn.savepoint()?;
         let entry_id = post_in(&tx, &entry, "tax_payment", None)?;
         tx.execute(
             "INSERT INTO tax_payments(tax_year, quarter, jurisdiction, date, amount, account_id, entry_id)
