@@ -71,7 +71,23 @@ more lints:
 cargo clippy --workspace --exclude tallybook-desktop --all-targets -- -D warnings
 cargo test --workspace --exclude tallybook-desktop
 cd app && npm run build
+cd app && npm run test:e2e
 ```
+
+### End-to-end tests
+
+`app/e2e/` drives the real UI against the real backend with Playwright, the
+way the browser preview pairs them. It starts its own dev server and Vite on
+ports 1441 and 1440 (stop yours first; it refuses to reuse them, so a test
+run can never touch your own books) and keeps everything in `app/e2e/.data`.
+
+- `smoke.spec.ts` opens every screen, light and dark, and fails on console
+  errors, error banners and serious accessibility problems (axe-core, WCAG AA).
+- `flows.spec.ts` does what people do: make a book, review the inbox, invoice
+  and get paid, plan a month, export a tax package, and the license gates.
+
+`npm run test:e2e:ui` opens Playwright's UI to watch or debug a run. The first
+time, install the browser with `npx playwright install chromium`.
 
 ## Releasing
 
