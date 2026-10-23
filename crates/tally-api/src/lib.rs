@@ -273,8 +273,10 @@ impl App {
         }
     }
 
-    /// Stops (or resumes) opening and creating books from changing the
-    /// recent-books list. `book.recent` still reads it.
+    /// Stops (or resumes) opening and creating books from changing files
+    /// besides the book: the recent-books list, and tidying what an
+    /// interrupted encryption left beside it. `book.recent` still reads the
+    /// list. Agent sessions turn this off.
     pub fn set_update_recent(&self, on: bool) {
         self.update_recent.store(on, std::sync::atomic::Ordering::Relaxed);
     }
