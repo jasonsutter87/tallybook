@@ -25,10 +25,11 @@ internet in these cases:
   that key and a name for this computer to Lemon Squeezy once, to confirm it.
   The result is stored on your computer and no further checks are made.
   Removing the license from a computer tells Lemon Squeezy to free the key.
-- **Bank connections you set up.** If you connect a bank through SimpleFIN or
-  Plaid, Tallybook talks to that service directly from your computer, using
-  your own account with them. Their privacy policies apply to that data. Bank
-  access tokens are kept in your system keychain, not in the book file.
+- **Bank connections you set up.** If you connect a bank through SimpleFIN (or
+  through Plaid, for connections made in earlier versions), Tallybook talks to
+  that service directly from your computer, using your own account with them.
+  Their privacy policies apply to that data. Bank access tokens are kept in
+  your system keychain, not in the book file.
 - **Cloud copies you turn on.** Copies go only to the folder or Git repository
   you choose, and only ever encrypted.
 
