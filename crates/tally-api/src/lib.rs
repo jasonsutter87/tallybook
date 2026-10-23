@@ -223,6 +223,9 @@ pub struct App {
     config_dir: PathBuf,
     /// How deleted books leave the disk: the OS Trash, or plain removal in tests.
     remove_file: fn(&Path) -> std::io::Result<()>,
+    /// Whether opening a book puts it at the top of `recent.json`. Agent
+    /// sessions read the desktop app's list but leave it as it is.
+    update_recent: std::sync::atomic::AtomicBool,
 }
 
 // ---------------------------------------------------------------- shared param types
@@ -261,7 +264,19 @@ struct MonthParam {
 
 impl App {
     pub fn new(secrets: Arc<dyn Secrets>, config_dir: impl Into<PathBuf>) -> App {
-        App { book: Mutex::new(None), secrets, config_dir: config_dir.into(), remove_file: books::move_to_trash }
+        App {
+            book: Mutex::new(None),
+            secrets,
+            config_dir: config_dir.into(),
+            remove_file: books::move_to_trash,
+            update_recent: std::sync::atomic::AtomicBool::new(true),
+        }
+    }
+
+    /// Stops (or resumes) opening and creating books from changing the
+    /// recent-books list. `book.recent` still reads it.
+    pub fn set_update_recent(&self, on: bool) {
+        self.update_recent.store(on, std::sync::atomic::Ordering::Relaxed);
     }
 
     /// Replaces the Trash with permanent removal (tests, headless servers).
