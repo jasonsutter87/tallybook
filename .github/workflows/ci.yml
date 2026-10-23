@@ -36,6 +36,7 @@ jobs:
           cache: npm
           cache-dependency-path: app/package-lock.json
       - run: npm ci
+      - run: npm run lint
       - run: npm run build
 
   # The real UI against the real backend, clicked through like a person would.
