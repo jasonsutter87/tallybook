@@ -13,14 +13,15 @@ import {
   RefreshCw,
   Upload,
 } from "lucide-react";
-import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { useState } from "react";
+import { lazy, Suspense, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAction, useApi } from "../api";
 import { BigMoney, Card, EmptyState, ErrorBanner, Loading, Money, useToast } from "../components/ui";
 import LogMoneyModal from "../flows/LogMoneyModal";
-import { money, moneyCompact, monthLabel, plural } from "../format";
+import { money, plural } from "../format";
 import type { Dashboard as DashboardData, SyncReport } from "../types";
+
+const CashFlowChart = lazy(() => import("../components/CashFlowChart"));
 
 function greeting() {
   const h = new Date().getHours();
@@ -215,23 +216,10 @@ export default function Dashboard() {
               </div>
             }
           >
-            <div style={{ height: 250, marginLeft: -12 }}>
-              <ResponsiveContainer>
-                <BarChart data={data.cashflow} barGap={4} barCategoryGap="28%">
-                  <CartesianGrid vertical={false} stroke="var(--line)" />
-                  <XAxis dataKey="month" tickFormatter={monthLabel} tickLine={false} axisLine={false} tick={{ fill: "var(--ink-3)", fontSize: 12 }} />
-                  <YAxis tickFormatter={moneyCompact} tickLine={false} axisLine={false} width={56} tick={{ fill: "var(--ink-3)", fontSize: 12 }} />
-                  <Tooltip
-                    cursor={{ fill: "var(--surface-hover)" }}
-                    contentStyle={{ borderRadius: 12, border: "1px solid var(--line)", background: "var(--surface)", boxShadow: "var(--shadow)" }}
-                    labelFormatter={(m) => monthLabel(String(m))}
-                    formatter={(v, name) => [money(Number(v)), name === "income" ? "Money in" : "Money out"]}
-                  />
-                  <Bar dataKey="income" fill="var(--brand)" radius={[6, 6, 0, 0]} />
-                  <Bar dataKey="expenses" fill="var(--line-strong)" radius={[6, 6, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
+            {/* Charts load on their own, so the numbers above never wait for them. */}
+            <Suspense fallback={<div style={{ height: 250 }} />}>
+              <CashFlowChart data={data.cashflow} />
+            </Suspense>
           </Card>
 
           <Card title="Where money went" action={<span className="subtle small">This month</span>}>

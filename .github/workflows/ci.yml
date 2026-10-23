@@ -23,6 +23,20 @@ jobs:
       - run: cargo clippy --workspace --exclude tallybook-desktop --all-targets -- -D warnings
       - run: cargo test --workspace --exclude tallybook-desktop
 
+  # A book years deep: 10,000 entries and 2,000 waiting transactions. Every
+  # screen's main call must answer within 500ms in a release build.
+  performance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: System libraries
+        run: sudo apt-get update && sudo apt-get install -y libdbus-1-dev pkg-config
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: performance
+      - run: cargo test --release -p tally-api --test big_book -- --ignored --nocapture
+
   frontend:
     runs-on: ubuntu-latest
     defaults:
@@ -36,6 +50,7 @@ jobs:
           cache: npm
           cache-dependency-path: app/package-lock.json
       - run: npm ci
+      - run: npm run lint
       - run: npm run build
 
   # The real UI against the real backend, clicked through like a person would.

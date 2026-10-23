@@ -145,6 +145,15 @@ test.describe("the business", () => {
     expect(fs.readFileSync(path.join(folder, "Tax summary.pdf")).subarray(0, 5).toString()).toBe("%PDF-");
   });
 
+  test("the dashboard's cash-flow chart loads on its own and is described for screen readers", async ({ page, request }) => {
+    license("tax");
+    await demoBook(request);
+    await go(page, "/");
+    const chart = page.getByRole("img", { name: /Cash flow by month/ });
+    await expect(chart).toBeVisible();
+    await expect(chart.locator(".recharts-bar-rectangle").first()).toBeVisible();
+  });
+
   test("the P&L on screen matches the books", async ({ page, request }) => {
     license("tax");
     await demoBook(request);

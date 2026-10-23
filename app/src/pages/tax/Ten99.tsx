@@ -117,7 +117,7 @@ export default function Ten99({ year, go }: TaxTabProps) {
         </Card>
       ) : (
         <Card title={`Payees in ${year}`} pad={false}>
-          <div className="te-table-wrap" style={{ marginTop: 8 }}>
+          <div className="te-table-wrap table-scroll" style={{ marginTop: 8 }} role="region" aria-label={`Payees in ${year}`} tabIndex={0}>
             <table className="table te-table">
               <thead>
                 <tr>

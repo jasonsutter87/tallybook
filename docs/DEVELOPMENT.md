@@ -74,6 +74,17 @@ cd app && npm run build
 cd app && npm run test:e2e
 ```
 
+### Performance
+
+`crates/tally-api/tests/big_book.rs` builds a book with 10,000 entries and
+2,000 transactions waiting in Review, then times each screen's main call
+against a 500ms budget. It's ignored in a plain `cargo test` because it's
+slow to build; CI runs it in release mode:
+
+```sh
+cargo test --release -p tally-api --test big_book -- --ignored --nocapture
+```
+
 ### End-to-end tests
 
 `app/e2e/` drives the real UI against the real backend with Playwright, the

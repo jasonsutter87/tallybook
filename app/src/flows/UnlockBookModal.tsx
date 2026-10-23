@@ -9,10 +9,13 @@ export default function UnlockBookModal(props: { path: string | null; onClose: (
   const [key, setKey] = useState("");
   const [remember, setRemember] = useState(true);
 
+  // Start fresh whenever a different book is asked for. Only on path: the mutation
+  // object is new every render, so depending on it would reset on every keystroke.
   useEffect(() => {
     setKey("");
     unlock.reset();
-  }, [props.path]); // start fresh whenever a different book is asked for
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [props.path]);
 
   const submit = async () => {
     if (!props.path || !key.trim()) return;

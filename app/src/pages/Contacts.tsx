@@ -24,7 +24,8 @@ export default function Contacts() {
   const [showArchived, setShowArchived] = useState(false);
   const [editing, setEditing] = useState<{ contact?: Contact; kind?: ContactKind } | null>(null);
 
-  const contacts = data ?? [];
+  // Keeps its identity while the data is unchanged, so the lists below don't recompute every render.
+  const contacts = useMemo(() => data ?? [], [data]);
   const selectedId = Number(params.get("contact")) || null;
   const selected = contacts.find((c) => c.id === selectedId) ?? null;
   const select = (id: number | null) => {
@@ -189,12 +190,13 @@ function Profile(props: { contact: Contact; onClose: () => void; onEdit: () => v
   const invoices = useApi<InvoiceSummary[]>("invoices.list", undefined, { enabled: isCustomer(c) });
   const bills = useApi<BillSummary[]>("bills.list", undefined, { enabled: isVendor(c) });
 
+  const { onClose } = props;
   useEffect(() => {
     // Let an open modal (e.g. Edit) take Escape first.
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && !document.querySelector(".modal-backdrop") && props.onClose();
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && !document.querySelector(".modal-backdrop") && onClose();
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [props.onClose]);
+  }, [onClose]);
 
   const myInvoices = (invoices.data ?? []).filter((i) => i.customer_id === c.id);
   const myBills = (bills.data ?? []).filter((b) => b.vendor_id === c.id);
@@ -212,7 +214,9 @@ function Profile(props: { contact: Contact; onClose: () => void; onEdit: () => v
 
   return (
     <>
-      <div className="bk-panel-backdrop" onMouseDown={props.onClose} />
+      {/* Clicking outside closes, as a mouse convenience; Escape (above) is the keyboard's way. */}
+      {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions */}
+      <div className="bk-panel-backdrop" onMouseDown={onClose} />
       <aside className="bk-panel" role="dialog" aria-modal="true" aria-label={c.name}>
         <div className="bk-panel-body stack" style={{ gap: 22 }}>
           <div className="row-between" style={{ alignItems: "flex-start" }}>

@@ -37,7 +37,8 @@ export default function Invoices() {
   const [paying, setPaying] = useState(false);
   const today = todayISO();
 
-  const invoices = data ?? [];
+  // Keeps its identity while the data is unchanged, so the tables below don't recompute every render.
+  const invoices = useMemo(() => data ?? [], [data]);
   const received = useApi<PaymentSummary[]>("payments.list", { kind: "received", from: addDays(today, -30) });
 
   const stats = useMemo(() => {
@@ -174,6 +175,7 @@ export default function Invoices() {
                 </div>
               </div>
             ) : (
+              <div className="table-scroll" role="region" aria-label="Invoices" tabIndex={0}>
               <table className="table">
                 <thead>
                   <tr>
@@ -221,6 +223,7 @@ export default function Invoices() {
                   })}
                 </tbody>
               </table>
+              </div>
             )}
           </Card>
         </div>

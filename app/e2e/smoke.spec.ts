@@ -70,3 +70,35 @@ test("dark mode reads as well as light", async ({ page, request }) => {
   await householdBook(request);
   await sweep(page, ["/month", "/due", "/goals"]);
 });
+
+// The desktop window can shrink to 1024 × 680 (tauri.conf.json); nothing may
+// spill off the right edge there.
+test("every screen fits the smallest window", async ({ page, request }) => {
+  license("tax");
+  await page.setViewportSize({ width: 1024, height: 680 });
+  const fits = async (route: string) => {
+    await go(page, route);
+    const overflow = await page.evaluate(() => {
+      const doc = document.documentElement;
+      // Past the right edge and not inside something that scrolls sideways: cut off, unreachable.
+      const inScroller = (el: HTMLElement) => {
+        for (let p = el.parentElement; p; p = p.parentElement) {
+          if (["auto", "scroll"].includes(getComputedStyle(p).overflowX)) return true;
+        }
+        return false;
+      };
+      const wide = [...document.querySelectorAll<HTMLElement>("main *, .page *")]
+        .filter((el) => el.getBoundingClientRect().right > window.innerWidth + 1 && getComputedStyle(el).position !== "fixed" && !inScroller(el))
+        .slice(0, 3)
+        .map((el) => `${el.tagName.toLowerCase()}.${[...el.classList].join(".")} → ${Math.round(el.getBoundingClientRect().right)}px`);
+      return { page: doc.scrollWidth - window.innerWidth, wide };
+    });
+    expect.soft(overflow, `${route} at 1024px`).toEqual({ page: 0, wide: [] });
+  };
+  await demoBook(request);
+  const invoices = await api<{ id: number }[]>(request, "invoices.list");
+  for (const route of [...BUSINESS, `/invoices/${invoices[0].id}`]) await test.step(route, () => fits(route));
+  await householdBook(request);
+  for (const route of HOUSEHOLD) await test.step(route, () => fits(route));
+});
+
