@@ -259,3 +259,25 @@ fn archived_accounts_reject_new_entries() {
     post(&mut b.store, d(2026, 1, 1), "rent", b.rent, b.checking, 1);
     assert!(b.store.set_archived(b.rent, true).is_err(), "non-zero balance");
 }
+
+#[test]
+fn atomically_keeps_all_or_nothing() {
+    let mut b = book();
+    let before = b.store.entries(d(2000, 1, 1), d(2100, 1, 1)).unwrap().len();
+    let (checking, sales) = (b.checking, b.sales);
+    let failed: Result<(), StoreError> = b.store.atomically(|s| {
+        post(s, d(2026, 3, 1), "kept?", checking, sales, 10_00);
+        s.set_pref("company.name", Some("Changed"))?;
+        Err(StoreError::Rule("and then something fails".into()))
+    });
+    assert!(failed.is_err());
+    assert_eq!(b.store.entries(d(2000, 1, 1), d(2100, 1, 1)).unwrap().len(), before, "the posted entry was rolled back");
+    assert_eq!(b.store.pref("company.name").unwrap(), None);
+
+    b.store.atomically(|s| {
+        post(s, d(2026, 3, 2), "kept", checking, sales, 10_00);
+        Ok(())
+    })
+    .unwrap();
+    assert_eq!(b.store.entries(d(2000, 1, 1), d(2100, 1, 1)).unwrap().len(), before + 1);
+}
