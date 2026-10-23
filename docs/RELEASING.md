@@ -44,6 +44,16 @@ downloads, installs and restarts. Drafts and pre-releases are never offered.
   `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` repository secrets. The app only
   installs a package whose signature matches the public key in
   `app/src-tauri/tauri.conf.json`.
+- **The key stays away from npm code where it can.** The web UI is built in
+  its own job without secrets, npm installs run with `--ignore-scripts`, and
+  the installer jobs skip `beforeBuildCommand`. The Tauri CLI and the Rust
+  dependencies' build scripts still run with the key, pinned by the lock
+  files. Two repository settings narrow this further, and only the owner can
+  turn them on: a GitHub Environment (say `release`) with required reviewers
+  holding the signing secrets, referenced from the `build` job, and a tag
+  ruleset so only maintainers can push `v*` tags.
+- **Actions are pinned to commit SHAs.** Dependabot proposes updates; CI fails
+  if a `uses:` line isn't pinned.
 - **The private key lives at `~/.tauri/tallybook-updater.key`** on the
   machine that created it. Its password is in the macOS Keychain under
   `tallybook-updater-key-password`. **Back up both somewhere safe**, such as
