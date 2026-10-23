@@ -1,0 +1,178 @@
+{
+  "made_by": "v0.2.0",
+  "as_of": "2026-10-23",
+  "accounts": [
+    [
+      1,
+      "Accounts Receivable",
+      1788000
+    ],
+    [
+      2,
+      "Undeposited Funds",
+      0
+    ],
+    [
+      3,
+      "Equipment",
+      0
+    ],
+    [
+      4,
+      "Accounts Payable",
+      94465
+    ],
+    [
+      5,
+      "Sales Tax Payable",
+      0
+    ],
+    [
+      6,
+      "Owner's Equity",
+      0
+    ],
+    [
+      7,
+      "Opening Balance Equity",
+      2683763
+    ],
+    [
+      8,
+      "Owner's Draw",
+      -3095000
+    ],
+    [
+      9,
+      "Retained Earnings",
+      0
+    ],
+    [
+      10,
+      "Sales",
+      0
+    ],
+    [
+      11,
+      "Service Revenue",
+      7398500
+    ],
+    [
+      12,
+      "Interest Income",
+      0
+    ],
+    [
+      13,
+      "Uncategorized Income",
+      0
+    ],
+    [
+      14,
+      "Cost of Goods Sold",
+      0
+    ],
+    [
+      15,
+      "Advertising & Marketing",
+      67108
+    ],
+    [
+      16,
+      "Bank Fees",
+      8267
+    ],
+    [
+      17,
+      "Contractors",
+      876383
+    ],
+    [
+      18,
+      "Insurance",
+      113400
+    ],
+    [
+      19,
+      "Meals",
+      105171
+    ],
+    [
+      20,
+      "Office Supplies",
+      116140
+    ],
+    [
+      21,
+      "Professional Fees",
+      0
+    ],
+    [
+      22,
+      "Rent",
+      1920000
+    ],
+    [
+      23,
+      "Software & Subscriptions",
+      72994
+    ],
+    [
+      24,
+      "Travel",
+      0
+    ],
+    [
+      25,
+      "Utilities",
+      102637
+    ],
+    [
+      26,
+      "Uncategorized Expense",
+      0
+    ],
+    [
+      27,
+      "Interest Expense",
+      0
+    ],
+    [
+      28,
+      "Business Checking",
+      601523
+    ],
+    [
+      29,
+      "Tax Savings",
+      1400000
+    ],
+    [
+      30,
+      "Business Visa",
+      89895
+    ]
+  ],
+  "trial_balance": {
+    "total_debits": 10266623,
+    "total_credits": 10266623
+  },
+  "pnl": {
+    "from": "2026-01-01",
+    "to": "2026-10-23",
+    "total_income": 7398500,
+    "total_expenses": 3382100,
+    "net_income": 4016400
+  },
+  "counts": {
+    "entries": 126,
+    "contacts": 7,
+    "invoices": 17,
+    "bills": 6,
+    "rules": 4,
+    "inbox": 14,
+    "recurring": 0,
+    "goals": 0,
+    "people": 0
+  }
+}
