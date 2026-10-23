@@ -1,6 +1,7 @@
 // Book and app settings: company profile, sides of the book, license,
-// invoices, importing from Ledger, fiscal year, lock date, encryption,
-// backups and cloud copies, and appearance.
+// invoices, importing from Ledger, fiscal year, closing the books (lock
+// date), appearance, encryption, cloud copies, backups, updates and deleting
+// the book.
 
 import { Building2, CalendarRange, Home, Plus, Check, Cloud, Copy, GitBranch, KeyRound, ShieldOff, DatabaseBackup, Download, FileText, Lock, LockOpen, Monitor, Moon, Palette, ShieldCheck, Sun, Trash2 } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
