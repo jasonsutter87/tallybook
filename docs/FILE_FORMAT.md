@@ -256,7 +256,7 @@ uncategorized.
 |---|---|
 | `date` | The day the money moved (accounting date). |
 | `memo` | Description. |
-| `source` | What made it: `manual`, `opening_balance`, `bank_feed`, `invoice`, `bill`, `payment`, `tax_payment`, `void`. |
+| `source` | What made it: `manual`, `opening_balance`, `bank_feed`, `invoice`, `bill`, `payment`, `tax_payment`, `void`, `ledger_import`. |
 | `reverses_id` | On a void: the entry it cancels. |
 | `voided_by_id` | On a voided entry: the void that cancels it. |
 | `payee_id` | The customer or vendor (`contacts`), if known. Can be set after posting. |
