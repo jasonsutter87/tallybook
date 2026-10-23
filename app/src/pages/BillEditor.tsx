@@ -1,3 +1,6 @@
+// Entering a vendor's bill: who it's from, when it's due, and the expense
+// lines it's for. Saving posts it to Accounts Payable.
+
 import { Info, Plus, Trash2, UserPlus } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
