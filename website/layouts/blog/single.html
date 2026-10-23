@@ -1,0 +1,40 @@
+{{ define "main" }}
+<article>
+  <header class="page-hero post-hero">
+    <div class="container narrow">
+      <p class="eyebrow"><a href="/blog/" class="eyebrow-link">Blog</a>{{ with .Params.topic }} · {{ . }}{{ end }}</p>
+      <h1>{{ .Title }}</h1>
+      <p class="page-lede">{{ .Description }}</p>
+      <p class="post-byline">
+        {{ .Params.author | default site.Params.author }} ·
+        <time datetime="{{ .Date.Format "2006-01-02" }}">{{ .Date.Format "January 2, 2006" }}</time> ·
+        {{ .ReadingTime }} min read
+      </p>
+    </div>
+  </header>
+  <div class="section tight">
+    <div class="container narrow prose post-body">
+      {{ .Content }}
+      {{ with .Params.disclaimer }}<p class="post-disclaimer">{{ . }}</p>{{ end }}
+    </div>
+  </div>
+</article>
+
+{{ $related := first 2 (where (where site.RegularPages "Section" "blog") "Permalink" "ne" .Permalink) }}
+{{ with $related }}
+<section class="section tight" aria-labelledby="more-title">
+  <div class="container narrow">
+    <h2 id="more-title" class="more-title">Keep reading</h2>
+    <div class="post-grid two">
+      {{ range . }}
+        <a class="post-card" href="{{ .RelPermalink }}">
+          <span class="post-topic">{{ .Params.topic }}</span>
+          <h3>{{ .Title }}</h3>
+          <p>{{ .Description }}</p>
+        </a>
+      {{ end }}
+    </div>
+  </div>
+</section>
+{{ end }}
+{{ end }}

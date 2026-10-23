@@ -1,0 +1,49 @@
+backend:
+  name: github
+  repo: jasonsutter87/tallybook
+  branch: main
+
+publish_mode: editorial_workflow
+
+media_folder: "website/static/images/uploads"
+public_folder: "/images/uploads"
+
+collections:
+  # Blog
+  - label: "Blog"
+    name: "blogPages"
+    folder: "website/content/blog"
+    create: true
+    slug: "{{slug}}"
+    fields:
+      - { label: "Title", name: "title", widget: "string" }
+      - { label: "Page Title (SEO)", name: "PageTitle", widget: "string", required: false }
+      - { label: "Description", name: "description", widget: "string" }
+      - { label: "Slug", name: "slug", widget: "string" }
+      - { label: "SEO Image", name: "image", widget: "image" }
+      - { label: "Image Alt", name: "alt", widget: "string" }
+      - { label: "Tags", name: "tags", widget: "list" }
+      - { label: "Priority", name: "priority", widget: "string", default: "0.5" }
+      - { label: "Publish Date", name: "date", widget: "datetime" }
+      - { label: "Update Date", name: "updatedate", widget: "datetime", required: false }
+      - { label: "Type", name: "type", widget: "hidden", default: "blog" }
+      - { label: "JavaScript", name: "js", widget: "list", required: false }
+      - { label: "CSS", name: "css", widget: "list", required: false }
+      - { label: "Body", name: "body", widget: "markdown" }
+
+  # Pages
+  - label: "Pages"
+    name: "pages"
+    folder: "website/content"
+    create: true
+    slug: "{{slug}}"
+    fields:
+      - { label: "Title", name: "title", widget: "string" }
+      - { label: "Page Title (SEO)", name: "PageTitle", widget: "string", required: false }
+      - { label: "Description", name: "description", widget: "string" }
+      - { label: "SEO Image", name: "image", widget: "image", required: false }
+      - { label: "Priority", name: "priority", widget: "string", default: "0.5" }
+      - { label: "No Index", name: "noIndex", widget: "boolean", required: false }
+      - { label: "JavaScript", name: "js", widget: "list", required: false }
+      - { label: "CSS", name: "css", widget: "list", required: false }
+      - { label: "Body", name: "body", widget: "markdown" }

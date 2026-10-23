@@ -1,0 +1,57 @@
+.compare-wrap {
+  background: #ffffff;
+  border: 1px solid #e6eaf1;
+  border-radius: 20px;
+  box-shadow: 0 1px 2px rgba(11, 27, 51, 0.04), 0 6px 20px rgba(11, 27, 51, 0.06);
+  padding: 0;
+  overflow-x: auto;
+  box-shadow: 0 1px 2px rgba(11, 27, 51, 0.05);
+}
+
+.compare {
+  width: 100%;
+  min-width: 560px;
+  border-collapse: collapse;
+  font-size: 0.95rem;
+}
+.compare th,
+.compare td {
+  padding: 0.85rem 1.1rem;
+  border-bottom: 1px solid #e6eaf1;
+}
+.compare thead th {
+  font-size: 0.82rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #076a80;
+  background: #e2f5f9;
+  text-align: center;
+}
+.compare thead th:first-child {
+  text-align: left;
+}
+.compare tbody th {
+  text-align: left;
+  font-weight: 600;
+}
+.compare td {
+  text-align: center;
+}
+.compare .yes {
+  color: #0e9f6e;
+  vertical-align: middle;
+}
+.compare .no {
+  color: #66738a;
+}
+.compare tr:last-child th,
+.compare tr:last-child td {
+  border-bottom: 0;
+}
+
+.compare-price th,
+.compare-price td {
+  font-weight: 800;
+  background: #f7f9fc;
+}

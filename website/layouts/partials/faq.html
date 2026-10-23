@@ -1,0 +1,11 @@
+{{/* Questions from data/faq.yaml. Pass (dict "home" true) for the short list. */}}
+<div class="faq">
+  {{ range site.Data.faq }}
+    {{ if or (not $.home) .home }}
+      <details>
+        <summary>{{ .q }}</summary>
+        <p>{{ .a | safeHTML }}</p>
+      </details>
+    {{ end }}
+  {{ end }}
+</div>

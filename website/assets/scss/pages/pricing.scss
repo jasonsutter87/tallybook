@@ -1,0 +1,72 @@
+// ==========================================================================
+// PRICING PAGE STYLES
+// ==========================================================================
+
+@use '../shared/variables' as *;
+@use '../shared/mixins' as *;
+
+// No @tailwind layers here: main.css already carries them.
+
+.compare-wrap {
+  @include card(0);
+  overflow-x: auto;
+  box-shadow: $shadow-sm;
+}
+
+.compare {
+  width: 100%;
+  min-width: 560px;
+  border-collapse: collapse;
+  font-size: 0.95rem;
+
+  th,
+  td {
+    padding: 0.85rem 1.1rem;
+    border-bottom: 1px solid $line;
+  }
+
+  thead th {
+    font-size: 0.82rem;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: $brand-deep;
+    background: $brand-soft;
+    text-align: center;
+
+    &:first-child {
+      text-align: left;
+    }
+  }
+
+  tbody th {
+    text-align: left;
+    font-weight: 600;
+  }
+
+  td {
+    text-align: center;
+  }
+
+  .yes {
+    color: $pos;
+    vertical-align: middle;
+  }
+
+  .no {
+    color: $ink-3;
+  }
+
+  tr:last-child th,
+  tr:last-child td {
+    border-bottom: 0;
+  }
+}
+
+.compare-price {
+  th,
+  td {
+    font-weight: 800;
+    background: $surface-2;
+  }
+}

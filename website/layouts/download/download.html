@@ -1,0 +1,75 @@
+{{ define "main" }}
+{{ $v := site.Params.version }}
+{{ $base := printf "%s/releases/download/v%s/" site.Params.github $v }}
+<section class="page-hero" aria-labelledby="page-title">
+  <div class="container">
+    <p class="eyebrow">Download · Version {{ $v }}</p>
+    <h1 id="page-title">Get Tallybook</h1>
+    <p class="page-lede">Free to download and free for your household. Tallybook updates itself, and backs up your book before every update.</p>
+  </div>
+</section>
+
+<section class="section" aria-label="Installers">
+  <div class="container">
+    <div class="os-grid">
+      <article class="os-card" data-os="mac">
+        <span class="os-detected">Your computer</span>
+        <div class="os-head">{{ partial "icon.html" (dict "name" "laptop" "size" 22) }}<h2>Mac</h2></div>
+        <p>Apple silicon or Intel.</p>
+        <a class="btn btn-primary btn-block" href="{{ $base }}Tallybook_{{ $v }}_aarch64.dmg">{{ partial "icon.html" (dict "name" "download" "size" 16) }} Apple silicon (M1 and later)</a>
+        <a class="btn btn-secondary btn-block" href="{{ $base }}Tallybook_{{ $v }}_x64.dmg">Intel Mac</a>
+      </article>
+      <article class="os-card" data-os="windows">
+        <span class="os-detected">Your computer</span>
+        <div class="os-head">{{ partial "icon.html" (dict "name" "laptop" "size" 22) }}<h2>Windows</h2></div>
+        <p>64-bit Windows.</p>
+        <a class="btn btn-primary btn-block" href="{{ $base }}Tallybook_{{ $v }}_x64-setup.exe">{{ partial "icon.html" (dict "name" "download" "size" 16) }} Installer (.exe)</a>
+        <a class="btn btn-secondary btn-block" href="{{ $base }}Tallybook_{{ $v }}_x64_en-US.msi">Windows Installer (.msi)</a>
+      </article>
+      <article class="os-card" data-os="linux">
+        <span class="os-detected">Your computer</span>
+        <div class="os-head">{{ partial "icon.html" (dict "name" "terminal" "size" 22) }}<h2>Linux</h2></div>
+        <p>64-bit x86.</p>
+        <a class="btn btn-primary btn-block" href="{{ $base }}Tallybook_{{ $v }}_amd64.AppImage">{{ partial "icon.html" (dict "name" "download" "size" 16) }} AppImage</a>
+        <div class="os-pair">
+          <a class="btn btn-secondary" href="{{ $base }}Tallybook_{{ $v }}_amd64.deb">.deb</a>
+          <a class="btn btn-secondary" href="{{ $base }}Tallybook-{{ $v }}-1.x86_64.rpm">.rpm</a>
+        </div>
+      </article>
+    </div>
+    <p class="price-note">Every release, with notes and checksums, is on <a href="{{ site.Params.github }}/releases">GitHub</a>.</p>
+  </div>
+</section>
+
+<section class="section tight" aria-labelledby="first-title">
+  <div class="container narrow">
+    <div class="section-head">
+      <h2 id="first-title">Opening it the first time</h2>
+      <p>Tallybook isn't signed by Apple or Microsoft yet, so your computer asks before opening it once.</p>
+    </div>
+    <div class="steps">
+      <div class="step">
+        <h3>On a Mac</h3>
+        <p>Right-click Tallybook in Applications, choose <strong>Open</strong>, then <strong>Open</strong> again. If it says the app is damaged, run <code>xattr -cr /Applications/Tallybook.app</code> in Terminal and try again.</p>
+      </div>
+      <div class="step">
+        <h3>On Windows</h3>
+        <p>If you see "Windows protected your PC", click <strong>More info</strong>, then <strong>Run anyway</strong>.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section tight" aria-labelledby="next-title">
+  <div class="container narrow">
+    <div class="section-head">
+      <h2 id="next-title">Then, in a few minutes</h2>
+    </div>
+    <ol class="next-steps">
+      <li><strong>Make a book</strong> for your household, your business, or both.</li>
+      <li><strong>Bring in transactions.</strong> Import a CSV or OFX file from your bank's website, or connect your bank through SimpleFIN or Plaid.</li>
+      <li><strong>Review and plan.</strong> Accept Tallybook's suggestions, set this month's plan, and add the bills it spotted.</li>
+    </ol>
+  </div>
+</section>
+{{ end }}

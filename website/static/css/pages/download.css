@@ -1,0 +1,127 @@
+.os-grid {
+  display: grid;
+  gap: 1.25rem;
+}
+@media (min-width: 992px) {
+  .os-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.os-card {
+  background: #ffffff;
+  border: 1px solid #e6eaf1;
+  border-radius: 20px;
+  padding: 1.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  position: relative;
+  box-shadow: 0 1px 2px rgba(11, 27, 51, 0.04), 0 6px 20px rgba(11, 27, 51, 0.06);
+}
+.os-card > p {
+  color: #4a5a75;
+  margin-bottom: 0.5rem;
+}
+.os-card.is-detected {
+  border: 2px solid #0aa2c0;
+  box-shadow: 0 24px 60px rgba(10, 162, 192, 0.18);
+}
+.os-card.is-detected .os-detected {
+  display: inline-flex;
+}
+
+.os-detected {
+  display: none;
+  position: absolute;
+  top: -0.8rem;
+  left: 1.75rem;
+  padding: 0.25rem 0.75rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 800;
+  color: #ffffff;
+  background: #087f99;
+}
+
+.os-head {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  color: #087f99;
+}
+.os-head h2 {
+  font-size: 1.4rem;
+  color: #0b1b33;
+}
+
+.os-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+}
+
+.steps {
+  display: grid;
+  gap: 1rem;
+}
+@media (min-width: 768px) {
+  .steps {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.step {
+  background: #ffffff;
+  border: 1px solid #e6eaf1;
+  border-radius: 20px;
+  box-shadow: 0 1px 2px rgba(11, 27, 51, 0.04), 0 6px 20px rgba(11, 27, 51, 0.06);
+  padding: 1.5rem;
+  box-shadow: 0 1px 2px rgba(11, 27, 51, 0.05);
+}
+.step h3 {
+  font-size: 1.1rem;
+}
+.step p {
+  margin-top: 0.5rem;
+  color: #4a5a75;
+}
+
+.next-steps {
+  counter-reset: step;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 1rem;
+}
+.next-steps li {
+  background: #ffffff;
+  border: 1px solid #e6eaf1;
+  border-radius: 20px;
+  box-shadow: 0 1px 2px rgba(11, 27, 51, 0.04), 0 6px 20px rgba(11, 27, 51, 0.06);
+  padding: 1.25rem 1.5rem 1.25rem 4rem;
+  position: relative;
+  box-shadow: 0 1px 2px rgba(11, 27, 51, 0.05);
+  color: #4a5a75;
+  counter-increment: step;
+}
+.next-steps li::before {
+  content: counter(step);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: absolute;
+  left: 1.25rem;
+  top: 1.15rem;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 999px;
+  font-weight: 800;
+  font-size: 0.9rem;
+  color: #076a80;
+  background: #e2f5f9;
+}
+.next-steps strong {
+  color: #0b1b33;
+}

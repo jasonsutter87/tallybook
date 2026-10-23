@@ -1,0 +1,162 @@
+{{ define "main" }}
+{{ $p := site.Params.pricing }}
+
+{{/* ---------------------------------------------------------------- hero */}}
+<section class="hero" aria-labelledby="hero-title">
+  <div class="container hero-inner">
+    <p class="eyebrow">Bookkeeping &amp; budgeting, on your own computer</p>
+    <h1 id="hero-title">Your money, in one file you own.</h1>
+    <p class="hero-lede">
+      A household budget that's free for good. Add your business for {{ $p.business }}, once,
+      and tax prep for {{ $p.tax }} a tax season. No subscription.
+    </p>
+    <div class="hero-actions">
+      <a href="/download/" class="btn btn-light btn-lg">{{ partial "icon.html" (dict "name" "download" "size" 18) }} Download free</a>
+      <a href="/pricing/" class="btn btn-ghost-light btn-lg">See pricing</a>
+    </div>
+    <p class="hero-meta">Mac · Windows · Linux &nbsp;·&nbsp; No account &nbsp;·&nbsp; No subscription &nbsp;·&nbsp; No tracking</p>
+  </div>
+  <div class="container">
+    <figure class="hero-shot">
+      <img src="{{ "images/screens/month.jpg" | relURL }}" width="2400" height="1500"
+           alt="Tallybook's month view for a household: money in and out, alerts for budgets running hot, a bill due this week, and spending meters for each category.">
+    </figure>
+  </div>
+</section>
+
+{{/* ---------------------------------------------------------------- promises */}}
+<section class="promises" aria-label="What you can count on">
+  <div class="container promise-grid">
+    <div>{{ partial "icon.html" (dict "name" "file") }}<span><strong>One file.</strong> Your books are a single file on your computer.</span></div>
+    <div>{{ partial "icon.html" (dict "name" "lock") }}<span><strong>Encrypted.</strong> One click locks it with a 256-bit key.</span></div>
+    <div>{{ partial "icon.html" (dict "name" "eye-off") }}<span><strong>Private.</strong> No account, no tracking, nothing phones home.</span></div>
+    <div>{{ partial "icon.html" (dict "name" "receipt") }}<span><strong>No subscription.</strong> Free for the household; buy only what you use.</span></div>
+  </div>
+</section>
+
+{{/* ---------------------------------------------------------------- household */}}
+<section id="household" class="feature" aria-labelledby="household-title">
+  <div class="container feature-row">
+    <div class="feature-copy">
+      <span class="tier-tag free">{{ partial "icon.html" (dict "name" "home" "size" 15) }} Household · Free</span>
+      <h2 id="household-title">A budget that knows what day it is.</h2>
+      <p>
+        Plan each month by category, by person, or both. Every line has a meter that knows how far into the month
+        you are, so rent paid on the 1st isn't overspending and a slow start isn't a false alarm.
+      </p>
+      <ul class="feature-list">
+        <li>{{ partial "icon.html" (dict "name" "calendar" "size" 18) }}<span><strong>Bills that tick themselves off</strong> when the payment shows up from your bank. Tallybook even spots the ones that repeat.</span></li>
+        <li>{{ partial "icon.html" (dict "name" "target" "size" 18) }}<span><strong>Goals with a real date.</strong> An emergency fund or a trip, with when you'll get there at the pace you're going.</span></li>
+        <li>{{ partial "icon.html" (dict "name" "sparkles" "size" 18) }}<span><strong>Alerts that matter.</strong> A heads-up when a line runs hot or a bill looks unpaid. Not a wall of red.</span></li>
+      </ul>
+    </div>
+    <div class="feature-media stack-shots">
+      <img src="{{ "images/screens/bills-due.jpg" | relURL }}" width="2400" height="1500" loading="lazy"
+           alt="Bills and due dates: what's due now, in the next seven days and later, each with its amount and status.">
+      <img src="{{ "images/screens/goals.jpg" | relURL }}" width="2400" height="1500" loading="lazy"
+           alt="Goals: an emergency fund, how much is saved, and when it will be reached.">
+    </div>
+  </div>
+</section>
+
+{{/* ---------------------------------------------------------------- business */}}
+<section id="business" class="feature alt" aria-labelledby="business-title">
+  <div class="container feature-row reverse">
+    <div class="feature-copy">
+      <span class="tier-tag">{{ partial "icon.html" (dict "name" "briefcase" "size" 15) }} Business · {{ $p.business }}, yours for good</span>
+      <h2 id="business-title">Real bookkeeping, in plain English.</h2>
+      <p>
+        Underneath it's proper double-entry accounting your accountant will recognize. On screen it says
+        "Money in," "Owed to you," and "Where did this go?"
+      </p>
+      <ul class="feature-list">
+        <li>{{ partial "icon.html" (dict "name" "inbox" "size" 18) }}<span><strong>Review in seconds.</strong> New transactions arrive with a suggestion: a match, a rule, or what you picked last time.</span></li>
+        <li>{{ partial "icon.html" (dict "name" "receipt" "size" 18) }}<span><strong>Invoices and bills.</strong> Send a clean invoice, record payments, and let the bank feed match the deposit.</span></li>
+        <li>{{ partial "icon.html" (dict "name" "chart" "size" 18) }}<span><strong>The numbers that matter.</strong> Profit &amp; loss, balance sheet, and who owes whom, for any dates.</span></li>
+        <li>{{ partial "icon.html" (dict "name" "home" "size" 18) }}<span><strong>Business and home, kept apart.</strong> Pay yourself and it's recorded as an owner's draw on one side and income on the other.</span></li>
+      </ul>
+    </div>
+    <div class="feature-media">
+      <img src="{{ "images/screens/home.jpg" | relURL }}" width="2400" height="1500" loading="lazy"
+           alt="The business home screen: cash on hand, transactions to review, overdue invoices, and money in and out this month.">
+    </div>
+  </div>
+  <div class="container shot-strip">
+    <figure>
+      <img src="{{ "images/screens/review.jpg" | relURL }}" width="2400" height="1500" loading="lazy" alt="The review inbox, with a suggested category for each new bank transaction.">
+      <figcaption>Review: categorize in a click</figcaption>
+    </figure>
+    <figure>
+      <img src="{{ "images/screens/invoice.jpg" | relURL }}" width="2400" height="1500" loading="lazy" alt="An invoice ready to print or email.">
+      <figcaption>Invoices that look the part</figcaption>
+    </figure>
+    <figure>
+      <img src="{{ "images/screens/reports.jpg" | relURL }}" width="2400" height="1500" loading="lazy" alt="A profit and loss report with income, expenses and where the money went.">
+      <figcaption>Profit &amp; loss, any dates</figcaption>
+    </figure>
+  </div>
+</section>
+
+{{/* ---------------------------------------------------------------- taxes */}}
+<section id="taxes" class="feature" aria-labelledby="taxes-title">
+  <div class="container feature-row">
+    <div class="feature-copy">
+      <span class="tier-tag violet">{{ partial "icon.html" (dict "name" "scale" "size" 15) }} Business + Tax · {{ $p.tax }} a tax season</span>
+      <h2 id="taxes-title">Tax time, prepared, not guessed.</h2>
+      <p>For sole proprietors and single-member LLCs. Built from your books, so every number traces back to a transaction.</p>
+      <ul class="feature-list">
+        <li>{{ partial "icon.html" (dict "name" "file" "size" 18) }}<span><strong>Schedule C worksheet.</strong> Each category mapped to its line, meals limited to 50%, home office included.</span></li>
+        <li>{{ partial "icon.html" (dict "name" "calendar" "size" 18) }}<span><strong>Quarterly estimates.</strong> How much to pay and when, using the IRS safe-harbor rule.</span></li>
+        <li>{{ partial "icon.html" (dict "name" "briefcase" "size" 18) }}<span><strong>1099s.</strong> Who you paid enough to need one, with card payments correctly left out.</span></li>
+        <li>{{ partial "icon.html" (dict "name" "download" "size" 18) }}<span><strong>A package for your accountant.</strong> Readable PDFs and spreadsheets, in one folder.</span></li>
+      </ul>
+      <p class="fine">Tallybook prepares worksheets and estimates. It isn't tax advice and never files anything for you.</p>
+    </div>
+    <div class="feature-media">
+      <img src="{{ "images/screens/taxes.jpg" | relURL }}" width="2400" height="1500" loading="lazy"
+           alt="The Schedule C worksheet beside the list of accounts and the line each one feeds.">
+    </div>
+  </div>
+</section>
+
+{{/* ---------------------------------------------------------------- data */}}
+<section class="data-band" aria-labelledby="data-title">
+  <div class="container">
+    <h2 id="data-title">Your books stay with you.</h2>
+    <div class="data-grid">
+      <div class="data-card">{{ partial "icon.html" (dict "name" "file") }}<h3>One file you own</h3><p>A single <code>.tallybook</code> file. Copy it, back it up, or hand it to your accountant.</p></div>
+      <div class="data-card">{{ partial "icon.html" (dict "name" "lock") }}<h3>Encryption built in</h3><p>The key lives in your system keychain, plus a recovery key you keep. Without it, the file is unreadable.</p></div>
+      <div class="data-card">{{ partial "icon.html" (dict "name" "cloud") }}<h3>Encrypted cloud copies</h3><p>To iCloud Drive, Dropbox, Google Drive, OneDrive or a Git repository. Only encrypted copies ever leave.</p></div>
+      <div class="data-card">{{ partial "icon.html" (dict "name" "key") }}<h3>Bank logins stay secret</h3><p>Bank access is kept in your keychain, never in the book. Your password only goes to your bank's own page.</p></div>
+    </div>
+  </div>
+  <div class="container">
+    <figure class="dark-shot">
+      <img src="{{ "images/screens/dark-mode.jpg" | relURL }}" width="2400" height="1500" loading="lazy" alt="Tallybook in dark mode.">
+      <figcaption>Light or dark, following your system.</figcaption>
+    </figure>
+  </div>
+</section>
+
+{{/* ---------------------------------------------------------------- pricing */}}
+<section id="pricing" class="section" aria-labelledby="pricing-title">
+  <div class="container">
+    <div class="section-head">
+      <h2 id="pricing-title">No subscriptions. Ever.</h2>
+      <p>Start free with your household. Upgrade when your business needs it.</p>
+    </div>
+    {{ partial "pricing.html" . }}
+  </div>
+</section>
+
+{{/* ---------------------------------------------------------------- questions */}}
+<section class="section tight" aria-labelledby="faq-title">
+  <div class="container narrow">
+    <div class="section-head">
+      <h2 id="faq-title">Questions</h2>
+    </div>
+    {{ partial "faq.html" (dict "home" true) }}
+    <p class="more-link"><a href="/pricing/#questions">More questions {{ partial "icon.html" (dict "name" "arrow-right" "size" 16) }}</a></p>
+  </div>
+</section>
+{{ end }}

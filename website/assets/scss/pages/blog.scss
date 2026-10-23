@@ -1,0 +1,155 @@
+// ==========================================================================
+// BLOG STYLES (the list and every post)
+// ==========================================================================
+
+@use '../shared/variables' as *;
+@use '../shared/mixins' as *;
+
+// No @tailwind layers here: main.css already carries them.
+
+.post-grid {
+  display: grid;
+  gap: 1.25rem;
+
+  @include md {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  @include lg {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  &.two {
+    @include lg {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+}
+
+.post-card {
+  @include card(1.6rem);
+  @include flex-column;
+  gap: 0.6rem;
+  box-shadow: $shadow-sm;
+  color: $ink;
+  text-decoration: none;
+  transition: transform $transition-fast, box-shadow $transition-fast, border-color $transition-fast;
+
+  &:hover {
+    transform: translateY(-3px);
+    box-shadow: $shadow;
+    border-color: $line-strong;
+  }
+
+  h2,
+  h3 {
+    font-size: 1.25rem;
+  }
+
+  p {
+    color: $ink-2;
+    font-size: 0.95rem;
+  }
+}
+
+.post-topic {
+  align-self: flex-start;
+  padding: 0.25rem 0.7rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 800;
+  color: $brand-deep;
+  background: $brand-soft;
+}
+
+.post-meta {
+  margin-top: auto;
+  padding-top: 0.5rem;
+  font-size: 0.85rem;
+  color: $ink-3;
+}
+
+.post-hero h1 {
+  font-size: 2.2rem;
+
+  @include md {
+    font-size: 2.9rem;
+  }
+}
+
+.post-byline {
+  margin-top: 1.5rem;
+  font-size: 0.92rem;
+  color: $hero-ink-2;
+}
+
+// Long-form reading, on top of the shared .prose styles.
+.post-body {
+  font-size: 1.1rem;
+  line-height: 1.75;
+
+  h2 {
+    margin-top: 3rem;
+  }
+
+  h3 {
+    margin: 2rem 0 0.5rem;
+    font-size: 1.2rem;
+    color: $ink;
+  }
+
+  ol {
+    list-style: decimal;
+    padding-left: 1.35rem;
+    margin-top: 1rem;
+  }
+
+  blockquote {
+    margin: 1.75rem 0;
+    padding: 1rem 1.25rem;
+    border-left: 3px solid $brand;
+    border-radius: 0 $border-radius-sm $border-radius-sm 0;
+    background: $brand-soft;
+    color: $ink;
+
+    p {
+      margin: 0;
+    }
+  }
+
+  table {
+    width: 100%;
+    margin-top: 1.25rem;
+    border-collapse: collapse;
+    font-size: 0.95rem;
+  }
+
+  th,
+  td {
+    padding: 0.65rem 0.75rem;
+    border-bottom: 1px solid $line;
+    text-align: left;
+    vertical-align: top;
+  }
+
+  th {
+    font-size: 0.78rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: $brand-deep;
+    background: $brand-soft;
+  }
+}
+
+.post-disclaimer {
+  margin-top: 2.5rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid $line;
+  font-size: 0.9rem;
+  color: $ink-3;
+}
+
+.more-title {
+  margin-bottom: 1.25rem;
+  font-size: 1.5rem;
+}
