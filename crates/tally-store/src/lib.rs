@@ -54,10 +54,17 @@ const MIGRATIONS: &[(i64, &str)] = &[
     (9, include_str!("schema_v9.sql")),  // import_links, for re-importing
     (10, include_str!("schema_v10.sql")), // bills whose amount varies
     (11, include_str!("schema_v11.sql")), // matching register lines by account and amount
+    (12, include_str!("schema_v12.sql")), // application_id: the file says it's a Tallybook book
 ];
 
 /// The newest schema this build knows: the last step of `MIGRATIONS`.
-const SCHEMA_VERSION: i64 = 11;
+const SCHEMA_VERSION: i64 = 12;
+
+/// `PRAGMA application_id` of every book from schema v12 on: the ASCII
+/// letters "TALY" read as a big-endian 32-bit number. It sits in bytes 68-71
+/// of the SQLite header so any tool can tell a Tallybook book from some other
+/// SQLite file. Set by `schema_v12.sql`; never change it.
+pub const APPLICATION_ID: i32 = 0x5441_4C59;
 const _: () = assert!(MIGRATIONS[MIGRATIONS.len() - 1].0 == SCHEMA_VERSION);
 
 /// Settings key for the sides this book keeps: `Scope` names joined by
@@ -318,6 +325,15 @@ impl Store {
     }
 
     fn migrate(&mut self) -> Result<()> {
+        // 0 is SQLite's default: a new file, or a book from before v12.
+        // Anything else is another program's database, and running our
+        // migrations would write Tallybook tables into it.
+        let application_id: i32 = self.conn.pragma_query_value(None, "application_id", |r| r.get(0))?;
+        if application_id != 0 && application_id != APPLICATION_ID {
+            return rule(format!(
+                "this file is another program's database (SQLite application id {application_id:#010x}), not a Tallybook book"
+            ));
+        }
         let version: i64 = self.conn.pragma_query_value(None, "user_version", |r| r.get(0))?;
         if version > SCHEMA_VERSION {
             return rule(format!(
