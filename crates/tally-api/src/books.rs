@@ -318,7 +318,7 @@ impl App {
         let restore = |guard: &mut Option<crate::OpenBook>, e: std::io::Error| -> ApiError {
             let _ = std::fs::remove_file(&tmp);
             if let Ok(store) = self.open_any(path) {
-                *guard = Some(crate::OpenBook { store, path: original_path.clone() });
+                *guard = Some(crate::OpenBook::new(store, original_path.clone()));
             }
             ApiError::new(
                 "io",
@@ -341,7 +341,7 @@ impl App {
             let _ = std::fs::remove_file(sibling(path, suffix));
         }
         let store = reopen(path)?;
-        *guard = Some(crate::OpenBook { store, path: path.to_path_buf() });
+        *guard = Some(crate::OpenBook::new(store, path.to_path_buf()));
         Ok(())
     }
 
