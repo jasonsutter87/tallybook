@@ -409,6 +409,90 @@ async fn cloud_copies_are_encrypted_pruned_and_pushed() {
     assert!(status["last"].is_string() && status["last_error"].is_null());
 }
 
+#[tokio::test]
+async fn settings_set_accepts_only_known_preference_keys() {
+    let (app, dir) = app("prefs-allowlist");
+    app.call("book.create", json!({ "path": dir.join("Shop.tallybook"), "company_name": "Shop" })).await.unwrap();
+    let before = app.call("cloud.status", Value::Null).await.unwrap();
+    for key in ["cloud.git", "cloud.folder", "cloud.keep", "cloud.auto", "cloud.last", "tax.profile", "plaid.user_id", "lock_date", "anything"] {
+        let err = app.call("settings.set", json!({ "prefs": { key: "/tmp/x" } })).await.unwrap_err();
+        assert_eq!(err.code, "bad_params", "{key}");
+    }
+    // One unknown key refuses the whole call: the known one isn't written either.
+    let err = app.call("settings.set", json!({ "prefs": { "company.email": "a@b.co", "cloud.auto": "1" } })).await.unwrap_err();
+    assert_eq!(err.code, "bad_params");
+    let prefs = app.call("settings.get", Value::Null).await.unwrap()["prefs"].clone();
+    assert!(prefs.get("company.email").is_none() && prefs.get("cloud.auto").is_none(), "{prefs}");
+    assert_eq!(app.call("cloud.status", Value::Null).await.unwrap()["auto"], before["auto"]);
+    assert_eq!(app.call("cloud.status", Value::Null).await.unwrap()["git"], before["git"]);
+
+    // Every key the Settings screen saves still works.
+    for key in crate::settings::PREF_KEYS {
+        app.call("settings.set", json!({ "prefs": { *key: "7" } })).await.unwrap();
+    }
+}
+
+#[tokio::test]
+async fn a_folder_always_keeps_the_copy_just_made() {
+    let (app, dir) = app("cloud-keep");
+    app.call("book.create", json!({ "path": dir.join("Shop.tallybook"), "company_name": "Shop" })).await.unwrap();
+    app.call("book.encrypt", Value::Null).await.unwrap();
+    let drive = dir.join("Drive");
+    std::fs::create_dir_all(&drive).unwrap();
+    app.call("cloud.set", json!({ "folder": drive })).await.unwrap();
+    // A stored value outside 1..=100, however it got there, reads back as 1.
+    app.with(|s| s.set_pref("cloud.keep", Some("0"))).unwrap();
+    assert_eq!(app.call("cloud.status", Value::Null).await.unwrap()["keep"], 1);
+    for _ in 0..2 {
+        let r = app.call("cloud.backup_now", Value::Null).await.unwrap();
+        assert_eq!(r["folder"]["ok"], true, "{r}");
+        let newest = PathBuf::from(r["folder"]["path"].as_str().unwrap());
+        assert!(newest.exists(), "the copy just made is never pruned");
+        std::thread::sleep(std::time::Duration::from_millis(1100)); // distinct timestamps
+    }
+    assert_eq!(std::fs::read_dir(drive.join("Tallybook")).unwrap().count(), 1);
+}
+
+/// Cloud copies into a Git repository run none of the repository's hooks and
+/// no filesystem monitor it configures.
+#[cfg(unix)]
+#[tokio::test]
+async fn cloud_git_copies_run_no_repository_hooks() {
+    use std::os::unix::fs::PermissionsExt;
+    use std::process::Command;
+    let (app, dir) = app("cloud-hooks");
+    app.call("book.create", json!({ "path": dir.join("Shop.tallybook"), "company_name": "Shop" })).await.unwrap();
+    app.call("book.encrypt", Value::Null).await.unwrap();
+    let repo = dir.join("repo");
+    std::fs::create_dir_all(&repo).unwrap();
+    let git = |args: &[&str]| {
+        let out = Command::new("git").args(args).current_dir(&repo).output().unwrap();
+        assert!(out.status.success(), "git {args:?}: {}", String::from_utf8_lossy(&out.stderr));
+    };
+    git(&["init", "-q"]);
+    git(&["config", "user.email", "test@example.com"]);
+    git(&["config", "user.name", "Test"]);
+    let marker = dir.join("ran");
+    let script = |name: &str| {
+        let p = dir.join(name);
+        std::fs::write(&p, format!("#!/bin/sh\necho {name} >> '{}'\nexit 0\n", marker.display())).unwrap();
+        std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
+        p
+    };
+    for hook in ["pre-commit", "commit-msg", "post-commit", "pre-push"] {
+        std::fs::copy(script(hook), repo.join(".git/hooks").join(hook)).unwrap();
+        std::fs::set_permissions(repo.join(".git/hooks").join(hook), std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    git(&["config", "core.fsmonitor", script("fsmonitor").to_str().unwrap()]);
+
+    app.call("cloud.set", json!({ "git": repo })).await.unwrap();
+    let r = app.call("cloud.backup_now", Value::Null).await.unwrap();
+    assert_eq!(r["git"]["ok"], true, "{r}");
+    let log = Command::new("git").args(["-c", "core.fsmonitor=false", "log", "--oneline"]).current_dir(&repo).output().unwrap();
+    assert!(String::from_utf8_lossy(&log.stdout).contains("Tallybook backup"), "the copy was committed");
+    assert!(!marker.exists(), "ran: {}", std::fs::read_to_string(&marker).unwrap_or_default());
+}
+
 /// The household mode's book-level methods, as the UI calls them: sides,
 /// scoped accounts, and scoped reports and dashboard. Amounts are cents.
 #[tokio::test]
