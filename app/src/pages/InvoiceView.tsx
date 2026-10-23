@@ -1,3 +1,6 @@
+// One invoice as the customer sees it, ready to print or save as PDF, with its
+// payments and the actions to send, record a payment, edit a draft or void.
+
 import { Ban, Check, Copy, HandCoins, Mail, Pencil, Printer, Send, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
