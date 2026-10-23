@@ -6,6 +6,7 @@ use crate::{ApiResult, App, params, today, unknown_method};
 use chrono::NaiveDate;
 use serde::Deserialize;
 use serde_json::Value;
+use std::result::Result;
 use tally_store::*;
 
 /// `recurring.update`: replaces every field of the bill.
@@ -18,7 +19,7 @@ struct UpdateBill {
 /// `recurring.set_active`: an inactive bill stops producing due dates.
 #[derive(Deserialize)]
 struct SetActive {
-    id: i64,
+    id: RecurringBillId,
     active: bool,
 }
 
@@ -49,6 +50,14 @@ struct MarkDue {
     entry_id: Option<tally_core::journal::EntryId>,
 }
 
+/// The window `recurring.due` lists when none is given: from a week before
+/// `today` through the last day of next month. A calendar error is returned,
+/// not papered over with some other date.
+pub(crate) fn default_due_window(today: NaiveDate) -> Result<(NaiveDate, NaiveDate), StoreError> {
+    let (_, month_end) = month_range(&month_of(today + chrono::Months::new(1)))?;
+    Ok((today - chrono::Days::new(7), month_end))
+}
+
 impl App {
     pub(crate) fn recurring(&self, method: &str, p: Value) -> ApiResult<Value> {
         match method {
@@ -74,9 +83,10 @@ impl App {
                 // Default: the past week through the end of next month.
                 let p: DueQuery = params(p)?;
                 let t = today();
-                let from = p.from.unwrap_or(t - chrono::Days::new(7));
-                let to = p.to.unwrap_or_else(|| month_range(&month_of(t + chrono::Months::new(1))).map(|r| r.1).unwrap_or(t));
-                self.with(|s| s.due_dates(from, to, t))
+                self.with(|s| {
+                    let (default_from, default_to) = default_due_window(t)?;
+                    s.due_dates(p.from.unwrap_or(default_from), p.to.unwrap_or(default_to), t)
+                })
             }
             // {bill_id, due_date, status, entry_id?} -> null.
             "recurring.mark" => {
