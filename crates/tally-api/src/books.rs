@@ -90,7 +90,9 @@ fn hex(key: &BookKey) -> String {
 }
 
 fn unhex(s: &str) -> Option<BookKey> {
-    if s.len() != 64 {
+    // Checked up front: slicing a non-ASCII string below would panic, and
+    // `from_str_radix` would accept a leading "+".
+    if s.len() != 64 || !s.bytes().all(|b| b.is_ascii_hexdigit()) {
         return None;
     }
     let mut key = [0u8; 32];
@@ -200,23 +202,33 @@ impl App {
         }
         let path = p.path.canonicalize().unwrap_or(p.path.clone());
 
-        // Close it if it's the open book, then read what needs revoking.
-        {
+        // Take the book out of the app if it's the open one, but keep it alive until the
+        // name is confirmed: a wrong confirmation must leave the user's book open.
+        let was_open = {
             let mut guard = self.lock();
-            if guard.as_ref().is_some_and(|b| b.path == path) {
-                *guard = None;
+            if guard.as_ref().is_some_and(|b| b.path == path) { guard.take() } else { None }
+        };
+        let restore = |book: Option<crate::OpenBook>| {
+            if book.is_some() {
+                *self.lock() = book;
             }
-        }
-        let (name, connections) = match self.open_any(&path) {
-            Ok(store) => (store.pref("company.name")?.unwrap_or_default(), store.connections_with_secrets()?),
+        };
+        let (name, connections) = match self.open_any(&path).and_then(|store| Ok((store.pref("company.name")?.unwrap_or_default(), store.connections_with_secrets()?))) {
+            Ok(read) => read,
             // Encrypted and no key on this machine: we can't read it, so confirm
             // with the file name instead, and there are no keychain entries to clean.
             Err(e) if e.code == "locked" => (path.file_stem().and_then(|s| s.to_str()).unwrap_or_default().to_string(), vec![]),
-            Err(e) => return Err(e),
+            Err(e) => {
+                restore(was_open);
+                return Err(e);
+            }
         };
         if p.confirm_name.trim() != name.trim() {
+            restore(was_open);
             return Err(ApiError::new("rule", format!("type the business name exactly (\"{name}\") to confirm")));
         }
+        // Confirmed: close it for real before the files are removed.
+        drop(was_open);
 
         let mut report = DeleteReport::default();
         for conn in &connections {
@@ -365,4 +377,18 @@ pub fn move_to_trash(path: &Path) -> std::io::Result<()> {
     #[cfg(not(target_os = "macos"))]
     let ctx = trash::TrashContext::default();
     ctx.delete(path).map_err(|e| std::io::Error::other(e.to_string()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn unhex_round_trips_and_rejects_junk() {
+        let key: BookKey = std::array::from_fn(|i| i as u8 * 7);
+        assert_eq!(unhex(&hex(&key)), Some(key));
+        assert_eq!(unhex(&"é".repeat(32)), None, "64 bytes but not hex must not panic");
+        assert_eq!(unhex(&format!("+1{}", "00".repeat(31))), None);
+        assert_eq!(unhex("abcd"), None);
+    }
 }

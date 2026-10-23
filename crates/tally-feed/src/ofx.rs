@@ -50,7 +50,8 @@ fn leaf(src: &str, tag: &str) -> Option<String> {
 }
 
 fn decode_entities(s: &str) -> String {
-    s.replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">").replace("&quot;", "\"").replace("&apos;", "'")
+    // `&amp;` last, so "&amp;lt;" decodes to the literal text "&lt;" rather than "<".
+    s.replace("&lt;", "<").replace("&gt;", ">").replace("&quot;", "\"").replace("&apos;", "'").replace("&amp;", "&")
 }
 
 /// `20260131`, `20260131120000`, `20260131120000.000[-5:EST]` → date.
@@ -75,7 +76,9 @@ pub fn parse(data: &[u8]) -> Result<Vec<OfxStatement>, OfxError> {
 
 fn parse_statement(stmt: &str, kind: FeedAccountKind) -> Result<OfxStatement, OfxError> {
     let acct_id = leaf(stmt, "ACCTID").unwrap_or_else(|| "unknown".into());
-    let mask = (acct_id.len() >= 4).then(|| acct_id[acct_id.len() - 4..].to_string());
+    // Last four characters, not bytes: a non-ASCII account id must not split a character.
+    let id_chars: Vec<char> = acct_id.chars().collect();
+    let mask = (id_chars.len() >= 4).then(|| id_chars[id_chars.len() - 4..].iter().collect::<String>());
     let balance = blocks(stmt, &stmt.to_ascii_uppercase(), "LEDGERBAL")
         .first()
         .and_then(|b| leaf(b, "BALAMT"))
@@ -170,6 +173,21 @@ VERSION:102
         assert_eq!(s[0].account.kind, FeedAccountKind::Credit);
         assert_eq!(s[0].account.current_balance, Some(Cents(25000)));
         assert_eq!(s[0].transactions[0].amount, Cents(-1999));
+    }
+
+    #[test]
+    fn non_ascii_account_id_does_not_panic() {
+        // Byte-slicing the last four bytes of this id used to split a character.
+        let src = SGML.replace("000123456789", "12éé3");
+        let s = parse(src.as_bytes()).unwrap();
+        assert_eq!(s[0].account.mask.as_deref(), Some("2éé3"));
+    }
+
+    #[test]
+    fn entities_are_decoded_once() {
+        let src = SGML.replace("PG&amp;E", "A&amp;lt;B");
+        let s = parse(src.as_bytes()).unwrap();
+        assert_eq!(s[0].transactions[0].description, "A&lt;B AUTOPAY");
     }
 
     #[test]

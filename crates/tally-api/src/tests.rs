@@ -218,6 +218,7 @@ async fn delete_book_tears_everything_down() {
     let wrong = app.call("book.delete", json!({ "path": path, "confirm_name": "gone co" })).await.unwrap_err();
     assert_eq!(wrong.code, "rule", "the name must match exactly");
     assert!(path.exists());
+    assert!(app.is_open(), "a wrong confirmation must not close the open book");
 
     let r = app.call("book.delete", json!({ "path": path, "confirm_name": "Gone Co", "include_backups": true })).await.unwrap();
     assert!(!path.exists());
