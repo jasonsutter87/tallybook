@@ -295,6 +295,43 @@ async fn a_book_cant_name_keychain_entries_it_doesnt_own() {
     }
 }
 
+/// recent.json, keys.json and license.json are written whole, readable only
+/// by the user, and license.json holds no whole license key.
+#[tokio::test]
+async fn config_files_are_private_and_license_keys_live_in_the_keychain() {
+    let (app, dir) = free_app("config-files");
+    app.call("book.create", json!({ "path": dir.join("Home.tallybook"), "company_name": "Home", "sides": ["household"] })).await.unwrap();
+    app.call("book.encrypt", Value::Null).await.unwrap();
+    let license = crate::license::License {
+        tier: crate::license::Tier::Business,
+        key: "ABCD-1234-SECRET-WXYZ".into(),
+        instance_id: "inst-1".into(),
+        email: None,
+        activated_on: today(),
+        tax_years: vec![],
+        earlier: vec![crate::license::Activation { key: "OLD-KEY-HIDDEN-9999".into(), instance_id: "inst-0".into() }],
+    };
+    app.save_license(&license).unwrap();
+
+    let config = dir.join("config");
+    let text = std::fs::read_to_string(config.join("license.json")).unwrap();
+    assert!(!text.contains("SECRET") && !text.contains("HIDDEN"), "{text}");
+    assert_eq!(app.load_license().unwrap(), license, "the keys come back from the keychain");
+    assert_eq!(app.call("license.status", Value::Null).await.unwrap()["key_hint"], "WXYZ");
+    assert_eq!(app.call("license.status", Value::Null).await.unwrap()["tier"], "business");
+
+    let names: Vec<String> = std::fs::read_dir(&config).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().to_string()).collect();
+    assert!(names.iter().all(|n| !n.ends_with(".tmp")), "no temporary files left: {names:?}");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        for f in ["recent.json", "keys.json", "license.json"] {
+            let mode = std::fs::metadata(config.join(f)).unwrap().permissions().mode();
+            assert_eq!(mode & 0o077, 0, "{f} is {mode:o}");
+        }
+    }
+}
+
 #[tokio::test]
 async fn encryption_lifecycle_and_new_machine_recovery() {
     let (app, dir) = app("encrypt");
