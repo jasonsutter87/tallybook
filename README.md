@@ -206,7 +206,9 @@ otherwise. [Set it up →](docs/AGENTS.md)
 ## Your data, your rules
 
 - **One file.** Your books are a single `.tallybook` file, in
-  `Documents/Tallybook` unless you choose somewhere else.
+  `Documents/Tallybook` unless you choose somewhere else. It's a standard
+  SQLite database, and [its format is documented](docs/FILE_FORMAT.md) so
+  your books stay readable with or without Tallybook.
 - **Backups.** **Settings → Back up now** saves a complete copy next to your
   book. Copying the file works too.
 - **Encryption.** One click locks the whole book file with a random 256-bit
