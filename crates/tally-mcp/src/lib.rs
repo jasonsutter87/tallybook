@@ -67,6 +67,27 @@ const READ: &[&str] = &[
     "cloud.status", "license.status",
 ];
 
+/// Methods that change the book (or the app's settings) and are offered to
+/// an agent only with `--write`. Anything not in READ or NEVER is treated as
+/// a write; this list exists so that a new method must be sorted
+/// into READ, WRITE or NEVER on purpose (the `every_dispatched_method_is_in_exactly_one_list` test).
+#[cfg(test)]
+const WRITE: &[&str] = &[
+    "book.create", "book.create_demo", "book.forget", "book.backup", "book.add_side", "settings.set",
+    "accounts.create", "accounts.rename", "accounts.archive", "accounts.set_flex", "accounts.opening_balance",
+    "entries.post", "entries.void", "entries.set_person", "entries.set_goal", "people.create",
+    "people.update", "people.archive", "budget.set", "budget.remove", "budget.set_available",
+    "recurring.create", "recurring.update", "recurring.set_active", "recurring.mark",
+    "recurring.dismiss_suggestion", "goals.create", "goals.update", "goals.archive", "goals.contribute",
+    "inbox.accept", "inbox.accept_suggested", "inbox.split", "inbox.match", "inbox.exclude", "inbox.undo",
+    "import.csv", "import.ofx", "import.ledger", "rules.create", "rules.update", "rules.delete",
+    "reconcile.start", "reconcile.toggle", "reconcile.toggle_many", "reconcile.undo_last", "reconcile.finish",
+    "reconcile.cancel", "contacts.create", "contacts.update", "contacts.archive", "invoices.create",
+    "invoices.update", "invoices.finalize", "invoices.void", "invoices.delete", "bills.create", "bills.void",
+    "payments.receive", "payments.pay", "payments.void", "tax.set_profile", "tax.set_line", "tax.confirm_all",
+    "tax.record_payment", "tax.void_payment", "tax.set_payee", "tax.set_contact", "tax.export", "bank.sync",
+];
+
 /// Methods an agent may never call: they destroy books, handle keys or
 /// credentials, spend money, or send data somewhere new.
 const NEVER: &[&str] = &[
@@ -313,10 +334,7 @@ async fn run_tool(app: &App, write: bool, name: &str, a: &Value) -> Result<Value
             match a.get("report").and_then(Value::as_str) {
                 Some("pnl") => {
                     let to = a.get("to").cloned().unwrap_or_else(|| json!(tally_api::today()));
-                    let from = a.get("from").cloned().unwrap_or_else(|| {
-                        let t = tally_api::today().to_string();
-                        json!(format!("{}-01-01", &t[..4]))
-                    });
+                    let from = a.get("from").cloned().unwrap_or_else(|| json!(tally_api::year_start()));
                     call("reports.pnl", json!({ "from": from, "to": to, "scope": scope })).await
                 }
                 Some(r @ ("balance_sheet" | "trial_balance" | "ar_aging" | "ap_aging")) => {
@@ -598,5 +616,19 @@ mod tests {
         assert_eq!(access("inbox.accept"), Access::Write);
         assert_eq!(access("book.delete"), Access::Never);
         assert!(READ.iter().all(|m| !NEVER.contains(m)), "a method is either readable or forbidden, not both");
+    }
+
+    /// Every method the API dispatches is sorted on purpose into exactly one of
+    /// READ, WRITE and NEVER, so a new method can't become agent-writable (or
+    /// agent-readable) by default; and the lists name no method that doesn't exist.
+    #[test]
+    fn every_dispatched_method_is_in_exactly_one_list() {
+        for m in tally_api::METHODS {
+            let n = [READ.contains(m), WRITE.contains(m), NEVER.contains(m)].into_iter().filter(|b| *b).count();
+            assert_eq!(n, 1, "{m} must be in exactly one of READ, WRITE, NEVER (in {n})");
+        }
+        for m in READ.iter().chain(WRITE).chain(NEVER) {
+            assert!(tally_api::METHODS.contains(m), "{m} is in an access list but is not an API method");
+        }
     }
 }

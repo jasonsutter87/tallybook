@@ -1,14 +1,15 @@
 //! Tax center methods (`tax.*`). Everything here prepares and explains;
 //! nothing files anything with anyone.
 
-use crate::{ApiError, ApiResult, App, ok, params, today};
+use crate::{ApiError, ApiResult, App, ok, params, today, unknown_method};
 use chrono::{Datelike, NaiveDate};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::fmt::Write as _;
 use std::path::PathBuf;
 use std::result::Result;
-use tally_core::Cents;
+use tally_core::journal::EntryId;
+use tally_core::{AccountId, Cents};
 use tally_core::report::ProfitAndLoss;
 use tally_core::tax::{self, EstimateInputs, FilingStatus, ScheduleCLine, TaxYear};
 use tally_store::*;
@@ -38,19 +39,19 @@ struct Year {
 
 #[derive(Deserialize)]
 struct SetLine {
-    account_id: i64,
+    account_id: AccountId,
     line: Option<ScheduleCLine>,
 }
 
 #[derive(Deserialize)]
 struct SetPayee {
-    entry_id: i64,
-    contact_id: Option<i64>,
+    entry_id: EntryId,
+    contact_id: Option<ContactId>,
 }
 
 #[derive(Deserialize)]
 struct SetContactTax {
-    id: i64,
+    id: ContactId,
     #[serde(flatten)]
     tax: ContactTax,
 }
@@ -77,14 +78,34 @@ struct YearsView {
     disclaimer: &'static str,
 }
 
+/// How the plan sizes estimated payments: pay last year's tax (safe harbor)
+/// or this year's projected tax. Serialized as the same strings as before.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PlanMethod {
+    SafeHarbor,
+    CurrentYear,
+}
+
+/// Where a quarterly estimated payment stands.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+enum QuarterStatus {
+    Paid,
+    NothingDue,
+    Late,
+    DueSoon,
+    Upcoming,
+}
+
 /// The tax profile, kept as JSON in the book preference `tax.profile`
 /// (settings key `pref.tax.profile`), so its field names are part of the
 /// file format. Money fields are cents.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TaxProfile {
     pub filing_status: FilingStatus,
-    /// "safe_harbor" or "current_year".
-    pub method: String,
+    /// `"safe_harbor"` or `"current_year"` on the wire.
+    pub method: PlanMethod,
     pub other_income: Cents,
     pub w2_wages: Cents,
     pub withholding: Cents,
@@ -103,7 +124,7 @@ impl Default for TaxProfile {
     fn default() -> Self {
         TaxProfile {
             filing_status: FilingStatus::Single,
-            method: "safe_harbor".into(),
+            method: PlanMethod::SafeHarbor,
             other_income: Cents::ZERO,
             w2_wages: Cents::ZERO,
             withholding: Cents::ZERO,
@@ -137,7 +158,7 @@ struct QuarterView {
     planned: Cents,
     paid_federal: Cents,
     paid_state: Cents,
-    status: &'static str,
+    status: QuarterStatus,
 }
 
 #[derive(Serialize)]
@@ -158,7 +179,7 @@ struct EstimateView {
     ninety_percent_current: Cents,
     /// The annual amount the plan targets for estimated payments.
     plan_annual: Cents,
-    plan_method: &'static str,
+    plan_method: PlanMethod,
     quarters: Vec<QuarterView>,
     state_set_aside: Cents,
     payments: Vec<TaxPayment>,
@@ -200,9 +221,9 @@ fn build_estimate(s: &Store, year: i32, ty: &'static TaxYear) -> ApiResult<Estim
     );
     let safe_harbor = profile.last_year_tax.map(|t| tax::safe_harbor(t, profile.last_year_agi.unwrap_or_default(), profile.filing_status));
     let ninety = Cents(tally_core::invoice::div_round(i128::from(estimate.total_tax.0) * CURRENT_YEAR_SAFE_HARBOR_PERCENT, 100) as i64);
-    let (plan_total, plan_method) = match (profile.method.as_str(), safe_harbor) {
-        ("safe_harbor", Some(sh)) => (sh, "safe_harbor"),
-        _ => (estimate.total_tax, "current_year"),
+    let (plan_total, plan_method) = match (profile.method, safe_harbor) {
+        (PlanMethod::SafeHarbor, Some(sh)) => (sh, PlanMethod::SafeHarbor),
+        _ => (estimate.total_tax, PlanMethod::CurrentYear),
     };
     let plan_annual = (plan_total - profile.withholding).max(Cents::ZERO);
     let per_quarter = tax::installments(plan_annual);
@@ -217,15 +238,15 @@ fn build_estimate(s: &Store, year: i32, ty: &'static TaxYear) -> ApiResult<Estim
         };
         let paid_federal = paid(Jurisdiction::Federal);
         let status = if per_quarter[i].0 > 0 && paid_federal >= per_quarter[i] {
-            "paid"
+            QuarterStatus::Paid
         } else if per_quarter[i].is_zero() {
-            "nothing_due"
+            QuarterStatus::NothingDue
         } else if now > *due {
-            "late"
+            QuarterStatus::Late
         } else if (*due - now).num_days() <= DUE_SOON_DAYS {
-            "due_soon"
+            QuarterStatus::DueSoon
         } else {
-            "upcoming"
+            QuarterStatus::Upcoming
         };
         quarters.push(QuarterView { quarter: q, due: *due, planned: per_quarter[i], paid_federal, paid_state: paid(Jurisdiction::State), status });
     }
@@ -437,7 +458,7 @@ impl App {
                 let ty = require_year(year)?;
                 self.export(year, ty)
             }
-            _ => Err(ApiError::new("unknown_method", format!("no such method: {method}"))),
+            _ => Err(unknown_method(method)),
         }
     }
 
@@ -452,7 +473,11 @@ impl App {
         // licensed. A year with no tables at all gets that (truer) error from the method.
         let year = match method {
             "tax.schedule_c" | "tax.confirm_all" | "tax.estimate" | "tax.1099" | "tax.export" => Some(year_of(p.clone())?),
-            "tax.record_payment" => p.get("tax_year").and_then(Value::as_i64).map(|y| y as i32),
+            "tax.record_payment" => match p.get("tax_year").and_then(Value::as_i64) {
+                // An integer that doesn't fit a year is refused here, not wrapped into a different one.
+                Some(y) => Some(i32::try_from(y).map_err(|_| ApiError::new("bad_params", format!("tax_year {y} is out of range")))?),
+                None => None,
+            },
             _ => None,
         };
         if let Some(year) = year.filter(|y| tax::tax_year(*y).is_some()) {
@@ -462,9 +487,6 @@ impl App {
     }
 
     fn set_profile(&self, profile: TaxProfile) -> ApiResult<Value> {
-        if !matches!(profile.method.as_str(), "safe_harbor" | "current_year") {
-            return Err(ApiError::new("bad_params", "method must be safe_harbor or current_year"));
-        }
         if !(0..=MAX_STATE_RATE_BP).contains(&profile.state_rate_bp) {
             return Err(ApiError::new("rule", "state rate looks wrong (0–20%)"));
         }
@@ -497,41 +519,65 @@ impl App {
     }
 
     /// Writes an accountant package to "<book folder>/Tax <year>/".
+    ///
+    /// Everything is read from the book under the lock; the files (CSVs and
+    /// PDFs) are written after it is released, so a slow disk never blocks
+    /// other calls.
     fn export(&self, year: i32, ty: &'static TaxYear) -> ApiResult<Value> {
-        let mut guard = self.lock();
-        let book = guard.as_mut().ok_or_else(|| ApiError::new("no_book", "no book is open"))?;
-        let dir: PathBuf = book.path.parent().unwrap_or(std::path::Path::new(".")).join(format!("Tax {year}"));
+        let data = {
+            let mut guard = self.lock();
+            let book = guard.as_mut().ok_or_else(|| ApiError::new("no_book", "no book is open"))?;
+            gather_export(&book.store, &book.path, year, ty)?
+        };
+        let dir: PathBuf = data.book_path.parent().unwrap_or(std::path::Path::new(".")).join(format!("Tax {year}"));
         std::fs::create_dir_all(&dir).map_err(|e| ApiError::new("io", e.to_string()))?;
-        let s = &book.store;
-        // Business side only: the household's spending is nobody's tax business, and
-        // since each side balances on its own the business lines still balance.
-        let names: std::collections::HashMap<i64, String> =
-            s.accounts_in(Some(tally_core::Scope::Business))?.into_iter().map(|a| (a.id, a.name)).collect();
-        let (from, to) = year_range(year)?;
         let write = |name: &str, body: &[u8]| std::fs::write(dir.join(name), body).map_err(|e| ApiError::new("io", e.to_string()));
+        let (sc, r, est, names) = (&data.sc, &data.r, &data.est, &data.names);
+        let range = data.range;
 
-        let est = build_estimate(s, year, ty)?;
-        let probe = s.schedule_c(year, Cents::ZERO)?;
-        let home = tax::simplified_home_office(est.profile.home_office_sqft, probe.schedule.line29_tentative_profit);
-        let sc = s.schedule_c(year, home)?;
         write("Schedule C worksheet.csv", schedule_c_worksheet_csv(&sc.schedule).as_bytes())?;
-        write("Schedule C mapping.csv", schedule_c_mapping_csv(&sc).as_bytes())?;
-
-        let entries = s.entries(from, to)?;
-        write("General ledger.csv", general_ledger_csv(&entries, &names).as_bytes())?;
-
-        let r = s.report_1099(year)?;
-        write("1099 summary.csv", form_1099_csv(&r).as_bytes())?;
+        write("Schedule C mapping.csv", schedule_c_mapping_csv(sc).as_bytes())?;
+        write("General ledger.csv", general_ledger_csv(&data.entries, names).as_bytes())?;
+        write("1099 summary.csv", form_1099_csv(r).as_bytes())?;
         write("Estimated tax payments.csv", estimated_payments_csv(&est.payments).as_bytes())?;
 
         // The same figures, laid out for people to read.
-        let company = s.pref("company.name")?.unwrap_or_else(|| "Your business".into());
-        write("Tax summary.pdf", &crate::tax_pdf::summary(&company, year, today(), &sc, &r, &est.payments))?;
-        write("General ledger.pdf", &crate::tax_pdf::ledger(&company, year, (from, to), today(), &entries, &names))?;
-
-        let pnl = s.profit_and_loss_in(from, to, Some(tally_core::Scope::Business))?;
-        let book_file = book.path.file_name().map_or_else(String::new, |n| n.to_string_lossy().into_owned());
-        write("README.txt", export_readme(year, ty, &book_file, (from, to), &pnl, &sc).as_bytes())?;
+        write("Tax summary.pdf", &crate::tax_pdf::summary(&data.company, year, today(), sc, r, &est.payments))?;
+        write("General ledger.pdf", &crate::tax_pdf::ledger(&data.company, year, range, today(), &data.entries, names))?;
+        write("README.txt", export_readme(year, ty, &data.book_file, range, &data.pnl, sc).as_bytes())?;
         ok(dir)
     }
+}
+
+/// Everything an accountant package is made of, read from the book.
+struct ExportData {
+    book_path: PathBuf,
+    book_file: String,
+    company: String,
+    range: (NaiveDate, NaiveDate),
+    names: std::collections::HashMap<i64, String>,
+    est: EstimateView,
+    sc: ScheduleCReport,
+    entries: Vec<Entry>,
+    r: Report1099,
+    pnl: ProfitAndLoss,
+}
+
+fn gather_export(s: &Store, book_path: &std::path::Path, year: i32, ty: &'static TaxYear) -> ApiResult<ExportData> {
+    // Business side only: the household's spending is nobody's tax business, and
+    // since each side balances on its own the business lines still balance.
+    let names: std::collections::HashMap<i64, String> =
+        s.accounts_in(Some(tally_core::Scope::Business))?.into_iter().map(|a| (a.id, a.name)).collect();
+    let range = year_range(year)?;
+    let est = build_estimate(s, year, ty)?;
+    let probe = s.schedule_c(year, Cents::ZERO)?;
+    let home = tax::simplified_home_office(est.profile.home_office_sqft, probe.schedule.line29_tentative_profit);
+    let sc = s.schedule_c(year, home)?;
+    let entries = s.entries(range.0, range.1)?;
+    let r = s.report_1099(year)?;
+    let company = s.pref("company.name")?.unwrap_or_else(|| "Your business".into());
+    let pnl = s.profit_and_loss_in(range.0, range.1, Some(tally_core::Scope::Business))?;
+    let book_path = book_path.to_path_buf();
+    let book_file = book_path.file_name().map_or_else(String::new, |n| n.to_string_lossy().into_owned());
+    Ok(ExportData { book_path, book_file, company, range, names, est, sc, entries, r, pnl })
 }

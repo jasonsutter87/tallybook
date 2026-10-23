@@ -6,7 +6,7 @@
 //! encrypted before it is written to a destination. Nothing readable ever
 //! leaves the machine.
 
-use crate::{ApiError, ApiResult, App, ok, params};
+use crate::{ApiError, ApiResult, App, ok, params, unknown_method};
 use chrono::{DateTime, Local};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -125,17 +125,38 @@ fn suggestions() -> Vec<Suggestion> {
     out
 }
 
-/// Writes an encrypted snapshot to `dest` via a temp file, refusing to leave
-/// anything unencrypted behind.
+/// Takes an encrypted snapshot of the book into `dest`, refusing to leave
+/// anything unencrypted behind. This is the only step that needs the book.
 fn write_encrypted_snapshot(store: &Store, dest: &Path) -> Result<(), String> {
+    let _ = std::fs::remove_file(dest);
+    store.backup_to(dest).map_err(|e| e.to_string())?;
+    if !is_encrypted_file(dest).unwrap_or(false) {
+        let _ = std::fs::remove_file(dest);
+        return Err("refusing to copy an unencrypted file".into());
+    }
+    Ok(())
+}
+
+/// Copies the finished snapshot to `dest` through a `.partial` file, so a
+/// destination never holds half a book.
+fn place_snapshot(snapshot: &Path, dest: &Path) -> Result<(), String> {
     let tmp = dest.with_extension("tallybook.partial");
     let _ = std::fs::remove_file(&tmp);
-    store.backup_to(&tmp).map_err(|e| e.to_string())?;
+    std::fs::copy(snapshot, &tmp).map_err(|e| e.to_string())?;
     if !is_encrypted_file(&tmp).unwrap_or(false) {
         let _ = std::fs::remove_file(&tmp);
         return Err("refusing to copy an unencrypted file".into());
     }
     std::fs::rename(&tmp, dest).map_err(|e| e.to_string())
+}
+
+/// A scratch folder for the snapshot, removed when dropped.
+struct ScratchDir(PathBuf);
+
+impl Drop for ScratchDir {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
 }
 
 impl App {
@@ -194,12 +215,16 @@ impl App {
                 })
             }
             "cloud.backup_now" => self.cloud_backup(),
-            _ => Err(ApiError::new("unknown_method", format!("no such method: {method}"))),
+            _ => Err(unknown_method(method)),
         }
     }
 
+    /// `cloud.backup_now`. The book lock is held only to read the settings and
+    /// take one encrypted snapshot into a scratch folder; copying it to the
+    /// folder, running `git`, and pruning all happen without the lock.
     fn cloud_backup(&self) -> ApiResult<Value> {
         let mut report = BackupReport::default();
+        let scratch = ScratchDir(std::env::temp_dir().join(format!("tallybook-cloud-{}", uuid::Uuid::new_v4())));
         let (folder, git_repo, keep, stem, book_name) = {
             let guard = self.lock();
             let book = guard.as_ref().ok_or_else(|| ApiError::new("no_book", "no book is open"))?;
@@ -210,22 +235,27 @@ impl App {
             let stem = book.path.file_stem().and_then(|s| s.to_str()).unwrap_or("book").to_string();
             let name = s.pref("company.name")?.unwrap_or_else(|| stem.clone());
             let keep = s.pref("cloud.keep")?.and_then(|k| k.parse().ok()).unwrap_or(DEFAULT_KEEP);
-            (s.pref("cloud.folder")?, s.pref("cloud.git")?, keep, stem, name)
+            let (folder, git_repo) = (s.pref("cloud.folder")?, s.pref("cloud.git")?);
+            if folder.is_none() && git_repo.is_none() {
+                return Err(ApiError::new("rule", "choose a cloud folder or a Git repository first"));
+            }
+            std::fs::create_dir_all(&scratch.0).map_err(|e| ApiError::new("io", e.to_string()))?;
+            let snapshot = scratch.0.join("snapshot.tallybook");
+            write_encrypted_snapshot(s, &snapshot).map_err(|e| ApiError::new("io", e))?;
+            (folder, git_repo, keep, stem, name)
         };
-        if folder.is_none() && git_repo.is_none() {
-            return Err(ApiError::new("rule", "choose a cloud folder or a Git repository first"));
-        }
+        let snapshot = scratch.0.join("snapshot.tallybook");
         let stamp = Local::now().format("%Y-%m-%d %H%M%S").to_string();
 
         if let Some(folder) = folder {
-            report.folder = Some(match self.copy_to_folder(&folder, &stem, &stamp, keep) {
+            report.folder = Some(match copy_to_folder(&snapshot, &folder, &stem, &stamp, keep) {
                 Ok(p) => DestResult { ok: true, path: Some(p), detail: None },
                 Err(e) => DestResult { ok: false, path: None, detail: Some(e) },
             });
         }
 
         if let Some(repo) = git_repo {
-            report.git = Some(match self.copy_to_git(&PathBuf::from(repo), &stem, &stamp, &book_name) {
+            report.git = Some(match copy_to_git(&snapshot, &PathBuf::from(repo), &stem, &stamp, &book_name) {
                 Ok((p, d)) => DestResult { ok: true, path: Some(p), detail: Some(d) },
                 Err(e) => DestResult { ok: false, path: None, detail: Some(e) },
             });
@@ -238,78 +268,66 @@ impl App {
         })?;
         ok(report)
     }
+}
 
-    /// Writes a dated encrypted copy into "<folder>/Tallybook" and keeps the
-    /// newest `keep` copies of this book there.
-    fn copy_to_folder(&self, folder: &str, stem: &str, stamp: &str, keep: usize) -> Result<PathBuf, String> {
-        let dir = Path::new(folder).join("Tallybook");
-        std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-        let dest = dir.join(format!("{stem} {stamp}.tallybook"));
-        {
-            let guard = self.lock();
-            let book = guard.as_ref().ok_or("the book was closed")?;
-            write_encrypted_snapshot(&book.store, &dest)?;
-        }
-        // Keep the newest `keep` copies of this book.
-        let prefix = format!("{stem} ");
-        let mut copies: Vec<PathBuf> = std::fs::read_dir(&dir)
-            .map_err(|e| e.to_string())?
-            .filter_map(Result::ok)
-            .map(|e| e.path())
-            .filter(|p| {
-                p.extension().is_some_and(|e| e == "tallybook") && p.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.starts_with(&prefix))
-            })
-            .collect();
-        copies.sort();
-        let excess = copies.len().saturating_sub(keep);
-        for old in copies.into_iter().take(excess) {
-            let _ = std::fs::remove_file(old);
-        }
-        Ok(dest)
+/// Writes a dated encrypted copy into "<folder>/Tallybook" and keeps the
+/// newest `keep` copies of this book there.
+fn copy_to_folder(snapshot: &Path, folder: &str, stem: &str, stamp: &str, keep: usize) -> Result<PathBuf, String> {
+    let dir = Path::new(folder).join("Tallybook");
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let dest = dir.join(format!("{stem} {stamp}.tallybook"));
+    place_snapshot(snapshot, &dest)?;
+    // Keep the newest `keep` copies of this book.
+    let prefix = format!("{stem} ");
+    let mut copies: Vec<PathBuf> = std::fs::read_dir(&dir)
+        .map_err(|e| e.to_string())?
+        .filter_map(Result::ok)
+        .map(|e| e.path())
+        .filter(|p| {
+            p.extension().is_some_and(|e| e == "tallybook") && p.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.starts_with(&prefix))
+        })
+        .collect();
+    copies.sort();
+    let excess = copies.len().saturating_sub(keep);
+    for old in copies.into_iter().take(excess) {
+        let _ = std::fs::remove_file(old);
     }
+    Ok(dest)
+}
 
-    /// Commits (and pushes, when there is a remote) an encrypted copy into a
-    /// Git repository. Returns where it landed and what happened.
-    fn copy_to_git(&self, repo: &Path, stem: &str, stamp: &str, book_name: &str) -> Result<(PathBuf, String), String> {
-        if !is_git_repo(repo) {
-            return Err(format!("{} is no longer a Git repository", repo.display()));
-        }
-        let file = format!("{stem}.tallybook");
-        let dest = repo.join(&file);
-        {
-            let guard = self.lock();
-            let book = guard.as_ref().ok_or("the book was closed")?;
-            let _ = std::fs::remove_file(dest.with_extension("tallybook.partial"));
-            let tmp = repo.join(format!(".{stem}.tallybook.new"));
-            let _ = std::fs::remove_file(&tmp);
-            write_encrypted_snapshot(&book.store, &tmp)?;
-            std::fs::rename(&tmp, &dest).map_err(|e| e.to_string())?;
-        }
-        if !is_encrypted_file(&dest).unwrap_or(false) {
-            return Err("refusing to commit an unencrypted file".into());
-        }
-        let readme = repo.join("README.md");
-        if !readme.exists() {
-            let text = format!(
-                "# {book_name} · Tallybook backups\n\nEncrypted copies of a Tallybook book. Each commit is a snapshot.\n\n\
-                 To restore: open the `.tallybook` file in Tallybook and enter the book's recovery key.\n\
-                 Without the recovery key these files can't be read.\n"
-            );
-            std::fs::write(&readme, text).map_err(|e| e.to_string())?;
-        }
-        git(repo, &["add", "--", &file, "README.md"])?;
-        let staged = git(repo, &["diff", "--cached", "--quiet"]).is_err();
-        let mut detail = String::from("No changes since the last copy.");
-        if staged {
-            git(repo, &["commit", "-m", &format!("Tallybook backup {stamp}"), "--", &file, "README.md"])?;
-            detail = "Committed.".into();
-        }
-        if has_remote(repo) {
-            git(repo, &["push"]).map_err(|e| format!("committed locally, but push failed: {e}"))?;
-            detail.push_str(" Pushed.");
-        } else {
-            detail.push_str(" (This repository has no remote, so nothing was pushed.)");
-        }
-        Ok((dest, detail))
+/// Commits (and pushes, when there is a remote) an encrypted copy into a
+/// Git repository. Returns where it landed and what happened.
+fn copy_to_git(snapshot: &Path, repo: &Path, stem: &str, stamp: &str, book_name: &str) -> Result<(PathBuf, String), String> {
+    if !is_git_repo(repo) {
+        return Err(format!("{} is no longer a Git repository", repo.display()));
     }
+    let file = format!("{stem}.tallybook");
+    let dest = repo.join(&file);
+    place_snapshot(snapshot, &dest)?;
+    if !is_encrypted_file(&dest).unwrap_or(false) {
+        return Err("refusing to commit an unencrypted file".into());
+    }
+    let readme = repo.join("README.md");
+    if !readme.exists() {
+        let text = format!(
+            "# {book_name} · Tallybook backups\n\nEncrypted copies of a Tallybook book. Each commit is a snapshot.\n\n\
+             To restore: open the `.tallybook` file in Tallybook and enter the book's recovery key.\n\
+             Without the recovery key these files can't be read.\n"
+        );
+        std::fs::write(&readme, text).map_err(|e| e.to_string())?;
+    }
+    git(repo, &["add", "--", &file, "README.md"])?;
+    let staged = git(repo, &["diff", "--cached", "--quiet"]).is_err();
+    let mut detail = String::from("No changes since the last copy.");
+    if staged {
+        git(repo, &["commit", "-m", &format!("Tallybook backup {stamp}"), "--", &file, "README.md"])?;
+        detail = "Committed.".into();
+    }
+    if has_remote(repo) {
+        git(repo, &["push"]).map_err(|e| format!("committed locally, but push failed: {e}"))?;
+        detail.push_str(" Pushed.");
+    } else {
+        detail.push_str(" (This repository has no remote, so nothing was pushed.)");
+    }
+    Ok((dest, detail))
 }

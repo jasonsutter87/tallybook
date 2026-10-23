@@ -133,7 +133,7 @@ impl App {
 
     fn open_book(&self, path: &Path) -> ApiResult<Value> {
         if !path.exists() {
-            return Err(ApiError::new("rule", format!("{} doesn't exist", path.display())));
+            return Err(ApiError::new("not_found", format!("{} doesn't exist", path.display())));
         }
         let store = self.open_any(path)?;
         self.install(store, path)

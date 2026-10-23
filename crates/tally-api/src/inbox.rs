@@ -30,7 +30,7 @@ struct Accept {
     remember: bool,
     /// Who was paid (for 1099s) or who paid you.
     #[serde(default)]
-    payee_id: Option<i64>,
+    payee_id: Option<ContactId>,
     /// Who the money was for (household books).
     #[serde(default)]
     person_id: Option<PersonId>,
@@ -51,7 +51,7 @@ struct MatchLine {
 
 #[derive(Deserialize)]
 struct Ids {
-    ids: Vec<i64>,
+    ids: Vec<BankTxnId>,
 }
 
 #[derive(Serialize)]

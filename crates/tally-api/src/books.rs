@@ -170,7 +170,7 @@ impl App {
                 }
                 ok(removed)
             }
-            _ => Err(ApiError::new("unknown_method", format!("no such method: {method}"))),
+            _ => Err(crate::unknown_method(method)),
         }
     }
 
@@ -181,7 +181,7 @@ impl App {
             return Err(ApiError::new("rule", "that isn't a Tallybook book file"));
         }
         if !p.path.exists() {
-            return Err(ApiError::new("rule", format!("{} doesn't exist", p.path.display())));
+            return Err(ApiError::new("not_found", format!("{} doesn't exist", p.path.display())));
         }
         let path = p.path.canonicalize().unwrap_or(p.path.clone());
 
