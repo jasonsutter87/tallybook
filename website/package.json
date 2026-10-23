@@ -1,7 +1,7 @@
 {
   "name": "tallybook-website",
   "version": "1.0.0",
-  "description": "tallybook.app, built from the 2025 Hugo starter (Tailwind + SCSS)",
+  "description": "The Tallybook website, built from the 2025 Hugo starter (Tailwind + SCSS)",
   "main": "index.js",
   "scripts": {
     "dev": "concurrently \"npm run watch:scss\" \"npm run watch:scss:pages\" \"npm run watch:css\" \"npm run watch:css:pages\" \"hugo server\"",
