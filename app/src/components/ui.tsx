@@ -382,6 +382,8 @@ export function Combobox(props: {
   placeholder?: string;
   autoFocus?: boolean;
   footer?: ReactNode;
+  /** For pickers without a visible label (inside a table row, say). */
+  "aria-label"?: string;
 }) {
   const id = useId();
   const [open, setOpen] = useState(false);
@@ -420,6 +422,7 @@ export function Combobox(props: {
         id={id}
         className="input"
         autoFocus={props.autoFocus}
+        aria-label={props["aria-label"]}
         placeholder={selected ? selected.label : (props.placeholder ?? "Choose…")}
         value={open ? query : (selected?.label ?? "")}
         onFocus={() => {
@@ -496,6 +499,7 @@ export function AccountSelect(props: {
   autoFocus?: boolean;
   /** Only one side of the book. */
   scope?: Scope;
+  "aria-label"?: string;
 }) {
   const { data } = useApi<Account[]>("accounts.list");
   const { both, sides } = useSides();
@@ -520,7 +524,16 @@ export function AccountSelect(props: {
       ),
     );
   }, [data, props.kinds, props.subtypes, props.exclude, props.prefer, props.scope, both, sides]);
-  return <Combobox options={options} value={props.value} onChange={props.onChange} placeholder={props.placeholder ?? "Choose a category"} autoFocus={props.autoFocus} />;
+  return (
+    <Combobox
+      options={options}
+      value={props.value}
+      onChange={props.onChange}
+      placeholder={props.placeholder ?? "Choose a category"}
+      autoFocus={props.autoFocus}
+      aria-label={props["aria-label"]}
+    />
+  );
 }
 
 export function ContactSelect(props: { value: number | null; onChange: (id: number | null) => void; kind: ContactKind; placeholder?: string }) {
