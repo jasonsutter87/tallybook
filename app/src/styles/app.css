@@ -900,6 +900,18 @@ textarea {
   background: var(--surface-2);
 }
 
+/* A wide table scrolls sideways inside its card instead of being cut off at
+   the smallest window. Focusable, so the keyboard can scroll it too. */
+.table-scroll {
+  overflow-x: auto;
+  border-radius: inherit;
+}
+
+.table-scroll:focus-visible {
+  outline: none;
+  box-shadow: var(--focus);
+}
+
 /* A button that reads as an inline link, for actions inside running text. */
 .link-button {
   border: 0;
