@@ -455,6 +455,9 @@ fn check_params(method: &str, params: &Value) -> Result<(), String> {
         "settings.set" if params.get("lock_date").is_some() => {
             Err("the lock date isn't available to agents; close or reopen periods in the Tallybook app".into())
         }
+        // The tax package is plain text: an agent can only put it beside the
+        // book, never in a folder of its choosing.
+        "tax.export" if params.get("dir").is_some() => Err("agents can't choose where the tax package goes; it's saved beside the book".into()),
         "book.open" => match params.get("path").and_then(Value::as_str) {
             Some(p) if std::path::Path::new(p).extension().is_some_and(|e| e.eq_ignore_ascii_case("tallybook")) => Ok(()),
             _ => Err("agents can open only .tallybook files".into()),
@@ -704,9 +707,11 @@ mod tests {
                 call(2, "settings.set", json!({ "prefs": { "cloud.auto": "1", "cloud.keep": "0" } })),
                 call(3, "settings.set", json!({ "lock_date": null })),
                 call(4, "settings.set", json!({ "prefs": { "company.phone": "555-0100" } })),
+                call(5, "tax.export", json!({ "dir": "/tmp" })),
             ],
         )
         .await;
+        assert!(text(&r[4]).contains("beside the book"), "{}", r[4]);
         for reply in &r[..3] {
             assert_eq!(reply["result"]["isError"], true, "{reply}");
         }
