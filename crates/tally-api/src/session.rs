@@ -143,9 +143,11 @@ impl App {
         let name = store.pref("company.name")?.unwrap_or_else(|| "My Business".into());
         let path = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
         *self.lock() = Some(OpenBook::new(store, path.clone()));
+        // Agent sessions change no files besides the book's own changes.
         if !self.update_recent.load(std::sync::atomic::Ordering::Relaxed) {
             return ok(json!({ "path": path, "company_name": name }));
         }
+        crate::books::remove_conversion_leftovers(&path);
         let mut recent = self.recent();
         recent.retain(|r| r.path != path);
         recent.insert(0, RecentBook { path: path.clone(), name: name.clone(), last_opened: Local::now().to_rfc3339(), encrypted: false });
