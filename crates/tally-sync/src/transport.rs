@@ -141,6 +141,11 @@ impl MemoryTransport {
         self.fault = Some((self.calls + after_calls, fault));
     }
 
+    /// Cancels a failure that hasn't happened yet.
+    pub fn clear_fault(&mut self) {
+        self.fault = None;
+    }
+
     /// How many calls this connection has made.
     pub fn calls(&self) -> usize {
         self.calls
