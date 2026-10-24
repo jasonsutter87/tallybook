@@ -1,30 +1,40 @@
 # Connecting your bank
 
-Tallybook has no server of its own, so bank connections go straight from your
-computer to the provider. You pick one of two ways in.
+There are two ways in.
 
-| | SimpleFIN Bridge | File import |
+| | Bank sync | File import |
 |---|---|---|
-| Banks | Many US banks & credit unions | Any bank with CSV/OFX/QFX download |
-| Cost | ~$15/year, paid to SimpleFIN | Free |
-| Approval | None | None |
-| Automatic sync | Yes (daily data) | No — import a file each month |
+| Banks | Most US banks, credit unions and cards, through Plaid | Any bank with CSV/OFX/QFX download |
+| Cost | Included in every paid plan, from $20/year | Free, on every plan |
+| Setup | Sign in to your bank once | None |
+| Automatic sync | Yes | No: import a file each month |
 
-## SimpleFIN Bridge
+## Bank sync
 
-1. Create an account at <https://beta-bridge.simplefin.org> and connect your
-   banks there.
-2. Click **New connection** to get a **setup token**.
-3. In Tallybook: **Banking → Connect a bank**, paste the token. It can be used
-   only once; Tallybook trades it for a long-lived access URL, which goes in
-   your keychain.
+1. **Banking → Connect a bank → Continue to my bank.**
+2. Your browser opens Plaid's secure page. Pick your bank and sign in there.
+   Tallybook never sees your bank password.
+3. Back in Tallybook, choose which accounts to bring in and the date to start
+   from.
 
-## Already connected with Plaid?
+Behind the scenes, Tallybook talks to Plaid through **Tallybook Connect**, a
+small service that holds Tallybook's Plaid keys and checks that your plan
+includes bank sync ([how it works](CONNECT.md)). It passes transactions
+straight to your computer without keeping them. Your computer's keychain holds
+only Connect's stand-in for the bank's access token, which is useless without
+your license key.
 
-Earlier versions could connect through Plaid using your own developer keys.
-New Plaid connections are no longer offered, but existing ones keep syncing,
-and **Reconnect** still works when a bank asks you to sign in again. Your keys
-and access tokens stay in the system keychain.
+If your plan ends, syncing stops and nothing else changes: your books, your
+accounts and everything already imported stay as they are.
+
+## Already connected with SimpleFIN, or your own Plaid keys?
+
+Earlier versions connected through SimpleFIN Bridge, or through Plaid with
+developer keys you brought. Those connections keep syncing, and **Reconnect**
+still works when a bank asks you to sign in again; new connections use bank
+sync. Developers can still add their own Plaid keys through the API
+(`bank.plaid_config_set`), and they're used when this copy has no plan with
+bank sync.
 
 ## File import (CSV, OFX, QFX)
 
