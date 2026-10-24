@@ -1,39 +1,41 @@
-import { Check, ExternalLink, KeyRound } from "lucide-react";
+import { Check, ExternalLink, KeyRound, RefreshCw } from "lucide-react";
 import { useState } from "react";
 import { openExternal, useAction, useApi } from "../api";
 import { useToast } from "../components/ui";
 import type { LicenseStatus, LicenseTier } from "../types";
 
-const RANK: Record<LicenseTier, number> = { free: 0, business: 1, tax: 2 };
+const RANK: Record<LicenseTier, number> = { free: 0, personal: 1, business: 2, tax: 3 };
 
-export type OfferKind = "business" | "tax" | "renewal";
+export type OfferKind = "personal" | "business" | "tax";
 
 /**
- * What each purchase costs and unlocks. Business is yours for good; Business +
- * Tax covers the tax year it's bought in and the one before, and returning
- * buyers renew for the next season at a discount.
+ * What each yearly plan costs and unlocks; each includes the ones before it.
+ * When a plan ends, what it unlocked keeps working, except bank and phone sync.
  */
-export const OFFERS: Record<OfferKind, { name: string; price: string; term: string; pitch: string; perks: string[] }> = {
+export const OFFERS: Record<OfferKind, { name: string; price: string; short: string; term: string; pitch: string; perks: string[] }> = {
+  personal: {
+    name: "Tallybook Personal",
+    price: "$20",
+    short: "$20/yr",
+    term: "a year",
+    pitch: "Your bank accounts and cards connected for you, so transactions arrive on their own, and Tallybook on your phone.",
+    perks: ["Bank and card sync, set up for you", "Tallybook on your phone", "Everything in the free household budget"],
+  },
   business: {
     name: "Tallybook Business",
-    price: "$19.99",
-    term: "once, yours for good",
-    pitch: "Keep a business next to your household: invoices, bills, bank feeds and business reports.",
-    perks: ["Invoices and bills", "Profit & loss and balance sheet", "Business and household in one book"],
+    price: "$49",
+    short: "$49/yr",
+    term: "a year",
+    pitch: "Keep a business next to your household: invoices, bills and business reports, with your banks syncing and Tallybook on your phone.",
+    perks: ["Invoices and bills", "Profit & loss and balance sheet", "Business and household in one book", "Bank sync and the phone app"],
   },
   tax: {
     name: "Tallybook Business + Tax",
-    price: "$49.99",
-    term: "this tax year and last",
-    pitch: "Everything in Business, yours for good, plus tax prep built from your books for this tax year and last.",
+    price: "$75",
+    short: "$75/yr",
+    term: "a year",
+    pitch: "Everything in Business, plus tax prep built from your books for this tax year and last.",
     perks: ["Schedule C worksheet", "Quarterly estimated-tax plan", "1099 tracking", "A tax package for your accountant"],
-  },
-  renewal: {
-    name: "Tax prep, next season",
-    price: "$29.99",
-    term: "for returning customers",
-    pitch: "The new tax year's tables and forms, for anyone who's bought Business + Tax before.",
-    perks: ["This year's brackets and thresholds", "Schedule C, estimates and 1099s", "A tax package for your accountant"],
   },
 };
 
@@ -50,6 +52,47 @@ export function useLicense() {
   const tier = q.data?.tier ?? "free";
   const taxYears = q.data?.tax_years ?? [];
   return { ...q, tier, taxYears, has: (need: LicenseTier) => RANK[tier] >= RANK[need], coversTaxYear: (y: number) => taxYears.includes(y) };
+}
+
+/**
+ * Asks Lemon Squeezy about the plan again, to pick up a renewal or a plan
+ * change, and says what it found.
+ */
+export function useCheckPlan() {
+  const toast = useToast();
+  const refresh = useAction<LicenseStatus, null>("license.refresh");
+  const check = async () => {
+    try {
+      const st = await refresh.mutateAsync(null);
+      toast({ text: st.active ? `${st.name} is active` : `Your ${st.name} plan has ended. Everything keeps working except bank and phone sync.` });
+    } catch (e) {
+      toast.error(e);
+    }
+  };
+  return { check, checking: refresh.isPending };
+}
+
+/** A plan that has ended or doesn't cover this year: renew it, then check again. */
+export function RenewPlan(props: { note: string }) {
+  const lic = useLicense();
+  const { check, checking } = useCheckPlan();
+  const url = lic.data?.manage_url;
+  return (
+    <div className="upgrade">
+      <p className="small bold">{props.note}</p>
+      <p className="muted small" style={{ marginTop: 4 }}>
+        Renew in your Lemon Squeezy account with the same key, then check your plan here.
+      </p>
+      <div className="row" style={{ gap: 8, marginTop: 12, flexWrap: "wrap" }}>
+        <button className="btn btn-primary btn-sm" disabled={!url} onClick={() => url && openExternal(url)}>
+          Renew my plan <ExternalLink size={14} />
+        </button>
+        <button className="btn btn-ghost btn-sm" disabled={checking} onClick={check}>
+          <RefreshCw size={14} /> {checking ? "Checking…" : "Check my plan"}
+        </button>
+      </div>
+    </div>
+  );
 }
 
 /** Paste a key, activate it. */
@@ -95,7 +138,7 @@ export function UpgradeOffer(props: { need: OfferKind; compact?: boolean; noKey?
   const lic = useLicense();
   const [entering, setEntering] = useState(false);
   const offer = OFFERS[props.need];
-  const url = { business: lic.data?.business_checkout, tax: lic.data?.tax_checkout, renewal: lic.data?.tax_renewal_checkout }[props.need];
+  const url = { personal: lic.data?.personal_checkout, business: lic.data?.business_checkout, tax: lic.data?.tax_checkout }[props.need];
   return (
     <div className="upgrade">
       {props.note && <p className="small bold" style={{ marginBottom: 10 }}>{props.note}</p>}
@@ -119,7 +162,7 @@ export function UpgradeOffer(props: { need: OfferKind; compact?: boolean; noKey?
       )}
       <div className="row" style={{ gap: 8, marginTop: 12, flexWrap: "wrap" }}>
         <button className="btn btn-primary btn-sm" disabled={!url} onClick={() => url && openExternal(url)}>
-          Buy for {offer.price} <ExternalLink size={14} />
+          Buy for {offer.price} {offer.term} <ExternalLink size={14} />
         </button>
         {!entering && !props.noKey && (
           <button className="btn btn-ghost btn-sm" onClick={() => setEntering(true)}>
