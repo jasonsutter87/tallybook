@@ -1,7 +1,7 @@
 ---
 title: 'Pricing'
 PageTitle: 'Pricing · Tallybook'
-description: 'Household budgeting is free. Business bookkeeping is $19.99, yours for good. Business plus tax prep is $49.99 a tax season, $29.99 to renew. No subscriptions, no account.'
+description: 'Free household budget. Personal is $20 a year, Business $49, Business + Tax $75. Yearly plans; if one ends, your books and what you unlocked keep working.'
 type: 'pricing'
 layout: 'pricing'
 priority: 0.9
