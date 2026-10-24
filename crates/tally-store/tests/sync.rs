@@ -2,7 +2,7 @@
 //! applying another device's changes. Several stores side by side, trading
 //! changes directly (the `tally-sync` crate tests the same through an
 //! encrypted transport). The design is `docs/SYNC.md`.
-#![allow(clippy::inconsistent_digit_grouping)]
+#![allow(clippy::inconsistent_digit_grouping, clippy::needless_range_loop)]
 
 use chrono::NaiveDate;
 use serde_json::{Value, json};
@@ -601,7 +601,7 @@ fn the_ledger_still_refuses_local_edits_with_sync_on() {
     devs[0].void_entry(entry, d(2026, 1, 6)).unwrap();
     assert!(devs[0].debug_execute(&format!("UPDATE journal_entries SET voided_by_id = 999 WHERE id = {entry}")).is_err());
     assert!(devs[0].debug_execute(&format!("UPDATE journal_entries SET voided_by_id = NULL WHERE id = {entry}")).is_err());
-    assert_eq!(devs[0].sync_outbox_len().unwrap() > 0, true);
+    assert!(devs[0].sync_outbox_len().unwrap() > 0);
 }
 
 #[test]
