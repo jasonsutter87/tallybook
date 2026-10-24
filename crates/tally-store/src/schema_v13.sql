@@ -60,6 +60,31 @@ CREATE TABLE sync_ids (
     next INTEGER NOT NULL
 );
 
+-- Two devices that make an account with the same code, or an invoice with the
+-- same number, can't both keep it. The later one is shown with a suffix
+-- ("6100-2"); this remembers what it was made with, so the name is worked out
+-- again from all the rows each time and a clash that goes away leaves no
+-- trace. Other devices are told the original, never the suffix.
+CREATE TABLE sync_renames (
+    tbl      TEXT NOT NULL,
+    pk       TEXT NOT NULL,
+    col      TEXT NOT NULL,
+    intended TEXT NOT NULL,
+    shown    TEXT NOT NULL,
+    PRIMARY KEY (tbl, pk, col)
+) WITHOUT ROWID;
+CREATE INDEX sync_renames_intended ON sync_renames(tbl, col, intended);
+
+-- Rows that want a value only one row can have (a second budget for the same
+-- month, a duplicate bank transaction) wait here, whole, while an earlier row
+-- has it. They come back if it goes away.
+CREATE TABLE sync_shadow (
+    tbl TEXT NOT NULL,
+    pk  TEXT NOT NULL,
+    row TEXT NOT NULL,
+    PRIMARY KEY (tbl, pk)
+) WITHOUT ROWID;
+
 -- A void sets voided_by_id once, and the trigger still says so. While sync is
 -- applying another device's changes it may replace the void that lost the
 -- race with the one that won, never clear it.
