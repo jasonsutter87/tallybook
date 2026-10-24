@@ -46,7 +46,8 @@ fn every_insert_into_a_numbered_table_takes_its_id_from_the_device_range() {
     let tables: Vec<&str> = id_tables().collect();
     let mut sites = 0;
     for path in sources {
-        if path.file_name().is_some_and(|n| n == "sync.rs") {
+        // The merge writes rows whose ids it derives (the reserved merge range), and sync.rs defines the helper.
+        if path.file_name().is_some_and(|n| n == "sync.rs" || n == "sync_apply.rs") {
             continue;
         }
         let text = std::fs::read_to_string(&path).unwrap();
