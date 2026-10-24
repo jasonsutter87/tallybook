@@ -7,7 +7,7 @@ disableKinds = ['taxonomy', 'term']
 [params]
 CompanyName = 'Tallybook'
 repoName = 'tallybook'
-description = 'Bookkeeping and budgeting on your own computer. A household budget that is free for good; add your business for $19.99, once, and tax prep for $49.99 a tax season. No subscription.'
+description = 'Bookkeeping and budgeting on your own computer. A household budget that is free for good. Yearly plans add bank sync, your business and tax prep. Stop paying and your books, and everything you unlocked, keep working.'
 github = 'https://github.com/jasonsutter87/tallybook'
 author = 'Jason Sutter'
 
@@ -18,10 +18,10 @@ version = '0.2.0'
 
 # Keep in step with the app (crates/tally-api/src/license.rs, app/src/flows/License.tsx).
 [params.pricing]
-business = '$19.99'
-tax = '$49.99'
-taxRenewal = '$29.99'
-taxRenewalCheckout = 'https://tallybook.lemonsqueezy.com/buy/tax-renewal'
+personal = '$20'
+business = '$49'
+tax = '$75'
+personalCheckout = 'https://tallybook.lemonsqueezy.com/buy/personal'
 businessCheckout = 'https://tallybook.lemonsqueezy.com/buy/business'
 taxCheckout = 'https://tallybook.lemonsqueezy.com/buy/business-tax'
 
