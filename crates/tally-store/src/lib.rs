@@ -29,6 +29,8 @@ mod recurring;
 mod sales;
 mod tax;
 pub mod sync;
+#[cfg(test)]
+mod sync_tests;
 pub(crate) use sync::insert_with_id;
 pub use budget::*;
 pub use feed::*;
