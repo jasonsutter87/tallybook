@@ -14,20 +14,29 @@ export async function api<T = unknown>(request: APIRequestContext, method: strin
   return body as T;
 }
 
-export type Tier = "free" | "business" | "tax";
+export type Tier = "free" | "personal" | "business" | "tax";
 
 /**
  * Licenses this copy as `tier`, the way a successful activation would. A tax
  * license covers this tax year and last unless `taxYears` says otherwise.
  */
-export function license(tier: Tier, taxYears?: number[]) {
+export function license(tier: Tier, taxYears?: number[], opts: { active?: boolean } = {}) {
   const file = path.join(DATA_DIR, ".devserver", "license.json");
   if (tier === "free") return fs.rmSync(file, { force: true });
   const year = new Date().getFullYear();
   const years = tier === "tax" ? (taxYears ?? [year - 1, year]) : [];
   fs.writeFileSync(
     file,
-    JSON.stringify({ tier, key: "E2E-TEST-KEY-0000", instance_id: "e2e", email: "alice@example.com", activated_on: `${year}-01-01`, tax_years: years }),
+    JSON.stringify({
+      tier,
+      key: "E2E-TEST-KEY-0000",
+      instance_id: "e2e",
+      email: "alice@example.com",
+      activated_on: `${year}-01-01`,
+      tax_years: years,
+      active: opts.active ?? true,
+      checked_on: `${year}-01-01`,
+    }),
   );
 }
 
