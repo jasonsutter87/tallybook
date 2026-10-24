@@ -1,0 +1,21 @@
+# Caddy gets and renews the TLS certificate automatically.
+# Replace the hostname with yours, and set CLIENT_IP_HEADER=X-Forwarded-For.
+connect.example.com {
+	# Caddy sets X-Forwarded-For to the real client address.
+	reverse_proxy 127.0.0.1:8787 {
+		header_up X-Forwarded-For {remote_host}
+	}
+	encode zstd gzip
+	request_body {
+		max_size 64KB
+	}
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		-Server
+	}
+	# Never write request details beyond what the service itself logs.
+	log {
+		output discard
+	}
+}

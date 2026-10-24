@@ -34,6 +34,7 @@ crates/
   tally-feed/       Plaid (Hosted Link + /transactions/sync), SimpleFIN, CSV, OFX/QFX
   tally-api/        the application layer: one JSON dispatcher, App::call(method, params)
   tally-devserver/  serves tally-api over HTTP for browser development
+  tally-connect/    self-hosted Plaid proxy for paid plans (see CONNECT.md); the only server
 app/                React UI (Vite)
 app/src-tauri/      desktop shell: a single IPC command forwarding to tally-api
 ```

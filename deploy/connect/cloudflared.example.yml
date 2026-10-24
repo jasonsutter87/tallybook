@@ -1,0 +1,10 @@
+# ~/.cloudflared/config.yml for running tally-connect at home.
+# No router ports are opened; cloudflared dials out to Cloudflare.
+# Set CLIENT_IP_HEADER=CF-Connecting-IP in tally-connect's environment.
+tunnel: tally-connect
+credentials-file: /home/YOU/.cloudflared/TUNNEL-ID.json
+
+ingress:
+  - hostname: connect.example.com
+    service: http://127.0.0.1:8787
+  - service: http_status:404

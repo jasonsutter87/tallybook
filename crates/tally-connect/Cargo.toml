@@ -1,0 +1,26 @@
+[package]
+name = "tally-connect"
+description = "Tallybook Connect: a small self-hosted service that lets paying users link banks through Plaid without bringing their own Plaid keys."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+publish = false
+
+[[bin]]
+name = "tally-connect"
+path = "src/main.rs"
+
+[dependencies]
+axum = "0.8"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "time", "signal", "sync"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+rusqlite.workspace = true
+serde_json = "1"
+chrono.workspace = true
+thiserror.workspace = true
+uuid = { version = "1", features = ["v4"] }
+sha2 = "0.10"
+
+[dev-dependencies]
+tally-feed = { path = "../tally-feed" }
