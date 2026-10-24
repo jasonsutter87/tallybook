@@ -1,6 +1,6 @@
 ---
 title: 'Tallybook'
-description: 'Bookkeeping and budgeting on your own computer. A household budget that is free for good; add your business for $19.99, once, and tax prep for $49.99 a tax season. No account, no subscription, no tracking.'
+description: 'Bookkeeping and budgeting on your own computer. A household budget that is free for good. Yearly plans add bank sync, your business and tax prep, and if you stop paying your books keep working. No account, no tracking.'
 image: /images/brand/share.png
 priority: 1.0
 cta: true
