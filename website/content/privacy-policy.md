@@ -45,8 +45,8 @@ goes only to Plaid's own sign-in page. We never see it.
   passes through Tallybook Connect on its way from Plaid to your computer. It is
   held in memory only while it is in transit. We don't store it, and our logs
   don't contain it.
-- **What Connect stores.** Your encrypted bank access token (the key that lets
-  Connect ask Plaid for your transactions), your license key, a hash of the
+- **What Connect stores,** in an encrypted database: your bank access token
+  (the key that lets Connect ask Plaid for your transactions), your license
   key, and timestamps such as when the key was last seen active. Nothing from
   your books, and no balances or transactions.
 - **Why.** To sync your banks, and to check your plan with Lemon Squeezy so Connect
