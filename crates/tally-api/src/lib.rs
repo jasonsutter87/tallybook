@@ -226,6 +226,8 @@ pub struct App {
     /// Whether opening a book puts it at the top of `recent.json`. Agent
     /// sessions read the desktop app's list but leave it as it is.
     update_recent: std::sync::atomic::AtomicBool,
+    /// Tallybook Connect's address, for bank sync on paid plans (`None`: not available).
+    connect_url: Option<String>,
 }
 
 // ---------------------------------------------------------------- shared param types
@@ -270,6 +272,7 @@ impl App {
             config_dir: config_dir.into(),
             remove_file: books::move_to_trash,
             update_recent: std::sync::atomic::AtomicBool::new(true),
+            connect_url: sync::connect_url(),
         }
     }
 
@@ -279,6 +282,12 @@ impl App {
     /// list. Agent sessions turn this off.
     pub fn set_update_recent(&self, on: bool) {
         self.update_recent.store(on, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    /// Points bank sync at a Tallybook Connect other than the built-in one (tests).
+    pub fn with_connect_url(mut self, url: Option<String>) -> App {
+        self.connect_url = url;
+        self
     }
 
     /// Replaces the Trash with permanent removal (tests, headless servers).
