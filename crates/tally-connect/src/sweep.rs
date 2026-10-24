@@ -71,11 +71,7 @@ async fn remove_items(st: &AppState, license_hash: &str) -> usize {
     let mut removed = 0;
     for item in items {
         match st.plaid_post("item/remove", json!({ "access_token": item.access_token })).await {
-            Ok((status, v)) if status.is_success() || item_gone(&v) => {
-                if st.db.delete_item(&item.handle).is_ok() {
-                    removed += 1;
-                }
-            }
+            Ok((status, v)) if (status.is_success() || item_gone(&v)) && st.db.delete_item(&item.handle).is_ok() => removed += 1,
             _ => {} // try again tomorrow
         }
     }
