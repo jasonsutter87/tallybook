@@ -67,6 +67,8 @@ jobs:
         with:
           key: performance
       - run: cargo test --release -p tally-api --test big_book -- --ignored --nocapture
+      # Hundreds more random histories of two and three devices syncing.
+      - run: cargo test --release -p tally-sync --test fuzz -- --ignored many_more --nocapture
 
   # npm ci runs with --ignore-scripts throughout, as in the release build: no
   # dependency needs an install script (Vite/Rolldown and the Tauri CLI ship
