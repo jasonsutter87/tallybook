@@ -28,6 +28,8 @@ mod reconcile;
 mod recurring;
 mod sales;
 mod tax;
+pub mod sync;
+pub(crate) use sync::insert_with_id;
 pub use budget::*;
 pub use feed::*;
 pub use insights::*;
@@ -56,10 +58,11 @@ const MIGRATIONS: &[(i64, &str)] = &[
     (10, include_str!("schema_v10.sql")), // bills whose amount varies
     (11, include_str!("schema_v11.sql")), // matching register lines by account and amount
     (12, include_str!("schema_v12.sql")), // application_id: the file says it's a Tallybook book
+    (13, include_str!("schema_v13.sql")), // device sync: outbox, clock, id ranges
 ];
 
 /// The newest schema this build knows: the last step of `MIGRATIONS`.
-const SCHEMA_VERSION: i64 = 12;
+const SCHEMA_VERSION: i64 = 13;
 
 /// `PRAGMA application_id` of every book from schema v12 on: the ASCII
 /// letters "TALY" read as a big-endian 32-bit number. It sits in bytes 68-71
@@ -100,6 +103,7 @@ fn schema_object_names() -> Vec<String> {
             }
         }
     }
+    names.extend(sync::trigger_names());
     names
 }
 
@@ -387,6 +391,11 @@ impl Store {
             if version < step {
                 let tx = self.conn.savepoint()?;
                 tx.execute_batch(sql)?;
+                // The sync triggers are built from the tables' columns, so
+                // every step from v13 on rebuilds them after it runs.
+                if step >= 13 {
+                    sync::rebuild_triggers(&tx)?;
+                }
                 tx.pragma_update(None, "user_version", step)?;
                 tx.commit()?;
             }
@@ -497,11 +506,13 @@ impl Store {
         {
             return rule(format!("account code {code} is already in use"));
         }
-        self.conn.execute(
-            "INSERT INTO accounts(code, name, subtype, parent_id, scope, flex) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        let id = insert_with_id(
+            &self.conn,
+            "accounts",
+            "INSERT INTO accounts(code, name, subtype, parent_id, scope, flex, id) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
             params![code, name, new.subtype.as_str(), new.parent_id, new.scope.as_str(), new.flex.map(Flex::as_str)],
         )?;
-        Ok(self.conn.last_insert_rowid())
+        Ok(id)
     }
 
     /// Adds the business starter chart, skipping codes that already exist.
@@ -537,8 +548,10 @@ impl Store {
         sides.sort_by_key(|s| *s as u8);
         let tx = self.conn.savepoint()?;
         for t in chart::chart_for(scope) {
-            tx.execute(
-                "INSERT INTO accounts(code, name, subtype, scope, flex) VALUES (?1, ?2, ?3, ?4, ?5)
+            insert_with_id(
+                &tx,
+                "accounts",
+                "INSERT INTO accounts(code, name, subtype, scope, flex, id) VALUES (?1, ?2, ?3, ?4, ?5, ?6)
                  ON CONFLICT(code) DO NOTHING",
                 params![t.code, t.name, t.subtype.as_str(), scope.as_str(), t.flex.map(Flex::as_str)],
             )?;
@@ -809,15 +822,19 @@ fn post_in(tx: &Connection, entry: &NewEntry, source: &str, reverses: Option<Ent
         }
     }
     let bridge = bridge_lines(tx, business)?;
-    tx.execute(
-        "INSERT INTO journal_entries(date, memo, source, reverses_id) VALUES (?1, ?2, ?3, ?4)",
+    let id = insert_with_id(
+        tx,
+        "journal_entries",
+        "INSERT INTO journal_entries(date, memo, source, reverses_id, id) VALUES (?1, ?2, ?3, ?4, ?5)",
         params![entry.date, entry.memo.trim(), source, reverses],
     )?;
-    let id = tx.last_insert_rowid();
-    let mut insert =
-        tx.prepare_cached("INSERT INTO journal_lines(entry_id, account_id, amount, memo) VALUES (?1, ?2, ?3, ?4)")?;
     for line in entry.lines.iter().chain(&bridge) {
-        insert.execute(params![id, line.account_id, line.amount.0, line.memo])?;
+        insert_with_id(
+            tx,
+            "journal_lines",
+            "INSERT INTO journal_lines(entry_id, account_id, amount, memo, id) VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![id, line.account_id, line.amount.0, line.memo],
+        )?;
     }
     Ok(id)
 }
