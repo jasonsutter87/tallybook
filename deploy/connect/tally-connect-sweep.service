@@ -1,0 +1,16 @@
+[Unit]
+Description=Tallybook Connect lapse sweep (one run)
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=tally-connect
+Group=tally-connect
+EnvironmentFile=/etc/tally-connect/env
+ExecStart=/usr/local/bin/tally-connect sweep
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/tally-connect
+UMask=0077
