@@ -190,7 +190,9 @@ impl App {
             }
             return self.connect_client(l.key);
         }
-        if self.secrets.get(PLAID_CREDS).map_err(|e| ApiError::new("keychain", e))?.is_some() {
+        // An unreadable keychain (say, Linux without a secret service) means
+        // no keys of one's own, not an error: the plan is still the answer.
+        if matches!(self.secrets.get(PLAID_CREDS), Ok(Some(_))) {
             return self.own_keys_client();
         }
         Err(ApiError::new(
