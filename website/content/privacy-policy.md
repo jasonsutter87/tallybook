@@ -29,7 +29,7 @@ internet in these cases:
   talks to Tallybook Connect, a small service run by Tallybook, which talks to
   Plaid. See the next section.
 - **Older bank connections.** Connections made in earlier versions, through
-  SimpleFIN or through Plaid with your own keys, talk to that service directly
+  an outside bank-data service you signed up for yourself, or through Plaid with your own keys, talk to that service directly
   from your computer, using your own account with them. Their privacy policies
   apply. Those access tokens are kept in your system keychain, not in the book
   file.
