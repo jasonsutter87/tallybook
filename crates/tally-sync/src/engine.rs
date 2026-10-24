@@ -34,7 +34,7 @@ fn merge(into: &mut ApplyReport, from: ApplyReport) {
     into.applied += from.applied;
     into.dropped += from.dropped;
     into.renamed.extend(from.renamed);
-    into.clashes_dropped.extend(from.clashes_dropped);
+    into.set_aside.extend(from.set_aside);
     into.voids_merged += from.voids_merged;
     into.in_closed_period.extend(from.in_closed_period);
     into.dangling_references += from.dangling_references;
@@ -52,6 +52,9 @@ pub fn sync_once(store: &mut Store, transport: &mut dyn Transport, key: &SyncKey
     let (pulled, applied) = pull_and_apply(store, transport, key)?;
     report.batches_pulled = pulled;
     report.applied = applied;
+    // Changes made here since the last sync can end a clash (a delete) that
+    // nothing pulled would have noticed.
+    merge(&mut report.applied, store.sync_settle()?);
     transport.ack(&key.book_id, store.sync_device()?, store.sync_last_seq()?.max(0) as u64)?;
     Ok(report)
 }
