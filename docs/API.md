@@ -81,7 +81,8 @@ vocabulary (and nothing else):
 | `io` | Reading or writing a file failed. | Permissions, a full disk, a missing folder. |
 | `keychain` | The OS keychain refused or lost a secret. | `bank.*`, `book.encrypt`, `book.delete`. |
 | `bank` | A bank provider (Plaid, SimpleFIN) returned an error. | `bank.*` network calls. |
-| `plaid_not_configured` | Plaid keys haven't been added. | `bank.plaid_*` before `bank.plaid_config_set`. |
+| `plaid_not_configured` | Plaid keys haven't been added. | `bank.plaid_*` for a connection made with your own keys, when they're gone. |
+| `connect_unavailable` | This build has no Tallybook Connect address. | `bank.plaid_start` on a plan with bank sync, in a build without Connect. |
 | `offline` | The license server couldn't be reached. | `license.activate`/`refresh`/`deactivate` without a connection. |
 | `internal` | A bug or unexpected database failure. | Report it; the book is left unchanged. |
 
@@ -364,7 +365,7 @@ credentials live in the OS keychain, never in the book.
 | `bank.suggest_opening` | read | `account_id` | `{ date, amount, bank_balance }`: a suggested opening balance |
 | `bank.plaid_config_get` | never | none | `{ configured, environment, client_id_hint }` |
 | `bank.plaid_config_set` | never | Plaid `client_id`, `secret`, `environment` | `null` |
-| `bank.plaid_start` | never | none | a hosted-link `{ link_token, url }` |
+| `bank.plaid_start` | never | none | a hosted-link `{ link_token, url }`: through Tallybook Connect on a plan with bank sync, else with keys from `bank.plaid_config_set`. Errors `license` without either or once the plan has ended, and `connect_unavailable` in a build without Connect. |
 | `bank.plaid_relink_start` | never | `connection_id` | a hosted-link, for repairing a connection |
 | `bank.plaid_poll` | never | `link_token`, `connection_id?` | `{ status: "waiting" \| "exited" \| "linked", ... }` |
 | `bank.simplefin_connect` | never | `setup_token` (its claim URL and the access URL it returns must be https to SimpleFIN Bridge) | `{ status: "linked", connection_id, institution, accounts }` |
