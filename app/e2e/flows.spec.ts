@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
-import { api, demoBook, go, householdBook, license } from "./helpers";
+import { api, bookPath, demoBook, go, householdBook, license } from "./helpers";
 import { DATA_DIR } from "./paths";
 
 // The jobs people come to Tallybook for, done the way a person does them:
@@ -20,7 +20,7 @@ test.describe("starting out", () => {
 
     // Business is offered at its price, and can't be created without a license.
     await dialog.getByRole("radio", { name: /A business/ }).click();
-    await expect(dialog.getByText("$19.99").first()).toBeVisible();
+    await expect(dialog.getByText("$49/yr").first()).toBeVisible();
     await dialog.getByLabel("Business name").fill("Should Not Exist");
     await expect(dialog.getByRole("button", { name: "Create book" })).toBeDisabled();
 
@@ -44,7 +44,7 @@ test.describe("licensing", () => {
 
     await go(page, "/taxes");
     await expect(page.getByText("Tallybook Business + Tax")).toBeVisible();
-    await expect(page.getByRole("button", { name: /Buy for \$49\.99/ })).toBeVisible();
+    await expect(page.getByRole("button", { name: /Buy for \$75 a year/ })).toBeVisible();
     await expect(page.getByRole("tab", { name: "Schedule C" })).toHaveCount(0);
 
     license("tax");
@@ -53,18 +53,54 @@ test.describe("licensing", () => {
     await expect(page.getByText("Tallybook Business + Tax")).toHaveCount(0);
   });
 
-  test("a license for an earlier season offers the renewal, not the new year", async ({ page, request }) => {
+  test("a plan for an earlier season asks to renew, not to buy again", async ({ page, request }) => {
     const year = new Date().getFullYear();
     license("tax", [year - 2, year - 1]);
     await demoBook(request);
 
     await go(page, `/taxes?year=${year}`);
-    await expect(page.getByText(`Tax prep for ${year} is a new tax season.`)).toBeVisible();
-    await expect(page.getByRole("button", { name: /Buy for \$29\.99/ })).toBeVisible();
+    await expect(page.getByText(`Tax prep for ${year} needs this year's plan.`)).toBeVisible();
+    await expect(page.getByRole("button", { name: /Renew my plan/ })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Check my plan" })).toBeVisible();
+    await expect(page.getByRole("button", { name: /Buy for/ })).toHaveCount(0);
     await expect(page.getByRole("tab", { name: "Schedule C" })).toHaveCount(0);
 
+    // The years already paid for stay open.
+    await go(page, `/taxes?year=${year - 1}`);
+    await expect(page.getByRole("tab", { name: "Schedule C" })).toBeVisible();
+
     await go(page, "/settings");
-    await expect(page.locator("#license").getByText(`Tax years ${year - 2}–${year - 1}`)).toBeVisible();
+    await expect(page.locator("#license").getByText(`Tax years ${year - 2}–${year - 1}`, { exact: true })).toBeVisible();
+  });
+
+  test("an ended plan keeps the business working and offers to renew", async ({ page, request }) => {
+    license("business", undefined, { active: false });
+    await demoBook(request);
+
+    await go(page, "/settings");
+    const card = page.locator("#license");
+    await expect(card.getByText("Your plan has ended. Everything keeps working except bank and phone sync.")).toBeVisible();
+    await expect(card.getByRole("button", { name: /Renew my plan/ })).toBeVisible();
+    const st = await api<{ tier: string; syncs: boolean }>(request, "license.status");
+    expect(st).toMatchObject({ tier: "business", syncs: false });
+
+    // The business side still works: a new business book can be made.
+    await api(request, "book.create", { path: bookPath("lapsed"), company_name: "Still Open LLC", sides: ["business"] });
+    await go(page, "/invoices");
+    await expect(page.getByRole("heading", { name: "Invoices" })).toBeVisible();
+  });
+
+  test("a free copy is offered every plan with its yearly price", async ({ page, request }) => {
+    license("free");
+    await householdBook(request);
+    await go(page, "/settings");
+    const card = page.locator("#license");
+    for (const [plan, price] of [["Tallybook Personal", "$20"], ["Tallybook Business", "$49"], ["Tallybook Business + Tax", "$75"]]) {
+      await expect(card.getByText(plan, { exact: true })).toBeVisible();
+      await expect(card.getByRole("button", { name: `Buy for ${price} a year` })).toBeVisible();
+    }
+    const st = await api<{ syncs: boolean }>(request, "license.status");
+    expect(st.syncs).toBe(false);
   });
 
   test("Settings shows the license and can remove it from this computer", async ({ page, request }) => {
@@ -78,7 +114,7 @@ test.describe("licensing", () => {
 
     await card.getByRole("button", { name: "Remove from this computer" }).click();
     await page.getByRole("dialog").getByRole("button", { name: "Remove it" }).click();
-    await expect(card.getByText("Household (free)")).toBeVisible();
+    await expect(card.getByText("Free", { exact: true })).toBeVisible();
     await expect(card.getByPlaceholder("Paste your license key")).toBeVisible();
   });
 });

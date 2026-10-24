@@ -25,6 +25,8 @@ fn app(name: &str) -> (App, PathBuf) {
         activated_on: today(),
         tax_years: vec![],
         earlier: vec![],
+        active: None,
+        checked_on: None,
     };
     crate::license::save(&dir.join("config"), &license).unwrap();
     (app, dir)
@@ -60,6 +62,8 @@ async fn free_copy_keeps_households_and_never_locks_a_book() {
         activated_on: today(),
         tax_years: vec![],
         earlier: vec![],
+        active: None,
+        checked_on: None,
     };
     crate::license::save(&dir.join("config"), &business).unwrap();
     app.call("book.create", json!({ "path": dir.join("b.tallybook"), "company_name": "Biz" })).await.unwrap();
@@ -74,6 +78,8 @@ async fn free_copy_keeps_households_and_never_locks_a_book() {
         activated_on: today(),
         tax_years: vec![year - 1, year],
         earlier: vec![],
+        active: None,
+        checked_on: None,
     };
     crate::license::save(&dir.join("config"), &tax).unwrap();
     app.call("tax.schedule_c", json!({ "year": year })).await.unwrap();
@@ -331,6 +337,8 @@ async fn config_files_are_private_and_license_keys_live_in_the_keychain() {
         activated_on: today(),
         tax_years: vec![],
         earlier: vec![crate::license::Activation { key: "OLD-KEY-HIDDEN-9999".into(), instance_id: "inst-0".into() }],
+        active: None,
+        checked_on: None,
     };
     app.save_license(&license).unwrap();
 
@@ -828,6 +836,8 @@ async fn record_payment_refuses_a_tax_year_that_would_wrap() {
         activated_on: today(),
         tax_years: vec![years[0]],
         earlier: vec![],
+        active: None,
+        checked_on: None,
     };
     crate::license::save(&dir.join("config"), &license).unwrap();
     let year = years.into_iter().find(|y| app.require_tax_year(*y).is_err()).expect("a supported year the license doesn't cover");

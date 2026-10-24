@@ -211,7 +211,7 @@ pub const METHODS: &[&str] = &[
     "bank.plaid_relink_start", "bank.plaid_poll", "bank.simplefin_connect", "bank.simplefin_reconnect",
     "bank.feed_accounts", "bank.link", "bank.unlink", "bank.disconnect", "bank.sync", "bank.suggest_opening",
     // license
-    "license.status", "license.activate", "license.deactivate",
+    "license.status", "license.activate", "license.refresh", "license.deactivate",
     // cloud
     "cloud.status", "cloud.set", "cloud.backup_now",
 ];

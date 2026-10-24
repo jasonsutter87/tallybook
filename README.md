@@ -8,8 +8,8 @@
 
 Bank feeds, invoices, bills, reports and tax prep for the business. Budgets,
 bills and savings goals for the household. All of it in one file that you
-own. Free for your household; add your business for $19.99, once, and tax
-prep for $49.99 a tax season.
+own. Free for your household. Yearly plans add bank sync and the phone app
+($20), your business ($49) and tax prep ($75).
 
 [**Download**](https://tallybook-app.netlify.app/download/) · [Pricing](https://tallybook-app.netlify.app/pricing/) · [See it in action](#a-quick-tour) · [Household budget](#your-household-budget) · [Questions](#questions)
 
@@ -232,11 +232,12 @@ otherwise. [Set it up →](docs/AGENTS.md)
 ## Questions
 
 **Is it really free?**
-The household budget is, for good: budgets, bills, goals, bank import,
-reports and encryption. Keeping a business is a one-time $19.99, yours for
-good. Business plus tax prep is $49.99 a tax season (it covers the year you buy
-it in and the one before), and returning customers renew for $29.99. Nothing
-renews by itself, and there's no account. Bank
+The household budget is, for good: budgets, bills, goals, bank file import,
+reports and encryption. Paid plans are yearly, and each includes the one
+before: Personal ($20) adds bank sync and the phone app, Business ($49) adds a
+business side, and Business + Tax ($75) adds tax prep for the year you pay and
+the one before. If you stop paying, everything you had keeps working except
+bank and phone sync; your books are never locked. Bank
 connections use your own SimpleFIN account, which costs about $15/year, and
 file import is always free.
 

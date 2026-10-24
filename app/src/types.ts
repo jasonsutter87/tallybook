@@ -1070,7 +1070,7 @@ export interface LedgerImport {
 }
 
 /** `license.status`. Tax includes Business. */
-export type LicenseTier = "free" | "business" | "tax";
+export type LicenseTier = "free" | "personal" | "business" | "tax";
 
 export interface LicenseStatus {
   tier: LicenseTier;
@@ -1081,7 +1081,14 @@ export interface LicenseStatus {
   activated_on: ISODate | null;
   /** Tax years covered, oldest first; empty without Business + Tax. */
   tax_years: number[];
+  /** Whether the yearly plan was paid up when last checked; null if never checked. */
+  active: boolean | null;
+  checked_on: ISODate | null;
+  /** Whether the plan includes bank sync and the phone app. */
+  syncs: boolean;
+  personal_checkout: string;
   business_checkout: string;
   tax_checkout: string;
-  tax_renewal_checkout: string;
+  /** Lemon Squeezy's customer portal: renew, change plan, update a card. */
+  manage_url: string;
 }

@@ -126,7 +126,7 @@ const WRITE: &[&str] = &[
 /// credentials, spend money, or send data somewhere new.
 const NEVER: &[&str] = &[
     "book.delete", "book.unlock", "book.encrypt", "book.decrypt", "book.recovery_key", "book.delete_plain_backups",
-    "license.activate", "license.deactivate", "cloud.set", "cloud.backup_now",
+    "license.activate", "license.refresh", "license.deactivate", "cloud.set", "cloud.backup_now",
     "bank.plaid_config_get", "bank.plaid_config_set", "bank.plaid_start", "bank.plaid_relink_start", "bank.plaid_poll",
     "bank.simplefin_connect", "bank.simplefin_reconnect", "bank.link", "bank.unlink", "bank.disconnect",
 ];

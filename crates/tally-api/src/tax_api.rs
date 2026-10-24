@@ -482,8 +482,8 @@ impl App {
         if !matches!(method, "tax.years" | "tax.lines" | "tax.set_payee" | "tax.set_contact") {
             self.require(crate::license::Tier::Tax)?;
         }
-        // Business + Tax is bought per tax season, so a year's figures need that year
-        // licensed. A year with no tables at all gets that (truer) error from the method.
+        // Each paid year of Business + Tax covers its own tax season, so a year's
+        // figures need that year licensed. A year with no tables at all gets that (truer) error from the method.
         let year = match method {
             "tax.schedule_c" | "tax.confirm_all" | "tax.estimate" | "tax.1099" | "tax.export" => Some(year_of(p.clone())?),
             "tax.record_payment" => match p.get("tax_year").and_then(Value::as_i64) {

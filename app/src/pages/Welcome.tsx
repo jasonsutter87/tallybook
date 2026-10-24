@@ -175,7 +175,7 @@ export default function Welcome() {
                 <span className="bold">{k.label}</span>
                 {k.sides.includes("business") && !lic.has("business") && (
                   <span className="pill" style={{ marginLeft: 8 }}>
-                    {OFFERS.business.price}
+                    {OFFERS.business.short}
                   </span>
                 )}
                 <span className="muted small" style={{ display: "block" }}>
