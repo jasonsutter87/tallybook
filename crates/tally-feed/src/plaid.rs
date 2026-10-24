@@ -113,14 +113,33 @@ pub struct SyncResult {
 
 pub struct Client {
     http: reqwest::Client,
-    creds: Credentials,
+    mode: Mode,
     base_url: String,
+}
+
+enum Mode {
+    /// The user's own Plaid keys, sent in each request body.
+    Direct(Credentials),
+    /// Tallybook Connect: no Plaid keys on this side; the paid plan's license
+    /// key authenticates, and the server holds the keys and real access
+    /// tokens. The "access token" this client sees is an opaque handle.
+    Connect { license_key: String },
 }
 
 impl Client {
     pub fn new(creds: Credentials) -> Client {
         let base_url = creds.environment.base_url().to_string();
-        Client { http: reqwest::Client::new(), creds, base_url }
+        Client { http: reqwest::Client::new(), mode: Mode::Direct(creds), base_url }
+    }
+
+    /// Connect mode: calls go to `{base_url}/v1/plaid/...` with the license key
+    /// as a bearer token and no credentials in the body.
+    pub fn via_connect(base_url: impl AsRef<str>, license_key: impl Into<String>) -> Client {
+        Client {
+            http: reqwest::Client::new(),
+            mode: Mode::Connect { license_key: license_key.into() },
+            base_url: format!("{}/v1/plaid", base_url.as_ref().trim_end_matches('/')),
+        }
     }
 
     /// For tests against a local fake.
@@ -130,9 +149,16 @@ impl Client {
     }
 
     async fn call<T: DeserializeOwned>(&self, path: &str, mut body: Value) -> Result<T, PlaidError> {
-        body["client_id"] = json!(self.creds.client_id);
-        body["secret"] = json!(self.creds.secret);
-        let resp = self.http.post(format!("{}{path}", self.base_url)).json(&body).send().await?;
+        let request = self.http.post(format!("{}{path}", self.base_url));
+        let request = match &self.mode {
+            Mode::Direct(creds) => {
+                body["client_id"] = json!(creds.client_id);
+                body["secret"] = json!(creds.secret);
+                request
+            }
+            Mode::Connect { license_key } => request.bearer_auth(license_key),
+        };
+        let resp = request.json(&body).send().await?;
         let status = resp.status();
         let value: Value = resp.json().await?;
         if !status.is_success() || value.get("error_code").is_some_and(|c| !c.is_null()) {
