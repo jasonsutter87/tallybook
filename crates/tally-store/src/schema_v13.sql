@@ -22,6 +22,9 @@ CREATE TABLE sync_state (
     -- 0 for the original device; others are assigned when they join. 8191 is
     -- reserved for rows every device derives the same way when merging.
     device      INTEGER NOT NULL DEFAULT 0 CHECK (device BETWEEN 0 AND 8190),
+    -- 1 once sync is turned on for this book. Until then the triggers record
+    -- nothing, so a book that never syncs pays nothing for it.
+    enabled     INTEGER NOT NULL DEFAULT 0 CHECK (enabled IN (0, 1)),
     hlc_wall    INTEGER NOT NULL DEFAULT 0,
     hlc_counter INTEGER NOT NULL DEFAULT 0,
     applying    INTEGER NOT NULL DEFAULT 0 CHECK (applying IN (0, 1)),
