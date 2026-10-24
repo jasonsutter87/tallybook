@@ -1073,6 +1073,41 @@ impl Store {
         Ok(out)
     }
 
+    /// Columns of synced tables that the outbox triggers don't write (as
+    /// `table.column`). Empty when every column is covered; a column added
+    /// without rebuilding the triggers shows up here.
+    pub fn sync_uncovered_columns(&self) -> Result<Vec<String>> {
+        let mut missing = Vec::new();
+        for t in SYNCED_TABLES {
+            for kind in ["ai", "au"] {
+                let sql: Option<String> = self
+                    .conn
+                    .query_row("SELECT sql FROM sqlite_master WHERE type = 'trigger' AND name = ?1", [trigger_name(t.name, kind)], |r| r.get(0))
+                    .optional()?;
+                let Some(sql) = sql else {
+                    missing.push(format!("{}: no {kind} trigger", t.name));
+                    continue;
+                };
+                for c in table_columns(&self.conn, t.name)? {
+                    if !sql.contains(&format!("'{c}', NEW.\"{c}\"")) {
+                        missing.push(format!("{}.{c}", t.name));
+                    }
+                }
+            }
+        }
+        missing.sort();
+        missing.dedup();
+        Ok(missing)
+    }
+
+    /// Tables in the book that are neither synced nor sync's own bookkeeping.
+    /// A table added without deciding which it is shows up here.
+    pub fn sync_unclassified_tables(&self) -> Result<Vec<String>> {
+        let mut stmt = self.conn.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite\\_%' ESCAPE '\\' ORDER BY name")?;
+        let names: Vec<String> = stmt.query_map([], |r| r.get(0))?.collect::<rusqlite::Result<_>>()?;
+        Ok(names.into_iter().filter(|n| synced_table(n).is_none() && !LOCAL_TABLES.contains(&n.as_str())).collect())
+    }
+
     /// Writes a consistent plain copy of the book to `path`, for a snapshot
     /// that a new device starts from. The sync key encrypts it before it
     /// leaves this device (see `tally-sync`), so it is plain here even when
