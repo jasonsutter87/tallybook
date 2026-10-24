@@ -47,26 +47,54 @@ fn every_insert_into_a_numbered_table_takes_its_id_from_the_device_range() {
     let mut sites = 0;
     for path in sources {
         // The merge writes rows whose ids it derives (the reserved merge range), and sync.rs defines the helper.
-        if path.file_name().is_some_and(|n| n == "sync.rs" || n == "sync_apply.rs") {
+        if path.file_name().is_some_and(|n| n == "sync.rs" || n == "sync_apply.rs" || n == "sync_tests.rs") {
             continue;
         }
         let text = std::fs::read_to_string(&path).unwrap();
         // Test modules at the bottom of a file are exempt.
         let text = text.split("#[cfg(test)]\nmod tests").next().unwrap();
-        for (at, _) in text.match_indices("INSERT INTO ") {
-            let rest = &text[at + "INSERT INTO ".len()..];
-            let name: String = rest.chars().take_while(|c| c.is_ascii_alphanumeric() || *c == '_').collect();
-            if !tables.contains(&name.as_str()) {
-                continue;
-            }
-            sites += 1;
-            let before = &text[at.saturating_sub(200)..at];
-            assert!(before.contains("insert_with_id("), "{}: INSERT INTO {name} bypasses insert_with_id", path.display());
-            let columns = &rest[..rest.find(')').unwrap()];
-            assert!(columns.ends_with(", id"), "{}: INSERT INTO {name} must end its columns with id", path.display());
-        }
+        let (found, problems) = bypasses(text, &tables);
+        sites += found;
+        assert!(problems.is_empty(), "{}: {problems:?}", path.display());
     }
     assert!(sites >= 20, "expected to find the insert sites, found {sites}");
+}
+
+/// How many inserts into numbered tables `text` has, and which skip the helper.
+fn bypasses(text: &str, tables: &[&str]) -> (usize, Vec<String>) {
+    let (mut sites, mut problems) = (0, Vec::new());
+    for (at, _) in text.match_indices("INSERT INTO ") {
+        let rest = &text[at + "INSERT INTO ".len()..];
+        let name: String = rest.chars().take_while(|c| c.is_ascii_alphanumeric() || *c == '_').collect();
+        if !tables.contains(&name.as_str()) {
+            continue;
+        }
+        sites += 1;
+        let start = (at.saturating_sub(200)..=at).find(|i| text.is_char_boundary(*i)).unwrap_or(at);
+        if !text[start..at].contains("insert_with_id(") {
+            problems.push(format!("INSERT INTO {name} bypasses insert_with_id"));
+        }
+        let columns = &rest[..rest.find(')').unwrap_or(rest.len())];
+        if !columns.ends_with(", id") {
+            problems.push(format!("INSERT INTO {name} must end its columns with id"));
+        }
+    }
+    (sites, problems)
+}
+
+#[test]
+fn the_scan_notices_an_insert_that_skips_the_helper() {
+    let tables: Vec<&str> = id_tables().collect();
+    let good = r#"insert_with_id(&tx, "goals", "INSERT INTO goals(name, id) VALUES (?1, ?2)", params![n])?;"#;
+    assert_eq!(bypasses(good, &tables), (1, vec![]));
+    let plain = r#"tx.execute("INSERT INTO goals(name) VALUES (?1)", params![n])?;"#;
+    assert_eq!(bypasses(plain, &tables).1.len(), 2, "no helper, and no id column");
+    let no_id = r#"insert_with_id(&tx, "goals", "INSERT INTO goals(name) VALUES (?1)", params![n])?;"#;
+    assert_eq!(bypasses(no_id, &tables).1.len(), 1);
+    let helper_far_away = format!("insert_with_id(x);{}tx.execute(\"INSERT INTO accounts(name, id) VALUES (1, 2)\")", " ".repeat(300));
+    assert_eq!(bypasses(&helper_far_away, &tables).1.len(), 1);
+    // Tables with a natural key are not numbered, so they are not checked.
+    assert_eq!(bypasses("INSERT INTO settings(key, value) VALUES (1, 2)", &tables), (0, vec![]));
 }
 
 fn collect_rs(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
