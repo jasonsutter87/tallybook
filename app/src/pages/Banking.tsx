@@ -1,6 +1,6 @@
-// Bank connections: connect via SimpleFIN Bridge (Plaid, via Hosted Link in the
-// system browser, is hidden behind PLAID_ENABLED), link provider accounts to
-// ledger accounts, sync, unlink.
+// Bank connections: connect through Plaid on a plan with bank sync (existing
+// SimpleFIN connections keep syncing), link provider accounts to ledger
+// accounts, sync, unlink.
 
 import { FileSpreadsheet, Landmark, Plus, RefreshCw, ShieldCheck, Upload } from "lucide-react";
 import { useState } from "react";
@@ -15,7 +15,7 @@ import ConnectModal from "./banking/ConnectModal";
 import RelinkModal from "./banking/RelinkModal";
 import SimplefinRelinkModal from "./banking/SimplefinRelinkModal";
 import LinkStepModal from "./banking/LinkStepModal";
-import { CONNECT_START, type LinkTarget } from "./banking/shared";
+import type { LinkTarget } from "./banking/shared";
 
 // ------------------------------------------------------------- page
 
@@ -23,7 +23,7 @@ export default function Banking() {
   const toast = useToast();
   const connections = useApi<Connection[]>("bank.connections");
   const accounts = useApi<Account[]>("accounts.list");
-  const [connectOpen, setConnectOpen] = useState<false | "choose" | "simplefin">(false);
+  const [connectOpen, setConnectOpen] = useState(false);
   const [linkTarget, setLinkTarget] = useState<LinkTarget | null>(null);
   const [importOpen, setImportOpen] = useState(false);
   const [relink, setRelink] = useState<Connection | null>(null);
@@ -59,7 +59,7 @@ export default function Banking() {
               <RefreshCw size={16} className={sync.isPending ? "spin" : ""} /> {sync.isPending ? "Syncing…" : "Sync all"}
             </button>
           )}
-          <button className="btn btn-primary" onClick={() => setConnectOpen(CONNECT_START)}>
+          <button className="btn btn-primary" onClick={() => setConnectOpen(true)}>
             <Plus size={16} /> Connect a bank
           </button>
         </div>
@@ -77,7 +77,7 @@ export default function Banking() {
                 body="Connect your bank once and new transactions show up in For Review every time you sync — no more downloading statements."
                 action={
                   <div className="row" style={{ justifyContent: "center" }}>
-                    <button className="btn btn-primary" onClick={() => setConnectOpen(CONNECT_START)}>
+                    <button className="btn btn-primary" onClick={() => setConnectOpen(true)}>
                       <Plus size={16} /> Connect a bank
                     </button>
                     <button className="btn btn-secondary" onClick={() => setImportOpen(true)}>
@@ -124,10 +124,10 @@ export default function Banking() {
                 <ShieldCheck size={18} />
               </span>
               <div className="grow">
-                <div className="bold">Your credentials stay with you</div>
+                <div className="bold">Your bank password stays with you</div>
                 <div className="muted small" style={{ marginTop: 4 }}>
-                  Bank access tokens are stored in your computer's keychain, never in the book file. Tallybook talks directly to SimpleFIN —
-                  there's no Tallybook server in the middle.
+                  You sign in to your bank on Plaid's secure page, so Tallybook never sees your bank password. Tallybook Connect passes your
+                  transactions straight to this computer without keeping them, and your books never leave it.
                 </div>
               </div>
             </div>
@@ -137,8 +137,11 @@ export default function Banking() {
 
       {connectOpen && (
         <ConnectModal
-          initial={connectOpen}
           onClose={() => setConnectOpen(false)}
+          onImport={() => {
+            setConnectOpen(false);
+            setImportOpen(true);
+          }}
           onLinked={(t) => {
             setConnectOpen(false);
             setLinkTarget(t);

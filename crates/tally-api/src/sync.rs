@@ -10,11 +10,28 @@ use serde_json::{Value, json};
 use std::collections::HashMap;
 use tally_core::bank::{FeedAccount, FeedBatch};
 use tally_core::{AccountId, AccountSubtype, Cents};
+use crate::license::Tier;
 use tally_feed::{plaid, simplefin};
 use tally_store::*;
 use std::result::Result;
 
 const PLAID_CREDS: &str = "plaid.credentials";
+
+/// Tallybook Connect, which holds the Plaid keys for plans that include bank
+/// sync (see docs/CONNECT.md). Empty until the service is deployed;
+/// `TALLYBOOK_CONNECT_URL` overrides it, for development.
+const CONNECT_URL: &str = "";
+
+/// Where Tallybook Connect is, if anywhere: https, or plain http only to this computer.
+pub(crate) fn connect_url() -> Option<String> {
+    let url = std::env::var("TALLYBOOK_CONNECT_URL").ok().filter(|u| !u.is_empty()).unwrap_or_else(|| CONNECT_URL.to_string());
+    let local = ["http://127.0.0.1:", "http://localhost:", "http://[::1]:"].iter().any(|p| url.starts_with(p));
+    (url.starts_with("https://") || local).then_some(url)
+}
+
+/// Connect's stand-ins for Plaid access tokens start with this; a token
+/// without it came from Plaid keys the user brought.
+const CONNECT_HANDLE: &str = "tbc-";
 
 /// History fetched when a SimpleFIN connection is first made: only enough to
 /// list the accounts and their balances. The real history comes on the first
@@ -163,7 +180,46 @@ pub(crate) fn secret_key(conn: &BankConnection) -> Option<&str> {
 }
 
 impl App {
-    fn plaid_client(&self) -> ApiResult<plaid::Client> {
+    /// The Plaid client for a new connection: Tallybook Connect on a plan that
+    /// includes bank sync, otherwise Plaid keys the user brought (development
+    /// and self-hosting).
+    fn new_link_client(&self) -> ApiResult<plaid::Client> {
+        if let Some(l) = self.load_license().filter(|l| l.tier >= Tier::Personal) {
+            if l.active == Some(false) {
+                return Err(ApiError::new("license", "Your Tallybook plan has ended, so new bank connections are paused. Renew it in Settings → License."));
+            }
+            return self.connect_client(l.key);
+        }
+        // An unreadable keychain (say, Linux without a secret service) means
+        // no keys of one's own, not an error: the plan is still the answer.
+        if matches!(self.secrets.get(PLAID_CREDS), Ok(Some(_))) {
+            return self.own_keys_client();
+        }
+        Err(ApiError::new(
+            "license",
+            "Connecting a bank takes a Tallybook plan, from $20 a year. Statement files import for free: Banking → Import a file.",
+        ))
+    }
+
+    /// The Plaid client that can use `token`: through Connect for its
+    /// stand-ins, with the user's own keys otherwise.
+    fn client_for(&self, token: &str) -> ApiResult<plaid::Client> {
+        if !token.starts_with(CONNECT_HANDLE) {
+            return self.own_keys_client();
+        }
+        // Connect checks the plan is paid for; the app just sends the key.
+        let l = self.load_license().ok_or_else(|| ApiError::new("license", "Add your license key in Settings → License to keep this bank syncing."))?;
+        self.connect_client(l.key)
+    }
+
+    fn connect_client(&self, license_key: String) -> ApiResult<plaid::Client> {
+        let url = self.connect_url.as_deref().ok_or_else(|| {
+            ApiError::new("connect_unavailable", "Bank sync through Tallybook isn't switched on in this version yet. Statement files import for free: Banking → Import a file.")
+        })?;
+        Ok(plaid::Client::via_connect(url, license_key))
+    }
+
+    fn own_keys_client(&self) -> ApiResult<plaid::Client> {
         let raw = self
             .secrets
             .get(PLAID_CREDS)
@@ -206,7 +262,7 @@ impl App {
             "bank.plaid_config_set" => self.plaid_config_set(params(p)?),
             "bank.plaid_start" => {
                 let user = self.plaid_user_id()?;
-                let link = self.plaid_client()?.create_hosted_link(&user, None).await.map_err(plaid_err)?;
+                let link = self.new_link_client()?.create_hosted_link(&user, None).await.map_err(plaid_err)?;
                 ok(link)
             }
             "bank.plaid_relink_start" => {
@@ -214,7 +270,7 @@ impl App {
                 let user = self.plaid_user_id()?;
                 let conn = self.run(|s| s.connection(p.connection_id))?;
                 let token = self.secret(&conn)?;
-                let link = self.plaid_client()?.create_hosted_link(&user, Some(&token)).await.map_err(plaid_err)?;
+                let link = self.client_for(&token)?.create_hosted_link(&user, Some(&token)).await.map_err(plaid_err)?;
                 ok(link)
             }
             "bank.plaid_poll" => self.plaid_poll(params(p)?).await,
@@ -260,7 +316,14 @@ impl App {
     // ------------------------------------------------------------ connecting
 
     async fn plaid_poll(&self, p: Poll) -> ApiResult<Value> {
-        let client = self.plaid_client()?;
+        // A repair polls through whatever made the connection; a new one through what will make it.
+        let client = match p.connection_id {
+            Some(id) => {
+                let conn = self.run(|s| s.connection(id))?;
+                self.client_for(&self.secret(&conn)?)?
+            }
+            None => self.new_link_client()?,
+        };
         match client.link_status(&p.link_token).await.map_err(plaid_err)? {
             plaid::LinkStatus::Waiting => ok(PollView::Waiting),
             plaid::LinkStatus::Exited => ok(PollView::Exited),
@@ -311,7 +374,7 @@ impl App {
         let conn = self.run(|s| s.connection(p.connection_id))?;
         let secret = self.secret(&conn)?;
         let accounts = match conn.provider {
-            Provider::Plaid => self.plaid_client()?.accounts(&secret).await.map_err(plaid_err)?,
+            Provider::Plaid => self.client_for(&secret)?.accounts(&secret).await.map_err(plaid_err)?,
             Provider::Simplefin => simplefin::fetch(&secret, today()).await.map_err(sfin_err)?.into_iter().map(|a| a.account).collect(),
             Provider::File => vec![],
         };
@@ -343,7 +406,7 @@ impl App {
         let conn = self.run(|s| s.connection(p.connection_id))?;
         if conn.provider == Provider::Plaid
             && let Ok(token) = self.secret(&conn)
-            && let Ok(client) = self.plaid_client()
+            && let Ok(client) = self.client_for(&token)
         {
             // Best effort: revoke at Plaid; disconnect locally regardless.
             let _ = client.remove_item(&token).await;
@@ -411,7 +474,7 @@ impl App {
     /// Plaid's changes since the saved cursor, grouped by the provider's account id.
     /// The outer error is "can't even start"; the inner one is the provider refusing.
     async fn fetch_plaid(&self, conn: &BankConnection, secret: &str, links: &[BankLink]) -> ApiResult<Result<Fetched, (ConnectionStatus, String)>> {
-        let client = self.plaid_client()?;
+        let client = self.client_for(secret)?;
         let result = match client.sync(secret, &conn.cursor).await {
             Err(e) => return Ok(Err((if e.needs_relink() { ConnectionStatus::NeedsRelink } else { ConnectionStatus::Error }, e.to_string()))),
             Ok(result) => result,
