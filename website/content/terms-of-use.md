@@ -3,7 +3,7 @@ title: 'Terms of use'
 PageTitle: 'Terms of use · Tallybook'
 description: 'The terms for using Tallybook, buying a license, and using this website.'
 type: 'terms'
-updated: 2026-10-22
+updated: 2026-10-24
 priority: 0.1
 cta: false
 ---
@@ -24,22 +24,45 @@ The ready-to-install app, its updates and its license keys are provided by us
 under these terms. Tallybook includes open-source components, each used under
 its own license; their notices ship with the app.
 
-## Licenses
+## Plans and billing
 
-The household features are free. **Business** and **Business + Tax** are
-purchases that unlock more of the app, and neither renews by itself:
+The household features are free. **Personal**, **Business** and **Business + Tax**
+are paid plans that unlock more of the app. Each includes the plans below it.
+
+**Auto-renewal.** Paid plans are yearly subscriptions. Personal is $20 a year,
+Business is $49 a year and Business + Tax is $75 a year. Your plan renews
+automatically each year, and your payment method is charged the then-current
+price, until you cancel. To cancel, or to update your payment method, use the
+Lemon Squeezy customer portal at
+[app.lemonsqueezy.com/my-orders](https://app.lemonsqueezy.com/my-orders). Cancel
+before the renewal date to avoid the next charge. After you cancel, your plan
+stays active until the end of the year you've paid for.
+
+**What continues after a plan ends.** Everything the plan unlocked keeps working,
+except bank sync and phone sync. The business side stays. Tax prep stays open
+for the tax years you've already paid for: a paid year of Business + Tax covers
+that tax year and the one before. Your books are never locked, and you can always
+read and export them.
 
 - A license is for you, or your household or one-person business, to use on
   your own computers.
-- Business doesn't expire, and includes app updates.
-- Business + Tax includes Business, and its tax prep covers the tax year in which
-  you bought it and the year before. Later tax years are a separate purchase
-  (a discounted renewal for returning customers). The tax years you've bought
-  stay yours.
+- Plans include app updates while they are active.
 - You can move a license to another computer by removing it from the old one
   in **Settings → License**.
-- Purchases are processed by Lemon Squeezy, our reseller. Their terms apply to
-  the payment itself.
+- Purchases, renewals, taxes and refunds are handled by Lemon Squeezy, which
+  acts as the merchant of record and our reseller. Their terms apply to the
+  payment itself, and refund requests are handled under their policies.
+  Reply to your purchase receipt if you need help.
+
+## Bank sync and Tallybook Connect
+
+Bank sync runs through Tallybook Connect, a service run by Tallybook, using
+Plaid to reach your bank. It is available while you have an active Personal,
+Business or Business + Tax plan. When your plan ends, bank sync stops and
+Tallybook Connect disconnects your banks. Bank connections can also stop working
+for reasons outside our control, such as a bank changing how it works. Plaid's
+terms and privacy policy apply to its part of the service. See our
+[privacy policy](/privacy-policy/) for what Connect processes and stores.
 
 ## Your data and responsibility
 
