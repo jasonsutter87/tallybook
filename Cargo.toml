@@ -17,3 +17,12 @@ rusqlite = { version = "0.37", features = ["bundled-sqlcipher-vendored-openssl",
 # Money math must never silently wrap, even in release builds.
 [profile.release]
 overflow-checks = true
+
+# Sync encrypts every snapshot; unoptimized, the cipher makes tests of it
+# crawl. Optimizing these few crates costs nothing else.
+[profile.dev.package.chacha20]
+opt-level = 3
+[profile.dev.package.poly1305]
+opt-level = 3
+[profile.dev.package.chacha20poly1305]
+opt-level = 3
