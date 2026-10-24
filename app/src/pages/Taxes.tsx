@@ -6,7 +6,7 @@ import { lazy, Suspense } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useApi } from "../api";
 import { Loading, PageHeader, Tabs } from "../components/ui";
-import { UpgradeOffer, useLicense, yearSpan } from "../flows/License";
+import { RenewPlan, UpgradeOffer, useLicense, yearSpan } from "../flows/License";
 import type { TaxYears } from "../types";
 
 const Overview = lazy(() => import("./tax/Overview"));
@@ -68,10 +68,7 @@ export default function Taxes() {
         </div>
       ) : !lic.coversTaxYear(year) ? (
         <div style={{ maxWidth: 640 }}>
-          <UpgradeOffer
-            need="renewal"
-            note={`Your Business + Tax license covers ${yearSpan(lic.taxYears)}. Tax prep for ${year} is a new tax season.`}
-          />
+          <RenewPlan note={`Your Business + Tax plan covers ${yearSpan(lic.taxYears)}. Tax prep for ${year} needs this year's plan.`} />
         </div>
       ) : (
       <>
