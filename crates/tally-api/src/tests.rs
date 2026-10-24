@@ -154,9 +154,10 @@ async fn end_to_end_through_the_dispatcher() {
 
 #[tokio::test]
 async fn plaid_requires_configuration_and_stores_keys_in_secrets() {
+    // A licensed copy connects through Tallybook Connect, which this build doesn't have.
     let (app, dir) = app("plaid");
     app.call("book.create", json!({ "path": dir.join("b.tallybook"), "company_name": "X" })).await.unwrap();
-    assert_eq!(app.call("bank.plaid_start", Value::Null).await.unwrap_err().code, "plaid_not_configured");
+    assert_eq!(app.call("bank.plaid_start", Value::Null).await.unwrap_err().code, "connect_unavailable");
     app.call("bank.plaid_config_set", json!({ "client_id": "abc123456", "secret": "s", "environment": "sandbox" })).await.unwrap();
     let cfg = app.call("bank.plaid_config_get", Value::Null).await.unwrap();
     assert_eq!(cfg["configured"], true);
