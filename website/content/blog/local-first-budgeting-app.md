@@ -46,10 +46,13 @@ to a new computer. Hand it to your accountant at tax time.
 
 ## "But what about my bank feed?"
 
-Local-first doesn't mean manual-only. A local app can still connect to your bank
-through a service like **SimpleFIN**, directly from your computer,
-with the access token kept in your system's keychain rather than on a server.
-Your bank password only ever goes to your bank's own sign-in page.
+Local-first doesn't mean manual-only. A local app can still connect to your bank,
+as long as your books stay put. Tallybook's bank sync runs through
+**Tallybook Connect**, a small service we run. It holds our Plaid keys, checks
+your plan, and passes your transactions straight to your computer without
+storing them. It keeps only an encrypted bank access token and your license key,
+so it can disconnect your banks when a plan ends. Your bank password goes only to
+Plaid's sign-in page. The books themselves never leave your machine.
 
 And when you'd rather not connect at all, nearly every bank lets you download a
 **CSV or OFX/QFX** statement. A good local app imports those safely, skipping
@@ -79,7 +82,8 @@ ones that merely say "secure":
    another computer.
 3. **Is it encrypted at rest,** with a key you control?
 4. **What does it send home?** The right answer is close to nothing: an update
-   check, maybe a one-time license check.
+   check, and if the app offers bank sync, a plain account of what that service
+   keeps and what it doesn't.
 5. **What happens if the company disappears?** The app should keep working.
 
 ## Why Tallybook works this way
@@ -88,7 +92,8 @@ We built [Tallybook](/) around these answers. Your household budget, bills and
 goals, and if you run a business, your books and tax prep, live in **one
 `.tallybook` file** on your computer. There's no account. Encryption is one
 click. Cloud copies are only ever sent encrypted. The household budget is free
-for good, and the business features are bought outright, not rented as a subscription
-that holds your history hostage.
+for good. The paid plans are yearly, and if you stop paying, your books and
+everything you unlocked keep working. Only bank sync and phone sync stop. Nothing
+holds your history hostage.
 
 Your money, in one file you own. [Download it free](/download/).
