@@ -109,6 +109,30 @@ async fn a_free_copy_without_its_own_plaid_keys_is_offered_a_plan() {
     assert!(seen.lock().unwrap().is_empty(), "nothing is sent without a plan");
 }
 
+/// A keychain that can't be reached, like Linux without a secret service.
+struct NoKeychain;
+
+impl tally_api::Secrets for NoKeychain {
+    fn get(&self, _: &str) -> Result<Option<String>, String> {
+        Err("no secret service".into())
+    }
+    fn set(&self, _: &str, _: &str) -> Result<(), String> {
+        Err("no secret service".into())
+    }
+    fn delete(&self, _: &str) -> Result<(), String> {
+        Err("no secret service".into())
+    }
+}
+
+#[tokio::test]
+async fn without_a_keychain_a_free_copy_still_hears_about_the_plan() {
+    let d = dir("no-keychain");
+    let app = App::new(Arc::new(NoKeychain), d.join("config")).with_file_remover(|p| std::fs::remove_file(p)).with_connect_url(None);
+    household(&app, &d).await;
+    let err = app.call("bank.plaid_start", Value::Null).await.unwrap_err();
+    assert_eq!(err.code, "license", "{}", err.message);
+}
+
 #[tokio::test]
 async fn an_ended_plan_pauses_new_connections() {
     let d = dir("ended");
