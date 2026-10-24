@@ -1,0 +1,31 @@
+[Unit]
+Description=Tallybook Connect
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=tally-connect
+Group=tally-connect
+EnvironmentFile=/etc/tally-connect/env
+ExecStart=/usr/local/bin/tally-connect
+Restart=on-failure
+RestartSec=5
+
+# Hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+ReadWritePaths=/var/lib/tally-connect
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target
