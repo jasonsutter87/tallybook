@@ -1,175 +1,132 @@
-// Connect a bank: choose a provider, set up Plaid keys, or paste a SimpleFIN token.
+// Connect a bank: on a plan with bank sync, sign in to the bank through
+// Plaid's Hosted Link (Tallybook Connect holds the Plaid keys); otherwise,
+// the plans that include it.
 
-import { KeyRound, Link2, RefreshCw } from "lucide-react";
+import { ExternalLink, RefreshCw, ShieldCheck } from "lucide-react";
 import { useState, type ReactNode } from "react";
-import { call, openExternal, queryClient, useApi } from "../../api";
+import { call, openExternal, queryClient } from "../../api";
 import { ErrorBanner, Modal, Spinner } from "../../components/ui";
-import type { HostedLink, PlaidConfig, PollResult } from "../../types";
-import { PLAID_ENABLED, type LinkTarget } from "./shared";
+import { RenewPlan, UpgradeOffer, useLicense } from "../../flows/License";
+import type { HostedLink } from "../../types";
+import type { LinkTarget } from "./shared";
 import { usePlaidPoll, Waiting } from "./PlaidPoll";
-import { CancelledStep, ChooseStep, PlaidSetupStep, SimplefinStep } from "./connectSteps";
+import { CancelledStep } from "./connectSteps";
 
-type ConnectStep = "choose" | "plaid_setup" | "plaid_wait" | "plaid_exited" | "simplefin";
+type ConnectStep = "intro" | "wait" | "exited";
 
-export default function ConnectModal(props: { initial: "choose" | "simplefin"; onClose: () => void; onLinked: (t: LinkTarget) => void }) {
-  const config = useApi<PlaidConfig>("bank.plaid_config_get", undefined, { enabled: PLAID_ENABLED });
-  const [step, setStep] = useState<ConnectStep>(props.initial);
+export default function ConnectModal(props: { onClose: () => void; onLinked: (t: LinkTarget) => void; onImport: () => void }) {
+  const lic = useLicense();
+  const [step, setStep] = useState<ConnectStep>("intro");
   const [error, setError] = useState<Error | null>(null);
   const [busy, setBusy] = useState(false);
   const [link, setLink] = useState<HostedLink | null>(null);
+  const st = lic.data;
 
-  // Plaid setup form
-  const [clientId, setClientId] = useState("");
-  const [secret, setSecret] = useState("");
-  const [env, setEnv] = useState<"sandbox" | "production">("sandbox");
-  // SimpleFIN
-  const [token, setToken] = useState("");
-
-  const startPlaid = async () => {
+  const start = async () => {
     setError(null);
     setBusy(true);
     try {
       const l = await call<HostedLink>("bank.plaid_start");
       setLink(l);
-      setStep("plaid_wait");
+      setStep("wait");
       await openExternal(l.url);
     } catch (e) {
-      const err = e as Error & { code?: string };
-      if (err.code === "plaid_not_configured") setStep("plaid_setup");
-      else setError(err);
+      setError(e as Error);
     } finally {
       setBusy(false);
     }
   };
 
   usePlaidPoll(
-    step === "plaid_wait" ? (link?.link_token ?? null) : null,
+    step === "wait" ? (link?.link_token ?? null) : null,
     undefined,
     (r) => {
       if (r.status === "linked") {
         void queryClient.invalidateQueries();
         props.onLinked({ connection_id: r.connection_id, institution: r.institution, accounts: r.accounts });
-      } else if (r.status === "exited") setStep("plaid_exited");
+      } else if (r.status === "exited") setStep("exited");
     },
     (e) => {
       setError(e as Error);
-      setStep("plaid_exited");
+      setStep("exited");
     },
   );
 
-  const choosePlaid = () => {
-    setError(null);
-    if (config.data && !config.data.configured) setStep("plaid_setup");
-    else void startPlaid();
-  };
-
-  const saveKeys = async () => {
-    setError(null);
-    setBusy(true);
-    try {
-      await call("bank.plaid_config_set", { client_id: clientId.trim(), secret: secret.trim(), environment: env });
-      await queryClient.invalidateQueries({ queryKey: ["bank.plaid_config_get"] });
-      setBusy(false);
-      await startPlaid();
-    } catch (e) {
-      setError(e as Error);
-      setBusy(false);
-    }
-  };
-
-  const connectSimplefin = async () => {
-    setError(null);
-    setBusy(true);
-    try {
-      const r = await call<PollResult>("bank.simplefin_connect", { setup_token: token.trim() });
-      if (r.status === "linked") {
-        void queryClient.invalidateQueries();
-        props.onLinked({ connection_id: r.connection_id, institution: r.institution, accounts: r.accounts });
-      }
-    } catch (e) {
-      setError(e as Error);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const titles: Record<ConnectStep, string> = {
-    choose: "Connect a bank",
-    plaid_setup: "Add your Plaid keys",
-    plaid_wait: "Connecting with Plaid",
-    plaid_exited: "Connection cancelled",
-    simplefin: "Connect with SimpleFIN",
-  };
-
-  const back = (
-    <button className="btn btn-ghost" onClick={() => setStep("choose")} disabled={busy}>
-      Back
+  const importInstead = (
+    <button className="btn btn-secondary" onClick={props.onImport}>
+      Import a file instead
     </button>
   );
 
+  let body: ReactNode;
   let footer: ReactNode = null;
-  if (step === "plaid_setup")
+  let title = "Connect a bank";
+  if (!st) {
+    body = <Spinner />;
+  } else if (!st.syncs) {
+    // No plan with bank sync, or one that has ended.
+    title = "Bank sync comes with a plan";
+    body =
+      st.active === false ? (
+        <RenewPlan note="Your plan has ended, so bank sync is paused. Renew it to connect banks again." />
+      ) : (
+        <>
+          <UpgradeOffer need="personal" />
+          <p className="muted small">Statement files (CSV, OFX, QFX) from any bank import for free, on every plan.</p>
+        </>
+      );
+    footer = importInstead;
+  } else if (step === "intro") {
+    body = (
+      <div className="row" style={{ gap: 12, alignItems: "flex-start" }}>
+        <span className="icon-bubble pos">
+          <ShieldCheck size={18} />
+        </span>
+        <div className="muted small">
+          You'll sign in to your bank in your browser, on Plaid's secure page. Tallybook never sees your bank password. When you're done, come back
+          here and choose which accounts to bring in.
+        </div>
+      </div>
+    );
     footer = (
       <>
-        {back}
-        <button className="btn btn-primary" onClick={saveKeys} disabled={busy || !clientId.trim() || !secret.trim()}>
-          {busy ? <Spinner /> : <KeyRound size={16} />} Save keys & continue
+        {importInstead}
+        <button className="btn btn-primary" onClick={start} disabled={busy}>
+          {busy ? <Spinner /> : <ExternalLink size={16} />} Continue to my bank
         </button>
       </>
     );
-  else if (step === "simplefin")
-    footer = (
-      <>
-        {props.initial === "choose" ? back : <button className="btn btn-secondary" onClick={props.onClose}>Cancel</button>}
-        <button className="btn btn-primary" onClick={connectSimplefin} disabled={busy || !token.trim()}>
-          {busy ? <Spinner /> : <Link2 size={16} />} Connect
-        </button>
-      </>
+  } else if (step === "wait" && link) {
+    title = "Waiting for your bank";
+    body = (
+      <Waiting
+        url={link.url}
+        onCancel={() => {
+          setLink(null);
+          setStep("intro");
+        }}
+      />
     );
-  else if (step === "plaid_exited")
+  } else {
+    title = "Connection cancelled";
+    body = <CancelledStep />;
     footer = (
       <>
         <button className="btn btn-secondary" onClick={props.onClose}>
           Close
         </button>
-        <button className="btn btn-primary" onClick={startPlaid} disabled={busy}>
+        <button className="btn btn-primary" onClick={start} disabled={busy}>
           {busy ? <Spinner /> : <RefreshCw size={16} />} Try again
         </button>
       </>
     );
+  }
 
   return (
-    <Modal open onClose={props.onClose} title={titles[step]} width={560} footer={footer}>
+    <Modal open onClose={props.onClose} title={title} width={560} footer={footer}>
       <div className="stack">
         <ErrorBanner error={error} />
-
-        {step === "choose" && (
-          <ChooseStep
-            plaid={config.data}
-            busy={busy}
-            onChoosePlaid={choosePlaid}
-            onChooseSimplefin={() => setStep("simplefin")}
-            onChangeKeys={() => setStep("plaid_setup")}
-          />
-        )}
-
-        {step === "plaid_setup" && (
-          <PlaidSetupStep clientId={clientId} setClientId={setClientId} secret={secret} setSecret={setSecret} env={env} setEnv={setEnv} />
-        )}
-
-        {step === "plaid_wait" && link && (
-          <Waiting
-            url={link.url}
-            onCancel={() => {
-              setLink(null);
-              setStep("choose");
-            }}
-          />
-        )}
-
-        {step === "plaid_exited" && <CancelledStep />}
-
-        {step === "simplefin" && <SimplefinStep token={token} setToken={setToken} />}
+        {body}
       </div>
     </Modal>
   );
