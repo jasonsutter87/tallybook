@@ -82,7 +82,7 @@ vocabulary (and nothing else):
 | `keychain` | The OS keychain refused or lost a secret. | `bank.*`, `book.encrypt`, `book.delete`. |
 | `bank` | A bank provider (Plaid, SimpleFIN) returned an error. | `bank.*` network calls. |
 | `plaid_not_configured` | Plaid keys haven't been added. | `bank.plaid_*` before `bank.plaid_config_set`. |
-| `offline` | The license server couldn't be reached. | `license.activate`/`deactivate` without a connection. |
+| `offline` | The license server couldn't be reached. | `license.activate`/`refresh`/`deactivate` without a connection. |
 | `internal` | A bug or unexpected database failure. | Report it; the book is left unchanged. |
 
 `bank.sync` with no `connection_id` never fails because of one connection:
@@ -385,8 +385,9 @@ book lock.
 
 | Method | Access | Params | Returns | Notes |
 |--------|--------|--------|---------|-------|
-| `license.status` | read | none | `{ tier, name, key_hint, email, activated_on, tax_years, *_checkout }` | `tier` is `free`, `business` or `tax`. |
-| `license.activate` | never | `key` | `license.status` | `license` for a bad key; `offline`. |
+| `license.status` | read | none | `{ tier, name, key_hint, email, activated_on, tax_years, active, checked_on, syncs, *_checkout, manage_url }` | `tier` is `free`, `personal`, `business` or `tax`. `active` is whether the yearly plan was paid up when last checked (`null` if never checked); `syncs` is whether bank and phone sync are included. |
+| `license.activate` | never | `key` | `license.status` | `license` for a bad, ended or refunded key; `offline`. |
+| `license.refresh` | never | none | `license.status` | Asks Lemon Squeezy about the current key's plan: picks up a renewal (adding that year's tax season) or a plan change, or marks the plan ended. An ended plan keeps the tier; only sync stops. `offline`. |
 | `license.deactivate` | never | none | `null` | Frees the keys for another computer. |
 
 ## Cloud copies: `cloud.*`
