@@ -16,7 +16,7 @@
 //! Columns some Ledger versions lack are read as empty. Ids are text;
 //! amounts are signed integer cents (spending negative); dates are `YYYY-MM-DD`.
 
-use crate::{NewAccount, NewGoal, NewPerson, NewRecurringBill, NewRule, PersonId, Result, Store, StoreError, rule};
+use crate::{insert_with_id, NewAccount, NewGoal, NewPerson, NewRecurringBill, NewRule, PersonId, Result, Store, StoreError, rule};
 use chrono::{Datelike, Days, NaiveDate};
 use rusqlite::{Connection, OpenFlags, OptionalExtension, params};
 use serde::Serialize;
@@ -525,7 +525,7 @@ impl Store {
                     continue;
                 }
                 if amount > 0 {
-                    tx.execute("INSERT INTO budgets(month, person_id, amount) VALUES (?1, ?2, ?3)", params![month, p, amount])?;
+                    insert_with_id(&tx, "budgets", "INSERT INTO budgets(month, person_id, amount, id) VALUES (?1, ?2, ?3, ?4)", params![month, p, amount])?;
                 }
             }
             tx.commit()?;
