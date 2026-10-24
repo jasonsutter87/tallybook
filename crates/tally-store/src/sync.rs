@@ -13,7 +13,8 @@ use rusqlite::{Connection, OptionalExtension, ToSql, params};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use sha2::{Digest, Sha256};
-use std::collections::{BTreeMap, BTreeSet};
+use crate::sync_apply::Applier;
+use std::collections::BTreeMap;
 
 // ---------------------------------------------------------------- id ranges
 
@@ -83,9 +84,9 @@ pub const SYNCED_TABLES: &[SyncTable] = &[
 ];
 
 /// Tables that never leave this device: sync's own bookkeeping.
-pub const LOCAL_TABLES: &[&str] = &["sync_state", "sync_outbox", "sync_rows", "sync_ids"];
+pub const LOCAL_TABLES: &[&str] = &["sync_state", "sync_outbox", "sync_rows", "sync_ids", "sync_renames", "sync_shadow"];
 
-fn synced_table(name: &str) -> Option<&'static SyncTable> {
+pub(crate) fn synced_table(name: &str) -> Option<&'static SyncTable> {
     SYNCED_TABLES.iter().find(|t| t.name == name)
 }
 
@@ -137,7 +138,7 @@ pub(crate) fn insert_with_id(conn: &Connection, table: &str, sql: &str, params: 
 
 /// The id every device gives the `k`th row it derives from row `from` while
 /// merging, drawn from the reserved merge range.
-fn derived_id(from: i64, k: u32) -> i64 {
+pub(crate) fn derived_id(from: i64, k: u32) -> i64 {
     let mut hash = Sha256::new();
     hash.update(b"tallybook merge id");
     hash.update(from.to_be_bytes());
@@ -190,13 +191,33 @@ fn advance_clock_sql() -> String {
     )
 }
 
-fn table_columns(conn: &Connection, table: &str) -> Result<Vec<String>> {
+pub(crate) fn table_columns(conn: &Connection, table: &str) -> Result<Vec<String>> {
     let mut stmt = conn.prepare(&format!("SELECT name FROM pragma_table_info('{table}') ORDER BY cid"))?;
     Ok(stmt.query_map([], |r| r.get(0))?.collect::<rusqlite::Result<_>>()?)
 }
 
-fn json_object_sql(prefix: &str, columns: &[String]) -> String {
-    let pairs: Vec<String> = columns.iter().map(|c| format!("'{c}', {prefix}.\"{c}\"")).collect();
+/// `json_object` of a row. A column that was renamed to settle a clash is
+/// written with the value the row was made with, so every device ranks the
+/// rows by what each one wanted, not by what the last clash made of it.
+fn json_object_sql(prefix: &str, t: &SyncTable, columns: &[String], outbox: bool) -> String {
+    let renamed = contention(t.name).and_then(|c| match c.policy {
+        Contention::Rename(col) => Some(col),
+        Contention::SetAside => None,
+    });
+    let pk = json_pk_sql(prefix, t);
+    let pairs: Vec<String> = columns
+        .iter()
+        .map(|c| {
+            if outbox && renamed == Some(c.as_str()) {
+                format!(
+                    "'{c}', COALESCE((SELECT intended FROM sync_renames WHERE tbl = '{t}' AND pk = {pk} AND col = '{c}' AND shown = {prefix}.\"{c}\"), {prefix}.\"{c}\")",
+                    t = t.name
+                )
+            } else {
+                format!("'{c}', {prefix}.\"{c}\"")
+            }
+        })
+        .collect();
     format!("json_object({})", pairs.join(", "))
 }
 
@@ -245,7 +266,7 @@ pub(crate) fn rebuild_triggers(conn: &Connection) -> Result<()> {
                  INSERT INTO sync_outbox(tbl, pk, op, row, hlc) VALUES ('{name}', {new_pk}, '{op}', {row}, {HLC_NOW});
                  INSERT INTO sync_rows(tbl, pk, hlc, born, deleted) VALUES ('{name}', {new_pk}, {HLC_NOW}, {born}, 0)
                  ON CONFLICT(tbl, pk) DO UPDATE SET {on_conflict};",
-                row = json_object_sql("NEW", &columns),
+                row = json_object_sql("NEW", t, &columns, true),
             )
         };
         conn.execute_batch(&format!(
@@ -331,8 +352,9 @@ pub struct ApplyReport {
     pub dropped: usize,
     /// Values renamed because two devices made the same unique value.
     pub renamed: Vec<Renamed>,
-    /// Rows dropped because they clashed with an earlier row that must be unique.
-    pub clashes_dropped: Vec<String>,
+    /// Rows set aside because an earlier row has the same unique value (a
+    /// second budget for a month, a duplicate bank transaction...).
+    pub set_aside: Vec<String>,
     /// Second voids of an entry, each cancelled by a reversal of its reversal.
     pub voids_merged: usize,
     /// Entries that arrived dated in a period this device has closed.
@@ -349,11 +371,11 @@ pub struct Renamed {
     pub to: String,
 }
 
-fn bad(msg: impl Into<String>) -> StoreError {
+pub(crate) fn bad(msg: impl Into<String>) -> StoreError {
     StoreError::Rule(format!("sync: {}", msg.into()))
 }
 
-fn json_to_sql(v: &Value) -> Result<SqlValue> {
+pub(crate) fn json_to_sql(v: &Value) -> Result<SqlValue> {
     Ok(match v {
         Value::Null => SqlValue::Null,
         Value::Bool(b) => SqlValue::Integer(*b as i64),
@@ -366,7 +388,7 @@ fn json_to_sql(v: &Value) -> Result<SqlValue> {
     })
 }
 
-fn sql_to_json(v: SqlValue) -> Value {
+pub(crate) fn sql_to_json(v: SqlValue) -> Value {
     match v {
         SqlValue::Null => Value::Null,
         SqlValue::Integer(i) => Value::from(i),
@@ -378,7 +400,7 @@ fn sql_to_json(v: SqlValue) -> Value {
 
 /// The text SQLite's own `json_array` makes of a primary key, which is what
 /// `sync_rows` is keyed on, so a key means the same thing everywhere.
-fn pk_key(conn: &Connection, pk: &[Value]) -> Result<String> {
+pub(crate) fn pk_key(conn: &Connection, pk: &[Value]) -> Result<String> {
     let values = pk.iter().map(json_to_sql).collect::<Result<Vec<_>>>()?;
     let placeholders = (1..=values.len()).map(|i| format!("?{i}")).collect::<Vec<_>>().join(", ");
     Ok(conn.query_row(&format!("SELECT json_array({placeholders})"), rusqlite::params_from_iter(values), |r| r.get(0))?)
@@ -386,21 +408,21 @@ fn pk_key(conn: &Connection, pk: &[Value]) -> Result<String> {
 
 /// Where a row stands in `sync_rows`.
 #[derive(Debug, Clone)]
-struct RowState {
-    hlc: String,
-    born: String,
-
+pub(crate) struct RowState {
+    pub(crate) hlc: String,
+    pub(crate) born: String,
+    pub(crate) deleted: bool,
 }
 
-fn row_state(conn: &Connection, table: &str, key: &str) -> Result<Option<RowState>> {
+pub(crate) fn row_state(conn: &Connection, table: &str, key: &str) -> Result<Option<RowState>> {
     Ok(conn
-        .query_row("SELECT hlc, born FROM sync_rows WHERE tbl = ?1 AND pk = ?2", params![table, key], |r| {
-            Ok(RowState { hlc: r.get(0)?, born: r.get(1)? })
+        .query_row("SELECT hlc, born, deleted FROM sync_rows WHERE tbl = ?1 AND pk = ?2", params![table, key], |r| {
+            Ok(RowState { hlc: r.get(0)?, born: r.get(1)?, deleted: r.get(2)? })
         })
         .optional()?)
 }
 
-fn write_state(conn: &Connection, table: &str, key: &str, hlc: &str, born: &str, deleted: bool) -> Result<()> {
+pub(crate) fn write_state(conn: &Connection, table: &str, key: &str, hlc: &str, born: &str, deleted: bool) -> Result<()> {
     conn.execute(
         "INSERT OR REPLACE INTO sync_rows(tbl, pk, hlc, born, deleted) VALUES (?1, ?2, ?3, ?4, ?5)",
         params![table, key, hlc, born, deleted],
@@ -408,488 +430,86 @@ fn write_state(conn: &Connection, table: &str, key: &str, hlc: &str, born: &str,
     Ok(())
 }
 
-// ---------------------------------------------------------------- unique clashes
+// ---------------------------------------------------------------- unique values
 
-enum Clash {
-    /// The later row gets `-2`, `-3`... after the value.
+/// What happens when two devices make rows that want the same unique value.
+#[derive(Clone, Copy)]
+pub(crate) enum Contention {
+    /// The later row gets `-2`, `-3`... after the value; the person is told.
     Rename(&'static str),
-    /// The later row is dropped.
-    DropLater,
+    /// The earliest row keeps it and the rest wait aside (in `sync_shadow`),
+    /// coming back if what kept them out goes away.
+    SetAside,
 }
 
-struct Unique {
-    cols: &'static [&'static str],
-    clash: Clash,
+pub(crate) struct Unique {
+    pub(crate) cols: &'static [&'static str],
     /// Only rows with this column equal to this value are unique.
-    only_when: Option<(&'static str, &'static str)>,
+    pub(crate) only_when: Option<(&'static str, &'static str)>,
 }
 
-fn uniques(table: &str) -> &'static [Unique] {
-    const ACCOUNTS: &[Unique] = &[Unique { cols: &["code"], clash: Clash::Rename("code"), only_when: None }];
-    const INVOICES: &[Unique] = &[Unique { cols: &["number"], clash: Clash::Rename("number"), only_when: None }];
-    const LINKS: &[Unique] = &[
-        Unique { cols: &["ledger_account_id"], clash: Clash::DropLater, only_when: None },
-        Unique { cols: &["connection_id", "external_account_id"], clash: Clash::DropLater, only_when: None },
-    ];
-    const TRANSACTIONS: &[Unique] =
-        &[Unique { cols: &["ledger_account_id", "external_id"], clash: Clash::Rename("external_id"), only_when: None }];
-    const RECONCILIATIONS: &[Unique] =
-        &[Unique { cols: &["account_id"], clash: Clash::DropLater, only_when: Some(("status", "in_progress")) }];
-    const BUDGETS: &[Unique] = &[
-        Unique { cols: &["month", "person_id"], clash: Clash::DropLater, only_when: None },
-        Unique { cols: &["month", "account_id"], clash: Clash::DropLater, only_when: None },
-    ];
-    match table {
-        "accounts" => ACCOUNTS,
-        "invoices" => INVOICES,
-        "bank_links" => LINKS,
-        "bank_transactions" => TRANSACTIONS,
-        "reconciliations" => RECONCILIATIONS,
-        "budgets" => BUDGETS,
-        _ => &[],
+impl Unique {
+    /// Whether `row` takes part: the unique columns are all set, and any condition holds.
+    pub(crate) fn applies_to(&self, row: &Map<String, Value>) -> bool {
+        if let Some((col, value)) = self.only_when
+            && row.get(col).and_then(Value::as_str) != Some(value)
+        {
+            return false;
+        }
+        self.cols.iter().all(|c| row.get(*c).is_some_and(|v| !v.is_null()))
     }
 }
 
-// ---------------------------------------------------------------- applying
+pub(crate) struct Rules {
+    pub(crate) policy: Contention,
+    pub(crate) uniques: &'static [Unique],
+}
+
+impl Rules {
+    /// Whether two rows want the same unique value.
+    pub(crate) fn wants_same(&self, a: &Map<String, Value>, b: &Map<String, Value>) -> bool {
+        self.uniques.iter().any(|u| u.applies_to(a) && u.applies_to(b) && u.cols.iter().all(|c| a[*c] == b[*c]))
+    }
+
+    pub(crate) fn what(&self) -> String {
+        self.uniques.iter().map(|u| u.cols.join("+")).collect::<Vec<_>>().join(" or ")
+    }
+}
+
+/// The synced tables with a unique value other than their key, and how a
+/// clash is settled. A name a person reads (an account code, an invoice
+/// number) is renamed; a row that is only ever one-per-thing (a budget for a
+/// month, an open reconciliation, a bank transaction, a bank link) keeps
+/// the earliest and sets the rest aside.
+pub(crate) fn contention(table: &str) -> Option<&'static Rules> {
+    static ACCOUNTS: Rules = Rules { policy: Contention::Rename("code"), uniques: &[Unique { cols: &["code"], only_when: None }] };
+    static INVOICES: Rules = Rules { policy: Contention::Rename("number"), uniques: &[Unique { cols: &["number"], only_when: None }] };
+    static LINKS: Rules = Rules {
+        policy: Contention::SetAside,
+        uniques: &[Unique { cols: &["ledger_account_id"], only_when: None }, Unique { cols: &["connection_id", "external_account_id"], only_when: None }],
+    };
+    static TRANSACTIONS: Rules =
+        Rules { policy: Contention::SetAside, uniques: &[Unique { cols: &["ledger_account_id", "external_id"], only_when: None }] };
+    static RECONCILIATIONS: Rules =
+        Rules { policy: Contention::SetAside, uniques: &[Unique { cols: &["account_id"], only_when: Some(("status", "in_progress")) }] };
+    static BUDGETS: Rules = Rules {
+        policy: Contention::SetAside,
+        uniques: &[Unique { cols: &["month", "person_id"], only_when: None }, Unique { cols: &["month", "account_id"], only_when: None }],
+    };
+    match table {
+        "accounts" => Some(&ACCOUNTS),
+        "invoices" => Some(&INVOICES),
+        "bank_links" => Some(&LINKS),
+        "bank_transactions" => Some(&TRANSACTIONS),
+        "reconciliations" => Some(&RECONCILIATIONS),
+        "budgets" => Some(&BUDGETS),
+        _ => None,
+    }
+}
 
 /// Settings that belong to this device and never sync.
-fn is_local_setting(key: &str) -> bool {
+pub(crate) fn is_local_setting(key: &str) -> bool {
     key.starts_with("device.") || key.starts_with("pref.cloud.")
-}
-
-const JOURNAL_ENTRIES: &str = "journal_entries";
-const JOURNAL_LINES: &str = "journal_lines";
-
-/// The columns of the append-only tables that never change after insert (the
-/// schema's triggers refuse edits to them).
-fn immutable_columns(table: &str) -> &'static [&'static str] {
-    match table {
-        JOURNAL_ENTRIES => &["id", "date", "reverses_id"],
-        JOURNAL_LINES => &["id", "entry_id", "account_id", "amount"],
-        _ => &[],
-    }
-}
-
-fn is_journal(table: &str) -> bool {
-    table == JOURNAL_ENTRIES || table == JOURNAL_LINES
-}
-
-enum Outcome {
-    Applied,
-    Dropped,
-}
-
-struct Applier<'a> {
-    conn: &'a Connection,
-    report: ApplyReport,
-    columns: BTreeMap<&'static str, Vec<String>>,
-    /// Entries whose lines changed, to check they still sum to zero.
-    touched_entries: BTreeSet<i64>,
-    new_entries: Vec<(i64, String)>,
-    highest_hlc: Option<Hlc>,
-}
-
-impl<'a> Applier<'a> {
-    fn new(conn: &'a Connection) -> Applier<'a> {
-        Applier {
-            conn,
-            report: ApplyReport::default(),
-            columns: BTreeMap::new(),
-            touched_entries: BTreeSet::new(),
-            new_entries: Vec::new(),
-            highest_hlc: None,
-        }
-    }
-
-    fn columns_of(&mut self, t: &'static SyncTable) -> Result<Vec<String>> {
-        if let Some(c) = self.columns.get(t.name) {
-            return Ok(c.clone());
-        }
-        let c = table_columns(self.conn, t.name)?;
-        self.columns.insert(t.name, c.clone());
-        Ok(c)
-    }
-
-    fn apply(&mut self, c: &RowChange) -> Result<()> {
-        let t = synced_table(&c.table).ok_or_else(|| bad(format!("a change to {}, which this version doesn't know", c.table)))?;
-        if c.pk.len() != t.pk.len() {
-            return Err(bad(format!("a key of the wrong size for {}", t.name)));
-        }
-        let hlc = Hlc::parse(&c.hlc).ok_or_else(|| bad(format!("a bad clock reading {:?}", c.hlc)))?;
-        if self.highest_hlc.is_none_or(|h| hlc > h) {
-            self.highest_hlc = Some(hlc);
-        }
-        let key = pk_key(self.conn, &c.pk)?;
-        let state = row_state(self.conn, t.name, &key)?;
-        let outcome = match c.op {
-            ChangeOp::Delete => self.apply_delete(t, c, &key, state)?,
-            ChangeOp::Insert | ChangeOp::Update => {
-                let row = c.row.as_ref().ok_or_else(|| bad("an insert or update without a row"))?;
-                self.check_columns(t, row)?;
-                if is_journal(t.name) {
-                    self.apply_journal(t, c, row, &key, state)?
-                } else {
-                    self.apply_put(t, c, row.clone(), &key, state)?
-                }
-            }
-        };
-        match outcome {
-            Outcome::Applied => self.report.applied += 1,
-            Outcome::Dropped => self.report.dropped += 1,
-        }
-        Ok(())
-    }
-
-    fn check_columns(&mut self, t: &'static SyncTable, row: &Map<String, Value>) -> Result<()> {
-        let known = self.columns_of(t)?;
-        if let Some(extra) = row.keys().find(|k| !known.contains(k)) {
-            return Err(bad(format!("{}.{extra} isn't a column here; this book needs a newer Tallybook", t.name)));
-        }
-        Ok(())
-    }
-
-    fn exists(&self, t: &SyncTable, pk: &[Value]) -> Result<bool> {
-        let cond: Vec<String> = t.pk.iter().enumerate().map(|(i, c)| format!("\"{c}\" = ?{}", i + 1)).collect();
-        let values = pk.iter().map(json_to_sql).collect::<Result<Vec<_>>>()?;
-        let sql = format!("SELECT EXISTS(SELECT 1 FROM {} WHERE {})", t.name, cond.join(" AND "));
-        Ok(self.conn.query_row(&sql, rusqlite::params_from_iter(values), |r| r.get(0))?)
-    }
-
-    // ---- ordinary tables: the newest change to a row wins
-
-    fn apply_delete(&mut self, t: &'static SyncTable, c: &RowChange, key: &str, state: Option<RowState>) -> Result<Outcome> {
-        if is_journal(t.name) {
-            // The ledger never deletes; a delete here is a bug or an attack.
-            self.report.clashes_dropped.push(format!("ignored a delete of {} {key}", t.name));
-            return Ok(Outcome::Dropped);
-        }
-        if state.as_ref().is_some_and(|s| s.hlc >= c.hlc) {
-            return Ok(Outcome::Dropped);
-        }
-        let cond: Vec<String> = t.pk.iter().enumerate().map(|(i, col)| format!("\"{col}\" = ?{}", i + 1)).collect();
-        let values = c.pk.iter().map(json_to_sql).collect::<Result<Vec<_>>>()?;
-        self.conn.execute(&format!("DELETE FROM {} WHERE {}", t.name, cond.join(" AND ")), rusqlite::params_from_iter(values))?;
-        let born = state.map(|s| s.born).unwrap_or_default();
-        write_state(self.conn, t.name, key, &c.hlc, &born, true)?;
-        Ok(Outcome::Applied)
-    }
-
-    fn apply_put(
-        &mut self,
-        t: &'static SyncTable,
-        c: &RowChange,
-        mut row: Map<String, Value>,
-        key: &str,
-        state: Option<RowState>,
-    ) -> Result<Outcome> {
-        if state.as_ref().is_some_and(|s| s.hlc >= c.hlc) {
-            return Ok(Outcome::Dropped);
-        }
-        if t.name == "settings" && row.get("key").and_then(Value::as_str).is_some_and(is_local_setting) {
-            return Ok(Outcome::Dropped);
-        }
-        let born = state.as_ref().map(|s| s.born.clone()).unwrap_or_else(|| c.hlc.clone());
-        if let Outcome::Dropped = self.resolve_uniques(t, key, &born, &mut row)? {
-            return Ok(Outcome::Dropped);
-        }
-        let names: Vec<String> = self.columns_of(t)?.into_iter().filter(|col| row.contains_key(col)).collect();
-        let values = names.iter().map(|n| json_to_sql(&row[n])).collect::<Result<Vec<_>>>()?;
-        let placeholders: Vec<String> = (1..=names.len()).map(|i| format!("?{i}")).collect();
-        let quoted: Vec<String> = names.iter().map(|n| format!("\"{n}\"")).collect();
-        let updates: Vec<String> =
-            names.iter().filter(|n| !t.pk.contains(&n.as_str())).map(|n| format!("\"{n}\" = excluded.\"{n}\"")).collect();
-        let pk_cols: Vec<String> = t.pk.iter().map(|p| format!("\"{p}\"")).collect();
-        let conflict = if updates.is_empty() { "DO NOTHING".to_string() } else { format!("DO UPDATE SET {}", updates.join(", ")) };
-        self.conn.execute(
-            &format!(
-                "INSERT INTO {} ({}) VALUES ({}) ON CONFLICT({}) {conflict}",
-                t.name,
-                quoted.join(", "),
-                placeholders.join(", "),
-                pk_cols.join(", ")
-            ),
-            rusqlite::params_from_iter(values),
-        )?;
-        write_state(self.conn, t.name, key, &c.hlc, &born, false)?;
-        Ok(Outcome::Applied)
-    }
-
-    /// Settles a unique value that two devices made on their own. The later
-    /// row (by when it was first seen, then by key, the same on every device)
-    /// gives way: renamed, or dropped.
-    fn resolve_uniques(&mut self, t: &'static SyncTable, key: &str, born: &str, row: &mut Map<String, Value>) -> Result<Outcome> {
-        for u in uniques(t.name) {
-            if let Some((col, value)) = u.only_when
-                && row.get(col).and_then(Value::as_str) != Some(value)
-            {
-                continue;
-            }
-            if u.cols.iter().any(|c| row.get(*c).is_none_or(Value::is_null)) {
-                continue;
-            }
-            let others = self.rows_with_same(t, u, row, key)?;
-            if others.is_empty() {
-                continue;
-            }
-            match u.clash {
-                Clash::DropLater => {
-                    for (okey, opk) in others {
-                        let obirth = row_state(self.conn, t.name, &okey)?.map(|s| s.born).unwrap_or_default();
-                        if (born, key) > (obirth.as_str(), okey.as_str()) {
-                            self.report.clashes_dropped.push(format!("{} {key} clashed with {okey}", t.name));
-                            return Ok(Outcome::Dropped);
-                        }
-                        self.drop_local_row(t, &opk, &okey, &obirth)?;
-                        self.report.clashes_dropped.push(format!("{} {okey} clashed with {key}", t.name));
-                    }
-                }
-                Clash::Rename(col) => self.rename_group(t, u, col, key, born, row)?,
-            }
-        }
-        Ok(Outcome::Applied)
-    }
-
-    /// Existing rows (other than `key`) with the same values in `u`'s columns.
-    fn rows_with_same(&self, t: &SyncTable, u: &Unique, row: &Map<String, Value>, key: &str) -> Result<Vec<(String, Vec<Value>)>> {
-        let mut cond: Vec<String> = u.cols.iter().enumerate().map(|(i, c)| format!("\"{c}\" = ?{}", i + 1)).collect();
-        let mut values = u.cols.iter().map(|c| json_to_sql(&row[*c])).collect::<Result<Vec<_>>>()?;
-        if let Some((col, value)) = u.only_when {
-            values.push(SqlValue::Text(value.to_string()));
-            cond.push(format!("\"{col}\" = ?{}", values.len()));
-        }
-        let pk_cols: Vec<String> = t.pk.iter().map(|p| format!("\"{p}\"")).collect();
-        let sql = format!("SELECT {} FROM {} WHERE {}", pk_cols.join(", "), t.name, cond.join(" AND "));
-        let mut stmt = self.conn.prepare(&sql)?;
-        let found: Vec<Vec<Value>> = stmt
-            .query_map(rusqlite::params_from_iter(values), |r| {
-                (0..t.pk.len()).map(|i| r.get::<_, SqlValue>(i).map(sql_to_json)).collect::<rusqlite::Result<Vec<_>>>()
-            })?
-            .collect::<rusqlite::Result<_>>()?;
-        let mut out = Vec::new();
-        for pk in found {
-            let k = pk_key(self.conn, &pk)?;
-            if k != key {
-                out.push((k, pk));
-            }
-        }
-        Ok(out)
-    }
-
-    /// Deletes a local row that lost a clash, and says so in `sync_rows`.
-    fn drop_local_row(&mut self, t: &SyncTable, pk: &[Value], key: &str, born: &str) -> Result<()> {
-        let cond: Vec<String> = t.pk.iter().enumerate().map(|(i, col)| format!("\"{col}\" = ?{}", i + 1)).collect();
-        let values = pk.iter().map(json_to_sql).collect::<Result<Vec<_>>>()?;
-        if t.name == "reconciliations" {
-            self.conn.execute(
-                "UPDATE journal_lines SET reconciliation_id = NULL,
-                        cleared = CASE WHEN cleared = 'cleared' THEN 'uncleared' ELSE cleared END
-                 WHERE reconciliation_id = ?1",
-                params![json_to_sql(&pk[0])?],
-            )?;
-        }
-        self.conn.execute(&format!("DELETE FROM {} WHERE {}", t.name, cond.join(" AND ")), rusqlite::params_from_iter(values))?;
-        let hlc = row_state(self.conn, t.name, key)?.map(|s| s.hlc).unwrap_or_default();
-        write_state(self.conn, t.name, key, &hlc, born, true)?;
-        Ok(())
-    }
-
-    /// Gives every row that made the same value its place in line: the
-    /// earliest keeps `X`, the next gets `X-2`, then `X-3`. The same rows give
-    /// the same names on every device, whatever order they arrived in.
-    fn rename_group(&mut self, t: &'static SyncTable, u: &Unique, col: &str, key: &str, born: &str, row: &mut Map<String, Value>) -> Result<()> {
-        let base = row[col].as_str().ok_or_else(|| bad(format!("{} must be text", col)))?.to_string();
-        let others_cols: Vec<&&str> = u.cols.iter().filter(|c| **c != col).collect();
-        let mut cond: Vec<String> = others_cols.iter().enumerate().map(|(i, c)| format!("\"{c}\" = ?{}", i + 1)).collect();
-        let mut values = others_cols.iter().map(|c| json_to_sql(&row[**c])).collect::<Result<Vec<_>>>()?;
-        values.push(SqlValue::Text(base.clone()));
-        values.push(SqlValue::Text(format!("{base}-*")));
-        cond.push(format!("(\"{col}\" = ?{} OR \"{col}\" GLOB ?{})", values.len() - 1, values.len()));
-        let pk_cols: Vec<String> = t.pk.iter().map(|p| format!("\"{p}\"")).collect();
-        let sql = format!("SELECT {}, \"{col}\" FROM {} WHERE {}", pk_cols.join(", "), t.name, cond.join(" AND "));
-        let mut stmt = self.conn.prepare(&sql)?;
-        let found: Vec<(Vec<Value>, String)> = stmt
-            .query_map(rusqlite::params_from_iter(values), |r| {
-                let pk = (0..t.pk.len()).map(|i| r.get::<_, SqlValue>(i).map(sql_to_json)).collect::<rusqlite::Result<Vec<_>>>()?;
-                Ok((pk, r.get::<_, String>(t.pk.len())?))
-            })?
-            .collect::<rusqlite::Result<_>>()?;
-        drop(stmt);
-        // The group: rows named X or X-<digits>, and the incoming row.
-        struct Member {
-            born: String,
-            key: String,
-            pk: Option<Vec<Value>>,
-            current: String,
-        }
-        let mut group = vec![Member { born: born.to_string(), key: key.to_string(), pk: None, current: base.clone() }];
-        for (pk, current) in found {
-            let suffix = current.strip_prefix(&base).and_then(|s| s.strip_prefix('-'));
-            if current != base && !suffix.is_some_and(|s| !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit())) {
-                continue;
-            }
-            let k = pk_key(self.conn, &pk)?;
-            if k == key {
-                continue;
-            }
-            let b = row_state(self.conn, t.name, &k)?.map(|s| s.born).unwrap_or_default();
-            group.push(Member { born: b, key: k, pk: Some(pk), current });
-        }
-        group.sort_by(|a, b| (&a.born, &a.key).cmp(&(&b.born, &b.key)));
-        // Rename from the last place to the first, so no two rows ever hold a name at once.
-        for (rank, m) in group.iter().enumerate().rev() {
-            let target = if rank == 0 { base.clone() } else { format!("{base}-{}", rank + 1) };
-            if target == m.current {
-                continue;
-            }
-            self.report.renamed.push(Renamed { table: t.name.to_string(), column: col.to_string(), from: m.current.clone(), to: target.clone() });
-            match &m.pk {
-                None => {
-                    row.insert(col.to_string(), Value::String(target));
-                    // A feed transaction that clashes is a duplicate of one already here:
-                    // keep it out of the inbox, but keep the row so devices agree.
-                    if t.name == "bank_transactions" && row.get("status").and_then(Value::as_str) == Some("new") {
-                        row.insert("status".into(), Value::String("excluded".into()));
-                    }
-                }
-                Some(pk) => {
-                    let cond: Vec<String> = t.pk.iter().enumerate().map(|(i, p)| format!("\"{p}\" = ?{}", i + 2)).collect();
-                    let mut values = vec![SqlValue::Text(target)];
-                    for v in pk {
-                        values.push(json_to_sql(v)?);
-                    }
-                    let extra = if t.name == "bank_transactions" { ", status = CASE WHEN status = 'new' THEN 'excluded' ELSE status END" } else { "" };
-                    self.conn.execute(
-                        &format!("UPDATE {} SET \"{col}\" = ?1{extra} WHERE {}", t.name, cond.join(" AND ")),
-                        rusqlite::params_from_iter(values),
-                    )?;
-                }
-            }
-        }
-        Ok(())
-    }
-
-    // ---- the journal: insert if absent, edit only what may be edited
-
-    fn apply_journal(&mut self, t: &'static SyncTable, c: &RowChange, row: &Map<String, Value>, key: &str, state: Option<RowState>) -> Result<Outcome> {
-        let id = c.pk[0].as_i64().ok_or_else(|| bad("a journal id that isn't a number"))?;
-        if !self.exists(t, &c.pk)? {
-            let names: Vec<String> = self.columns_of(t)?.into_iter().filter(|col| row.contains_key(col)).collect();
-            let values = names.iter().map(|n| json_to_sql(&row[n])).collect::<Result<Vec<_>>>()?;
-            let placeholders: Vec<String> = (1..=names.len()).map(|i| format!("?{i}")).collect();
-            let quoted: Vec<String> = names.iter().map(|n| format!("\"{n}\"")).collect();
-            self.conn.execute(
-                &format!("INSERT INTO {} ({}) VALUES ({})", t.name, quoted.join(", "), placeholders.join(", ")),
-                rusqlite::params_from_iter(values),
-            )?;
-            write_state(self.conn, t.name, key, &c.hlc, &c.hlc, false)?;
-            if t.name == JOURNAL_ENTRIES {
-                self.touched_entries.insert(id);
-                let date = row.get("date").and_then(Value::as_str).unwrap_or_default().to_string();
-                self.new_entries.push((id, date));
-            } else if let Some(entry_id) = row.get("entry_id").and_then(Value::as_i64) {
-                self.touched_entries.insert(entry_id);
-            }
-            return Ok(Outcome::Applied);
-        }
-        // Already here. Only the columns the ledger lets change can differ.
-        let mut changed = false;
-        if t.name == JOURNAL_ENTRIES && let Some(incoming) = row.get("voided_by_id").and_then(Value::as_i64) {
-            changed |= self.merge_void(id, incoming)?;
-        }
-        let newer = state.as_ref().is_none_or(|s| s.hlc < c.hlc);
-        if newer {
-            let skip = immutable_columns(t.name);
-            let names: Vec<String> = self
-                .columns_of(t)?
-                .into_iter()
-                .filter(|col| row.contains_key(col) && !skip.contains(&col.as_str()) && !(t.name == JOURNAL_ENTRIES && col == "voided_by_id"))
-                .collect();
-            if !names.is_empty() {
-                let sets: Vec<String> = names.iter().enumerate().map(|(i, n)| format!("\"{n}\" = ?{}", i + 1)).collect();
-                let mut values = names.iter().map(|n| json_to_sql(&row[n])).collect::<Result<Vec<_>>>()?;
-                values.push(json_to_sql(&c.pk[0])?);
-                let n = values.len();
-                changed |= self.conn.execute(
-                    &format!("UPDATE {} SET {} WHERE id = ?{n}", t.name, sets.join(", ")),
-                    rusqlite::params_from_iter(values),
-                )? > 0;
-            }
-            let born = state.map(|s| s.born).unwrap_or_default();
-            write_state(self.conn, t.name, key, &c.hlc, &born, false)?;
-        }
-        Ok(if changed { Outcome::Applied } else { Outcome::Dropped })
-    }
-
-    /// Two devices voided the same entry. The void made first (the earlier
-    /// reversing entry) stands; the other reversal is itself reversed, by a
-    /// row every device derives the same way, so the books net to one void.
-    /// Returns whether this entry's void changed.
-    fn merge_void(&mut self, entry_id: i64, incoming: i64) -> Result<bool> {
-        let current: Option<i64> = self.conn.query_row("SELECT voided_by_id FROM journal_entries WHERE id = ?1", [entry_id], |r| r.get(0))?;
-        let Some(current) = current else {
-            self.conn.execute("UPDATE journal_entries SET voided_by_id = ?1 WHERE id = ?2", params![incoming, entry_id])?;
-            return Ok(true);
-        };
-        if current == incoming {
-            return Ok(false);
-        }
-        let rank = |id: i64| -> Result<(String, i64)> {
-            let key = pk_key(self.conn, &[Value::from(id)])?;
-            Ok((row_state(self.conn, JOURNAL_ENTRIES, &key)?.map(|s| s.born).unwrap_or_default(), id))
-        };
-        let (winner, loser) = if rank(current)? <= rank(incoming)? { (current, incoming) } else { (incoming, current) };
-        let changed = winner != current;
-        if changed {
-            self.conn.execute("UPDATE journal_entries SET voided_by_id = ?1 WHERE id = ?2", params![winner, entry_id])?;
-        }
-        self.report.voids_merged += 1;
-        self.cancel_reversal(loser)?;
-        Ok(changed)
-    }
-
-    /// Reverses the reversing entry `reversal` (unless something already has),
-    /// with ids derived from it so every device makes the identical rows.
-    fn cancel_reversal(&mut self, reversal: i64) -> Result<()> {
-        let head: Option<(String, String, Option<i64>, String)> = self
-            .conn
-            .query_row("SELECT date, memo, voided_by_id, created_at FROM journal_entries WHERE id = ?1", [reversal], |r| {
-                Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))
-            })
-            .optional()?;
-        let Some((date, memo, voided_by, created_at)) = head else {
-            return Err(bad(format!("a void by entry {reversal}, which hasn't arrived")));
-        };
-        if voided_by.is_some() {
-            return Ok(());
-        }
-        let new_id = derived_id(reversal, 0);
-        let born = row_state(self.conn, JOURNAL_ENTRIES, &pk_key(self.conn, &[Value::from(reversal)])?)?.map(|s| s.born).unwrap_or_default();
-        let hlc = row_state(self.conn, JOURNAL_ENTRIES, &pk_key(self.conn, &[Value::from(reversal)])?)?.map(|s| s.hlc).unwrap_or_default();
-        let taken: bool = self.conn.query_row("SELECT EXISTS(SELECT 1 FROM journal_entries WHERE id = ?1)", [new_id], |r| r.get(0))?;
-        if taken {
-            return Err(bad(format!("entry id {new_id} is already used by something else")));
-        }
-        self.conn.execute(
-            "INSERT INTO journal_entries(id, date, memo, source, reverses_id, created_at) VALUES (?1, ?2, ?3, 'void', ?4, ?5)",
-            params![new_id, date, format!("Duplicate void cancelled: {memo}"), reversal, created_at],
-        )?;
-        write_state(self.conn, JOURNAL_ENTRIES, &pk_key(self.conn, &[Value::from(new_id)])?, &hlc, &born, false)?;
-        let lines: Vec<(i64, i64, i64, Option<String>)> = {
-            let mut stmt = self.conn.prepare("SELECT id, account_id, amount, memo FROM journal_lines WHERE entry_id = ?1 ORDER BY id")?;
-            stmt.query_map([reversal], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))?.collect::<rusqlite::Result<_>>()?
-        };
-        for (i, (_, account_id, amount, line_memo)) in lines.into_iter().enumerate() {
-            let line_id = derived_id(reversal, i as u32 + 1);
-            self.conn.execute(
-                "INSERT INTO journal_lines(id, entry_id, account_id, amount, memo) VALUES (?1, ?2, ?3, ?4, ?5)",
-                params![line_id, new_id, account_id, -amount, line_memo],
-            )?;
-            write_state(self.conn, JOURNAL_LINES, &pk_key(self.conn, &[Value::from(line_id)])?, &hlc, &born, false)?;
-        }
-        self.conn.execute("UPDATE journal_entries SET voided_by_id = ?1 WHERE id = ?2", params![new_id, reversal])?;
-        self.touched_entries.insert(new_id);
-        Ok(())
-    }
 }
 
 // ---------------------------------------------------------------- the Store API
@@ -956,7 +576,7 @@ impl Store {
             let after = raw.last().map_or(0, |r| r.0);
             let next = stmt.query_map(params![after, 1], read)?.next().transpose()?;
             match next {
-                Some(r) if r.1 == JOURNAL_LINES && r.3 == "insert" && !raw.is_empty() => raw.push(r),
+                Some(r) if r.1 == "journal_lines" && r.3 == "insert" && !raw.is_empty() => raw.push(r),
                 _ => break,
             }
         }
@@ -1014,6 +634,7 @@ impl Store {
         for change in changes {
             applier.apply(change)?;
         }
+        applier.settle()?;
         let Applier { mut report, touched_entries, new_entries, highest_hlc, .. } = applier;
 
         if let Some(lock) = crate::lock_date_in(&tx)? {
@@ -1057,6 +678,18 @@ impl Store {
         Ok(report)
     }
 
+    /// Works out again which rows keep the unique values they want and which
+    /// are renamed or set aside, after changes made on this device (a delete
+    /// can end a clash). Nothing goes to the outbox.
+    pub fn sync_settle(&mut self) -> Result<ApplyReport> {
+        self.sync_apply(&[], None)
+    }
+
+    /// How many rows are waiting aside for a unique value an earlier row has.
+    pub fn sync_set_aside_count(&self) -> Result<i64> {
+        Ok(self.conn.query_row("SELECT COUNT(*) FROM sync_shadow", [], |r| r.get(0))?)
+    }
+
     /// Every row of every synced table, as JSON, sorted by key. Two devices
     /// that have traded all their changes have identical dumps.
     pub fn sync_dump(&self) -> Result<TableDump> {
@@ -1065,7 +698,7 @@ impl Store {
             let columns = table_columns(&self.conn, t.name)?;
             let order: Vec<String> = t.pk.iter().map(|c| format!("\"{c}\"")).collect();
             let filter = t.local_only.map(|l| format!(" WHERE NOT ({})", l.replace("{r}", t.name))).unwrap_or_default();
-            let sql = format!("SELECT {} FROM {}{filter} ORDER BY {}", json_object_sql(t.name, &columns), t.name, order.join(", "));
+            let sql = format!("SELECT {} FROM {}{filter} ORDER BY {}", json_object_sql(t.name, t, &columns, false), t.name, order.join(", "));
             let mut stmt = self.conn.prepare(&sql)?;
             let rows = stmt.query_map([], |r| r.get::<_, String>(0))?.collect::<rusqlite::Result<_>>()?;
             out.insert(t.name.to_string(), rows);
@@ -1089,7 +722,7 @@ impl Store {
                     continue;
                 };
                 for c in table_columns(&self.conn, t.name)? {
-                    if !sql.contains(&format!("'{c}', NEW.\"{c}\"")) {
+                    if !(sql.contains(&format!("'{c}', ")) && sql.contains(&format!("NEW.\"{c}\""))) {
                         missing.push(format!("{}.{c}", t.name));
                     }
                 }
