@@ -8,7 +8,8 @@ priority: 0.1
 cta: false
 ---
 
-The short version: **your books never leave your computer unless you send an
+Tallybook is made by Jason Sutter ("we" and "us" in this policy). The short
+version: **your books never leave your computer unless you send an
 encrypted copy somewhere yourself.** We don't keep your transactions, budgets,
 invoices or tax figures, and we don't want to.
 
@@ -47,10 +48,14 @@ goes only to Plaid's own sign-in page. We never see it.
   don't contain it.
 - **What Connect stores,** in an encrypted database: your bank access token
   (the key that lets Connect ask Plaid for your transactions), your license
-  key, and timestamps such as when the key was last seen active. Nothing from
+  key and a hash of it, and timestamps such as when the key was last seen
+  active. Nothing from
   your books, and no balances or transactions.
 - **Why.** To sync your banks, and to check your plan with Lemon Squeezy so Connect
   can disconnect your banks when the plan ends.
+- **Where it runs.** Connect runs on a server we control. Its traffic reaches
+  it through our network provider (currently Cloudflare), which carries it only
+  to deliver it.
 - **Plaid.** Plaid acts as our processor for bank connections. Plaid's own
   [end user privacy policy](https://plaid.com/legal/#end-user-privacy-policy)
   describes what it collects from you when you sign in to your bank.
