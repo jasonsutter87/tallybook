@@ -1,4 +1,5 @@
 {{ define "main" }}
+{{ $groups := slice "Getting started" "Business" "Household" "Setup & your data" }}
 <section class="page-hero" aria-labelledby="page-title">
   <div class="container">
     <p class="eyebrow">Help</p>
@@ -8,15 +9,22 @@
 </section>
 <section class="section tight">
   <div class="container narrow">
-    <div class="card-list">
-      {{ range .Pages.ByWeight }}
-        <a class="link-card" href="{{ .RelPermalink }}">
-          <h2>{{ .Title }}</h2>
-          <p>{{ .Description }}</p>
-          <span class="link-card-more">Read the guide {{ partial "icon.html" (dict "name" "arrow-right" "size" 16) }}</span>
-        </a>
+    {{ $pages := .Pages }}
+    {{ range $groups }}
+      {{ $group := . }}
+      {{ with (where $pages "Params.group" $group).ByWeight }}
+      <h2 class="help-group">{{ $group }}</h2>
+      <div class="card-list">
+        {{ range . }}
+          <a class="link-card" href="{{ .RelPermalink }}">
+            <h3>{{ .Title }}</h3>
+            <p>{{ .Description }}</p>
+            <span class="link-card-more">Read the guide {{ partial "icon.html" (dict "name" "arrow-right" "size" 16) }}</span>
+          </a>
+        {{ end }}
+      </div>
       {{ end }}
-    </div>
+    {{ end }}
   </div>
 </section>
 {{ end }}
