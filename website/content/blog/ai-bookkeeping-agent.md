@@ -68,7 +68,8 @@ tools speak. The leash has a few links:
    happened and when.
 3. **It runs on your computer.** The agent talks to the Tallybook on your
    machine, against your book file. There's no Tallybook server holding your
-   books for anyone to reach.
+   books for anyone to reach. (Bank sync does use a small service we run, but it
+   only passes transactions to your computer and doesn't keep them.)
 
 One honest caveat: **whatever the agent reads goes to the AI service behind
 it.** If you ask Claude about your profit, your numbers go to Anthropic to

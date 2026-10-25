@@ -7,14 +7,14 @@
     <p class="eyebrow">Bookkeeping &amp; budgeting, on your own computer</p>
     <h1 id="hero-title">Your money, in one file you own.</h1>
     <p class="hero-lede">
-      A household budget that's free for good. Add your business for {{ $p.business }}, once,
-      and tax prep for {{ $p.tax }} a tax season. No subscription.
+      A household budget that's free for good. Yearly plans add bank sync, your business and tax prep.
+      Stop paying and your books, and everything you've unlocked, keep working.
     </p>
     <div class="hero-actions">
       <a href="/download/" class="btn btn-light btn-lg">{{ partial "icon.html" (dict "name" "download" "size" 18) }} Download free</a>
       <a href="/pricing/" class="btn btn-ghost-light btn-lg">See pricing</a>
     </div>
-    <p class="hero-meta">Mac · Windows · Linux &nbsp;·&nbsp; No account &nbsp;·&nbsp; No subscription &nbsp;·&nbsp; No tracking</p>
+    <p class="hero-meta">Mac · Windows · Linux &nbsp;·&nbsp; No account &nbsp;·&nbsp; No tracking &nbsp;·&nbsp; Books never locked</p>
   </div>
   <div class="container">
     <figure class="hero-shot">
@@ -29,8 +29,8 @@
   <div class="container promise-grid">
     <div>{{ partial "icon.html" (dict "name" "file") }}<span><strong>One file.</strong> Your books are a single file on your computer.</span></div>
     <div>{{ partial "icon.html" (dict "name" "lock") }}<span><strong>Encrypted.</strong> One click locks it with a 256-bit key.</span></div>
-    <div>{{ partial "icon.html" (dict "name" "eye-off") }}<span><strong>Private.</strong> No account, no tracking, nothing phones home.</span></div>
-    <div>{{ partial "icon.html" (dict "name" "receipt") }}<span><strong>No subscription.</strong> Free for the household; buy only what you use.</span></div>
+    <div>{{ partial "icon.html" (dict "name" "eye-off") }}<span><strong>Private.</strong> No account and no tracking. Your books never leave your computer.</span></div>
+    <div>{{ partial "icon.html" (dict "name" "receipt") }}<span><strong>Never locked out.</strong> If a plan ends, your books and what you unlocked keep working.</span></div>
   </div>
 </section>
 
@@ -63,7 +63,7 @@
 <section id="business" class="feature alt" aria-labelledby="business-title">
   <div class="container feature-row reverse">
     <div class="feature-copy">
-      <span class="tier-tag">{{ partial "icon.html" (dict "name" "briefcase" "size" 15) }} Business · {{ $p.business }}, yours for good</span>
+      <span class="tier-tag">{{ partial "icon.html" (dict "name" "briefcase" "size" 15) }} Business · {{ $p.business }} a year</span>
       <h2 id="business-title">Real bookkeeping, in plain English.</h2>
       <p>
         Underneath it's proper double-entry accounting your accountant will recognize. On screen it says
@@ -71,7 +71,7 @@
       </p>
       <ul class="feature-list">
         <li>{{ partial "icon.html" (dict "name" "inbox" "size" 18) }}<span><strong>Review in seconds.</strong> New transactions arrive with a suggestion: a match, a rule, or what you picked last time.</span></li>
-        <li>{{ partial "icon.html" (dict "name" "receipt" "size" 18) }}<span><strong>Invoices and bills.</strong> Send a clean invoice, record payments, and let the bank feed match the deposit.</span></li>
+        <li>{{ partial "icon.html" (dict "name" "receipt" "size" 18) }}<span><strong>Invoices and bills.</strong> Send a clean invoice, record payments, and let bank sync match the deposit.</span></li>
         <li>{{ partial "icon.html" (dict "name" "chart" "size" 18) }}<span><strong>The numbers that matter.</strong> Profit &amp; loss, balance sheet, and who owes whom, for any dates.</span></li>
         <li>{{ partial "icon.html" (dict "name" "home" "size" 18) }}<span><strong>Business and home, kept apart.</strong> Pay yourself and it's recorded as an owner's draw on one side and income on the other.</span></li>
       </ul>
@@ -101,7 +101,7 @@
 <section id="taxes" class="feature" aria-labelledby="taxes-title">
   <div class="container feature-row">
     <div class="feature-copy">
-      <span class="tier-tag violet">{{ partial "icon.html" (dict "name" "scale" "size" 15) }} Business + Tax · {{ $p.tax }} a tax season</span>
+      <span class="tier-tag violet">{{ partial "icon.html" (dict "name" "scale" "size" 15) }} Business + Tax · {{ $p.tax }} a year</span>
       <h2 id="taxes-title">Tax time, prepared, not guessed.</h2>
       <p>For sole proprietors and single-member LLCs. Built from your books, so every number traces back to a transaction.</p>
       <ul class="feature-list">
@@ -127,7 +127,7 @@
       <div class="data-card">{{ partial "icon.html" (dict "name" "file") }}<h3>One file you own</h3><p>A single <code>.tallybook</code> file. Copy it, back it up, or hand it to your accountant.</p></div>
       <div class="data-card">{{ partial "icon.html" (dict "name" "lock") }}<h3>Encryption built in</h3><p>The key lives in your system keychain, plus a recovery key you keep. Without it, the file is unreadable.</p></div>
       <div class="data-card">{{ partial "icon.html" (dict "name" "cloud") }}<h3>Encrypted cloud copies</h3><p>To iCloud Drive, Dropbox, Google Drive, OneDrive or a Git repository. Only encrypted copies ever leave.</p></div>
-      <div class="data-card">{{ partial "icon.html" (dict "name" "key") }}<h3>Bank logins stay secret</h3><p>Bank access is kept in your keychain, never in the book. Your password only goes to your bank's own page.</p></div>
+      <div class="data-card">{{ partial "icon.html" (dict "name" "key") }}<h3>Bank logins stay secret</h3><p>Your bank password goes only to Plaid's sign-in page. Tallybook never sees it, and your transactions pass straight to your computer without being stored.</p></div>
     </div>
   </div>
   <div class="container">
@@ -142,8 +142,8 @@
 <section id="pricing" class="section" aria-labelledby="pricing-title">
   <div class="container">
     <div class="section-head">
-      <h2 id="pricing-title">No subscriptions. Ever.</h2>
-      <p>Start free with your household. Upgrade when your business needs it.</p>
+      <h2 id="pricing-title">Yearly plans. Your books keep working.</h2>
+      <p>Start free with your household. Add a plan when you want bank sync, a business side or tax prep. If you stop, everything you unlocked stays, except bank sync and phone sync.</p>
     </div>
     {{ partial "pricing.html" . }}
   </div>

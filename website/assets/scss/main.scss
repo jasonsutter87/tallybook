@@ -564,14 +564,19 @@ a {
   gap: 1.25rem;
   grid-template-columns: minmax(0, 1fr);
 
-  @include lg {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+  // Four plans: one column on phones, two on tablets, four on wide screens.
+  @include md {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     align-items: stretch;
+  }
+
+  @include xl {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 }
 
 .price-card {
-  @include card(1.75rem);
+  @include card(1.5rem);
   @include flex-column;
   position: relative;
   box-shadow: $shadow;
@@ -589,7 +594,7 @@ a {
 .price-flag {
   position: absolute;
   top: -0.8rem;
-  left: 1.75rem;
+  left: 1.5rem;
   padding: 0.25rem 0.75rem;
   border-radius: 999px;
   font-size: 0.75rem;

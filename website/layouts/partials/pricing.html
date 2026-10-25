@@ -1,21 +1,37 @@
-{{/* The three tiers. Shared by the home page and /pricing/. Prices live in hugo.toml. */}}
+{{/* The four plans. Shared by the home page and /pricing/. Prices live in hugo.toml. */}}
 {{ $p := site.Params.pricing }}
+{{ $c := partial "icon.html" (dict "name" "check" "size" 16) }}
 <div class="price-grid">
   <article class="price-card">
     <div class="price-head">
       <span class="price-icon">{{ partial "icon.html" (dict "name" "home") }}</span>
-      <h3>Household</h3>
+      <h3>Free</h3>
     </div>
-    <p class="price"><span class="amount">Free</span> <span class="unit">forever</span></p>
-    <p class="price-pitch">A budget for the money at home, with bills and goals.</p>
+    <p class="price"><span class="amount">$0</span> <span class="unit">forever</span></p>
+    <p class="price-pitch">The household budget, with bills and goals.</p>
     <ul class="price-list">
-      <li>{{ partial "icon.html" (dict "name" "check" "size" 16) }} Monthly plan by category or by person</li>
-      <li>{{ partial "icon.html" (dict "name" "check" "size" 16) }} Bills that tick themselves off</li>
-      <li>{{ partial "icon.html" (dict "name" "check" "size" 16) }} Savings goals with a real finish date</li>
-      <li>{{ partial "icon.html" (dict "name" "check" "size" 16) }} Bank import, rules and reports</li>
-      <li>{{ partial "icon.html" (dict "name" "check" "size" 16) }} Encryption and encrypted cloud copies</li>
+      <li>{{ $c }} Monthly plan by category or by person</li>
+      <li>{{ $c }} Bills that tick themselves off</li>
+      <li>{{ $c }} Savings goals with a real finish date</li>
+      <li>{{ $c }} Reports, rules and encryption</li>
+      <li>{{ $c }} File import (CSV, OFX, QFX) from any bank</li>
     </ul>
     <a href="/download/" class="btn btn-secondary btn-block">Download free</a>
+  </article>
+
+  <article class="price-card">
+    <div class="price-head">
+      <span class="price-icon">{{ partial "icon.html" (dict "name" "cloud") }}</span>
+      <h3>Personal</h3>
+    </div>
+    <p class="price"><span class="amount">{{ $p.personal }}</span> <span class="unit">a year</span></p>
+    <p class="price-pitch">Everything in Free, plus your bank, connected.</p>
+    <ul class="price-list">
+      <li>{{ $c }} Bank sync for most US banks and cards, through Plaid</li>
+      <li>{{ $c }} We set it up; you just sign in to your bank</li>
+      <li>{{ $c }} The phone app, coming to iPhone and Android</li>
+    </ul>
+    <a href="{{ $p.personalCheckout }}" class="btn btn-secondary btn-block">Get Personal · {{ $p.personal }} a year</a>
   </article>
 
   <article class="price-card">
@@ -23,16 +39,15 @@
       <span class="price-icon">{{ partial "icon.html" (dict "name" "briefcase") }}</span>
       <h3>Business</h3>
     </div>
-    <p class="price"><span class="amount">{{ $p.business }}</span> <span class="unit">once, yours for good</span></p>
-    <p class="price-pitch">Everything in Household, plus real bookkeeping for your business.</p>
+    <p class="price"><span class="amount">{{ $p.business }}</span> <span class="unit">a year</span></p>
+    <p class="price-pitch">Everything in Personal, plus real bookkeeping.</p>
     <ul class="price-list">
-      <li>{{ partial "icon.html" (dict "name" "check" "size" 16) }} Invoices, bills and payments</li>
-      <li>{{ partial "icon.html" (dict "name" "check" "size" 16) }} Bank feeds that learn how you categorize</li>
-      <li>{{ partial "icon.html" (dict "name" "check" "size" 16) }} Profit &amp; loss, balance sheet, who owes whom</li>
-      <li>{{ partial "icon.html" (dict "name" "check" "size" 16) }} Business and household in one book</li>
-      <li>{{ partial "icon.html" (dict "name" "check" "size" 16) }} Double-entry your accountant recognizes</li>
+      <li>{{ $c }} Invoices, bills and payments</li>
+      <li>{{ $c }} Profit &amp; loss and balance sheet</li>
+      <li>{{ $c }} Business and household in one book</li>
+      <li>{{ $c }} Double-entry your accountant recognizes</li>
     </ul>
-    <a href="{{ $p.businessCheckout }}" class="btn btn-secondary btn-block">Buy Business · {{ $p.business }}</a>
+    <a href="{{ $p.businessCheckout }}" class="btn btn-secondary btn-block">Get Business · {{ $p.business }} a year</a>
   </article>
 
   <article class="price-card featured">
@@ -41,16 +56,16 @@
       <span class="price-icon">{{ partial "icon.html" (dict "name" "scale") }}</span>
       <h3>Business + Tax</h3>
     </div>
-    <p class="price"><span class="amount">{{ $p.tax }}</span> <span class="unit">a tax season</span></p>
+    <p class="price"><span class="amount">{{ $p.tax }}</span> <span class="unit">a year</span></p>
     <p class="price-pitch">Everything in Business, plus tax prep built from your books.</p>
     <ul class="price-list">
-      <li>{{ partial "icon.html" (dict "name" "check" "size" 16) }} Schedule C worksheet, line by line</li>
-      <li>{{ partial "icon.html" (dict "name" "check" "size" 16) }} Quarterly estimated-tax plan</li>
-      <li>{{ partial "icon.html" (dict "name" "check" "size" 16) }} 1099 tracking for contractors</li>
-      <li>{{ partial "icon.html" (dict "name" "check" "size" 16) }} A tax package for your accountant, PDFs included</li>
-      <li>{{ partial "icon.html" (dict "name" "check" "size" 16) }} Covers this tax year and last; next season {{ $p.taxRenewal }} for returning customers</li>
+      <li>{{ $c }} Schedule C worksheet, line by line</li>
+      <li>{{ $c }} Quarterly estimated-tax plan</li>
+      <li>{{ $c }} 1099 tracking for contractors</li>
+      <li>{{ $c }} A tax package for your accountant</li>
+      <li>{{ $c }} A paid year covers that tax year and the one before</li>
     </ul>
-    <a href="{{ $p.taxCheckout }}" class="btn btn-primary btn-block">Buy Business + Tax · {{ $p.tax }}</a>
+    <a href="{{ $p.taxCheckout }}" class="btn btn-primary btn-block">Get Business + Tax · {{ $p.tax }} a year</a>
   </article>
 </div>
-<p class="price-note">Nothing renews by itself. Business is yours for good; tax prep covers the tax year you buy it in and the one before, and you renew for the next season only if you want it. Paste your key into Tallybook once and it unlocks.</p>
+<p class="price-note">Every paid plan is a yearly subscription that renews until you cancel. If a plan ends, everything it unlocked keeps working except bank sync and phone sync. The business side stays, tax prep stays open for the years you paid for, and your books are never locked. Read and export always work. Paste your key into Tallybook once and it unlocks.</p>

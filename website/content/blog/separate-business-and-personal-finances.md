@@ -98,5 +98,5 @@ grab the wrong card, you file the transaction to the right side in the review
 inbox, and Tallybook makes the draw or contribution for you.
 
 The household side is free, and the business side is a
-[one-time $19.99](/pricing/). Either way, the groceries end up where they
+[$49 a year](/pricing/). Either way, the groceries end up where they
 belong.
