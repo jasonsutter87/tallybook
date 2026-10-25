@@ -43,6 +43,10 @@ taxCheckout = 'https://tallybook.lemonsqueezy.com/buy/business-tax'
     url = '/pricing/'
     weight = 40
   [[menus.main]]
+    name = 'Help'
+    url = '/help/'
+    weight = 45
+  [[menus.main]]
     name = 'Blog'
     url = '/blog/'
     weight = 50

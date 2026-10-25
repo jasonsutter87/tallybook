@@ -2,6 +2,7 @@
 title: "Connecting your bank"
 description: "Connect your bank to Tallybook with bank sync, or import CSV, OFX and QFX files for free. How each works, what it costs, and what stays private."
 type: "help"
+group: "Getting started"
 weight: 10
 priority: 0.6
 cta: true

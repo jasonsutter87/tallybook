@@ -2,6 +2,7 @@
 title: "Tax prep in Tallybook"
 description: "What Tallybook's tax center does for sole proprietors and single-member LLCs: Schedule C, quarterly estimates, 1099s and an accountant package, and what it doesn't do."
 type: "help"
+group: "Business"
 weight: 20
 priority: 0.6
 cta: true
