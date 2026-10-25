@@ -8,8 +8,9 @@ priority: 0.1
 cta: false
 ---
 
-These terms cover the Tallybook app, licenses bought for it, and this website.
-By downloading Tallybook or buying a license, you agree to them.
+Tallybook is made by Jason Sutter ("we" and "us" in these terms). These terms
+cover the Tallybook app, licenses bought for it, and this website. By
+downloading Tallybook or buying a license, you agree to them.
 
 ## The software
 
@@ -46,20 +47,28 @@ read and export them.
 
 - A license is for you, or your household or one-person business, to use on
   your own computers.
-- Plans include app updates while they are active.
+- App updates are free for everyone, on any plan or none.
 - You can move a license to another computer by removing it from the old one
   in **Settings → License**.
 - Purchases, renewals, taxes and refunds are handled by Lemon Squeezy, which
   acts as the merchant of record and our reseller. Their terms apply to the
-  payment itself, and refund requests are handled under their policies.
-  Reply to your purchase receipt if you need help.
+  payment itself. Reply to your purchase receipt if you need help.
+
+**Refunds.** If Tallybook isn't right for you, ask within 30 days of a purchase
+or a renewal and we'll refund that payment in full, no questions asked. Reply to
+your receipt to ask. The refund goes back to your original payment method
+through Lemon Squeezy, and the plan that payment bought ends when it's
+refunded. Your books stay yours either way.
 
 ## Bank sync and Tallybook Connect
 
-Bank sync runs through Tallybook Connect, a service run by Tallybook, using
-Plaid to reach your bank. It is available while you have an active Personal,
-Business or Business + Tax plan. When your plan ends, bank sync stops and
-Tallybook Connect disconnects your banks. Bank connections can also stop working
+Bank sync runs through Tallybook Connect, a service we run, using Plaid to
+reach your bank. We set up the Plaid side for you: you sign in to your bank on
+Plaid's own page, and you don't need a Plaid account or keys. Bank sync is
+available while you have an active Personal, Business or Business + Tax plan.
+When your plan ends, bank sync stops, and about 30 days later Tallybook Connect
+disconnects your banks. Renew within that time and they pick up where they left
+off. Bank connections can also stop working
 for reasons outside our control, such as a bank changing how it works. Plaid's
 terms and privacy policy apply to its part of the service. See our
 [privacy policy](/privacy-policy/) for what Connect processes and stores.
