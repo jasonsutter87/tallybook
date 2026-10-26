@@ -2,8 +2,8 @@
 <section class="page-hero" aria-labelledby="page-title">
   <div class="container">
     <p class="eyebrow">Pricing</p>
-    <h1 id="page-title">No subscriptions. Ever.</h1>
-    <p class="page-lede">Your household budget is free for good. Business is a one-time purchase you own. Tax prep is bought per tax season, because the tax rules change every year. No account, nothing renews by itself.</p>
+    <h1 id="page-title">Yearly plans. Your books always keep working.</h1>
+    <p class="page-lede">The household budget is free for good. Paid plans are yearly and each one includes the ones below it. If you stop paying, your books and everything you've unlocked keep working. Only bank sync and phone sync stop. No account, no lock-in.</p>
   </div>
 </section>
 
@@ -22,23 +22,25 @@
     <div class="compare-wrap">
       <table class="compare">
         <thead>
-          <tr><th scope="col"><span class="sr-only">Feature</span></th><th scope="col">Household</th><th scope="col">Business</th><th scope="col">Business + Tax</th></tr>
+          <tr><th scope="col"><span class="sr-only">Feature</span></th><th scope="col">Free</th><th scope="col">Personal</th><th scope="col">Business</th><th scope="col">Business + Tax</th></tr>
         </thead>
         <tbody>
           {{ $yes := partial "icon.html" (dict "name" "check" "size" 18 "class" "yes") }}
           {{ $no := `<span class="no" aria-label="Not included">—</span>` | safeHTML }}
           {{ range slice
-            (slice "Monthly budget, bills and goals" true true true)
-            (slice "Bank import and bank feeds" true true true)
-            (slice "Rules, reports and search" true true true)
-            (slice "Encryption and encrypted cloud copies" true true true)
-            (slice "Invoices and bills to pay" false true true)
-            (slice "Profit & loss and balance sheet" false true true)
-            (slice "Business and household in one book" false true true)
-            (slice "Schedule C worksheet" false false true)
-            (slice "Quarterly estimated-tax plan" false false true)
-            (slice "1099 tracking" false false true)
-            (slice "Tax package for your accountant" false false true)
+            (slice "Monthly budget, bills and goals" true true true true)
+            (slice "File import (CSV, OFX, QFX)" true true true true)
+            (slice "Rules, reports and search" true true true true)
+            (slice "Encryption and encrypted cloud copies" true true true true)
+            (slice "Bank sync through Plaid" false true true true)
+            (slice "Phone app (coming)" false true true true)
+            (slice "Invoices and bills to pay" false false true true)
+            (slice "Profit & loss and balance sheet" false false true true)
+            (slice "Business and household in one book" false false true true)
+            (slice "Schedule C worksheet" false false false true)
+            (slice "Quarterly estimated-tax plan" false false false true)
+            (slice "1099 tracking" false false false true)
+            (slice "Tax package for your accountant" false false false true)
           }}
             <tr>
               <th scope="row">{{ index . 0 }}</th>
@@ -46,7 +48,7 @@
             </tr>
           {{ end }}
           <tr class="compare-price">
-            <th scope="row">Price</th><td>Free</td><td>{{ $p.business }} once</td><td>{{ $p.tax }} a tax season</td>
+            <th scope="row">Price</th><td>$0</td><td>{{ $p.personal }} a year</td><td>{{ $p.business }} a year</td><td>{{ $p.tax }} a year</td>
           </tr>
         </tbody>
       </table>

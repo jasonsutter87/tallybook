@@ -1,0 +1,5 @@
+{{- /* A screenshot of the app: {{< shot "review" "Alt text" "Optional caption" >}}. Images live in static/images/help/ and are taken at 2x. */ -}}
+<figure class="help-shot">
+  <img src="/images/help/{{ .Get 0 }}.jpg" alt="{{ .Get 1 }}" loading="lazy" decoding="async">
+  {{ with .Get 2 }}<figcaption>{{ . | markdownify }}</figcaption>{{ end }}
+</figure>

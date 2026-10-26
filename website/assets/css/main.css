@@ -1477,10 +1477,15 @@ a {
   gap: 1.25rem;
   grid-template-columns: minmax(0, 1fr);
 }
-@media (min-width: 992px) {
+@media (min-width: 768px) {
   .price-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     align-items: stretch;
+  }
+}
+@media (min-width: 1200px) {
+  .price-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 }
 
@@ -1489,7 +1494,7 @@ a {
   border: 1px solid #e6eaf1;
   border-radius: 20px;
   box-shadow: 0 1px 2px rgba(11, 27, 51, 0.04), 0 6px 20px rgba(11, 27, 51, 0.06);
-  padding: 1.75rem;
+  padding: 1.5rem;
   display: flex;
   flex-direction: column;
   position: relative;
@@ -1506,7 +1511,7 @@ a {
 .price-flag {
   position: absolute;
   top: -0.8rem;
-  left: 1.75rem;
+  left: 1.5rem;
   padding: 0.25rem 0.75rem;
   border-radius: 999px;
   font-size: 0.75rem;
@@ -1824,4 +1829,83 @@ a {
   padding: 0;
   color: #e6edf6;
   background: none;
+}
+
+.help-group {
+  margin: 2.5rem 0 1rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #66738a;
+}
+.help-group:first-child {
+  margin-top: 0;
+}
+
+.link-card h3 {
+  font-size: 1.15rem;
+}
+
+.help-shot {
+  margin: 1.75rem 0;
+}
+.help-shot img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid #e6eaf1;
+  border-radius: 14px;
+  box-shadow: 0 1px 2px rgba(11, 27, 51, 0.05);
+}
+.help-shot figcaption {
+  margin-top: 0.6rem;
+  font-size: 0.9rem;
+  color: #66738a;
+  text-align: center;
+}
+
+.prose kbd {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 0.85em;
+  padding: 0.1em 0.4em;
+  border: 1px solid #d5dbe6;
+  border-bottom-width: 2px;
+  border-radius: 5px;
+  background: #ffffff;
+  color: #0b1b33;
+}
+
+.help-pager {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 3rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid #e6eaf1;
+}
+.help-pager a {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  max-width: 48%;
+  padding: 0.85rem 1.1rem;
+  border: 1px solid #e6eaf1;
+  border-radius: 12px;
+  color: #0b1b33;
+  font-weight: 700;
+  text-decoration: none;
+}
+.help-pager a:hover {
+  border-color: #d5dbe6;
+}
+.help-pager span {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: #66738a;
+}
+
+.help-pager-next {
+  margin-left: auto;
+  text-align: right;
 }

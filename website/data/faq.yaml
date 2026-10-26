@@ -2,25 +2,57 @@
 - q: Is the household budget really free?
   home: true
   a: >-
-    Yes, for good. Budgets, bills, goals, bank import, reports and encryption
-    cost nothing and never expire. You only pay if you want to keep a business,
-    or have Tallybook prepare your business taxes.
+    Yes, for good. Budgets, bills, goals, reports, encryption and file import
+    (CSV, OFX, QFX) from any bank cost nothing and never expire. You pay only if
+    you want bank sync, a business side, or tax prep.
 
 - q: Is this a subscription?
   home: true
   a: >-
-    No, nothing renews by itself. Business is a one-time purchase that's yours for
-    good, updates included. Tax prep is bought per tax season, because the IRS
-    changes its numbers every year: a Business + Tax purchase covers the tax year
-    you buy it in and the one before (so buying in February to file last year
-    works), and returning customers get the next season for $29.99.
+    The paid plans are, yes. Personal ($20), Business ($49) and Business + Tax
+    ($75) are yearly subscriptions that renew until you cancel, and each includes
+    the ones below it. The free household budget never expires. Here is what
+    happens if you stop paying: everything the plan unlocked keeps working,
+    except bank sync and phone sync. The business side stays. Tax prep stays open
+    for the tax years you already paid for. Your books are never locked, and you
+    can always read and export them.
+
+- q: What does bank sync cost?
+  home: true
+  a: >-
+    It comes with Personal, $20 a year, and every plan above it. That covers most
+    US banks and cards, through Plaid. We set it up, so you don't need your own
+    keys or an account anywhere else. You just sign in to your bank. Without a
+    paid plan you can still import CSV, OFX and QFX files for free.
+
+- q: Does Tallybook see my bank password?
+  home: true
+  a: >-
+    No. You type it into Plaid's own sign-in page, and it goes nowhere else.
+    Tallybook, and the small service we run for bank sync, never see it.
+
+- q: Do my books go to your server?
+  home: true
+  a: >-
+    No. Your books stay in a file on your computer. Bank sync runs through
+    Tallybook Connect, a small service we run. It passes your transactions
+    straight to your computer and doesn't store them. It keeps, encrypted, only
+    the bank access token and your license key, so it can disconnect your banks
+    when a plan ends. <a href="/help/bank-connections/">How bank sync works</a>.
+
+- q: Is there a phone app?
+  a: >-
+    It's planned, not built yet. It's coming to iPhone and Android and will be
+    included in the paid plans when it arrives. We won't promise a date until
+    there's one worth promising.
 
 - q: Do I need an account?
   home: true
   a: >-
-    No. There's nothing to sign up for. Your books live in a single file on your
-    computer. When you buy a license you get a key by email; paste it into
-    Settings → License and Tallybook checks it once. After that it works offline.
+    No. There's nothing to sign up for, no email and no password. Your books live
+    in a single file on your computer. When you buy a plan you get a license key
+    by email. Paste it into Settings → License to unlock your plan. A key isn't
+    an account.
 
 - q: Where is my data stored?
   home: true
@@ -32,10 +64,10 @@
 
 - q: How do I bring in my transactions?
   a: >-
-    Import a CSV or OFX/QFX statement from your bank's website (always free), or
-    connect your bank through SimpleFIN (about $15 a year, paid to SimpleFIN).
-    Cash and anything else the bank won't see can
-    be logged by hand in a few taps.
+    Import a CSV or OFX/QFX file from your bank's website (always free), or
+    connect your bank with Personal or above and let transactions arrive on their
+    own. Cash and anything else the bank won't see can be logged by hand in a few
+    taps.
 
 - q: Does it file my taxes or run payroll?
   a: >-
@@ -52,12 +84,20 @@
 - q: I already use Tallybook for my business. Do I have to pay?
   a: >-
     Books that already keep a business keep working, as they always have. Tax
-    prep, and adding a business to a book that doesn't have one, need a license.
+    prep, bank sync, and adding a business to a book that doesn't have one, need a
+    paid plan.
 
 - q: Who handles payments?
   a: >-
     Lemon Squeezy, our reseller, takes payment and handles sales tax and VAT.
-    Tallybook never sees your card details.
+    Tallybook never sees your card details. To cancel or update a plan, use the
+    <a href="https://app.lemonsqueezy.com/my-orders">Lemon Squeezy customer portal</a>.
+
+- q: Can I get a refund?
+  a: >-
+    Yes. Ask within 30 days of a purchase or a renewal and we'll refund that
+    payment in full, no questions asked. Just reply to your receipt email.
+    <a href="/terms-of-use/">The terms</a> have the details.
 
 - q: Mac, Windows or Linux?
   a: >-
@@ -77,5 +117,5 @@
     Yes. It's public on <a href="https://github.com/jasonsutter87/tallybook">GitHub</a>
     under the Functional Source License: read it, build it and use it for yourself,
     just don't sell it or build a competing product with it. Each release becomes
-    Apache-2.0 two years after it ships. Buying a license gets you the signed,
+    Apache-2.0 two years after it ships. Paying for a plan gets you the signed,
     auto-updating app and supports the work.

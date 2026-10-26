@@ -9,13 +9,16 @@
 
 .compare-wrap {
   @include card(0);
+  // Contain the screen-reader-only text inside the scrolling box, or it
+  // widens the whole page on phones.
+  position: relative;
   overflow-x: auto;
   box-shadow: $shadow-sm;
 }
 
 .compare {
   width: 100%;
-  min-width: 560px;
+  min-width: 640px;
   border-collapse: collapse;
   font-size: 0.95rem;
 

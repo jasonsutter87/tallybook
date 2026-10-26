@@ -1,7 +1,13 @@
 {{ define "main" }}
+{{ $here := .RelPermalink }}
+{{ $groups := slice "Getting started" "Business" "Household" "Setup & your data" }}
+{{ $help := where site.RegularPages "Type" "help" }}
+{{ $all := slice }}
+{{ range $groups }}{{ $all = $all | append (where $help "Params.group" .).ByWeight }}{{ end }}
+{{ $i := -1 }}{{ range $n, $p := $all }}{{ if eq $p.RelPermalink $here }}{{ $i = $n }}{{ end }}{{ end }}
 <section class="page-hero" aria-labelledby="page-title">
   <div class="container">
-    <p class="eyebrow"><a href="/help/" class="eyebrow-link">Help</a></p>
+    <p class="eyebrow"><a href="/help/" class="eyebrow-link">Help</a>{{ with .Params.group }} · {{ . }}{{ end }}</p>
     <h1 id="page-title">{{ .Title }}</h1>
     {{ with .Description }}<p class="page-lede">{{ . }}</p>{{ end }}
   </div>
@@ -10,5 +16,11 @@
   <div class="container narrow prose">
     {{ .Content }}
   </div>
+  {{ if ge $i 0 }}
+  <nav class="container narrow help-pager" aria-label="Next and previous guides">
+    {{ if gt $i 0 }}{{ with index $all (sub $i 1) }}<a class="help-pager-prev" href="{{ .RelPermalink }}"><span>Previous</span>{{ .Title }}</a>{{ end }}{{ end }}
+    {{ if lt (add $i 1) (len $all) }}{{ with index $all (add $i 1) }}<a class="help-pager-next" href="{{ .RelPermalink }}"><span>Next</span>{{ .Title }}</a>{{ end }}{{ end }}
+  </nav>
+  {{ end }}
 </section>
 {{ end }}
