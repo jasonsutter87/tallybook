@@ -4,6 +4,7 @@ description: "Record cash, checks and anything your bank feed won't see, and add
 type: "help"
 group: "Run the business"
 weight: 40
+aliases: ["/help/accounts/"]
 ---
 
 Most money comes in through [bank sync or an imported
