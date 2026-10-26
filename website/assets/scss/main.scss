@@ -885,6 +885,223 @@ a {
   color: $brand-strong;
 }
 
+// --------------------------------------------------------------------------
+// Help: topic cards in groups, and a page with a topics sidebar
+// --------------------------------------------------------------------------
+
+.help-index {
+  padding-bottom: 2rem;
+}
+
+.help-intro {
+  max-width: 760px;
+  margin-bottom: 2.5rem;
+}
+
+.help-group {
+  & + & {
+    margin-top: 3rem;
+  }
+
+  h2 {
+    font-size: 1.5rem;
+    margin-bottom: 1.1rem;
+  }
+}
+
+.help-cards {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: 1fr;
+
+  @include md {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  @include lg {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.help-card {
+  @include card(1.1rem 1.25rem);
+  display: block;
+  color: $ink;
+  text-decoration: none;
+  transition: box-shadow $transition-fast, border-color $transition-fast;
+
+  &:hover {
+    box-shadow: $shadow;
+    border-color: $brand;
+  }
+
+  h3 {
+    font-size: 1.1rem;
+  }
+
+  p {
+    margin-top: 0.35rem;
+    font-size: 0.95rem;
+    line-height: 1.45;
+    color: $ink-2;
+  }
+}
+
+.help-layout {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.5rem;
+  padding-top: 2rem;
+  padding-bottom: 5rem;
+
+  @include lg {
+    grid-template-columns: 220px minmax(0, 1fr);
+    gap: 3.5rem;
+    padding-top: 3rem;
+  }
+}
+
+.help-nav {
+  order: 2;
+  font-size: 0.93rem;
+  border-top: 1px solid $line;
+  padding-top: 1rem;
+
+  @include lg {
+    order: 0;
+    position: sticky;
+    top: 5rem;
+    align-self: start;
+    max-height: calc(100vh - 6rem);
+    overflow-y: auto;
+    border-top: 0;
+    padding-top: 0;
+  }
+
+  h2 {
+    margin: 1.4rem 0 0.4rem;
+    font-size: 0.75rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: $ink-3;
+  }
+
+  ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  li a {
+    display: block;
+    padding: 0.2rem 0;
+    color: $ink-2;
+    text-decoration: none;
+
+    &:hover {
+      color: $ink;
+    }
+
+    &[aria-current="page"] {
+      color: $ink;
+      font-weight: 700;
+      padding-left: 0.6rem;
+      box-shadow: inset 2px 0 0 $brand;
+    }
+  }
+}
+
+.help-nav-home {
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.help-article {
+  min-width: 0;
+  max-width: 46rem;
+}
+
+.help-head {
+  margin-bottom: 1.5rem;
+
+  .eyebrow {
+    color: $brand-strong;
+  }
+
+  h1 {
+    font-size: 2.2rem;
+
+    @include md {
+      font-size: 2.5rem;
+    }
+  }
+}
+
+.help-lede {
+  margin-top: 0.75rem;
+  font-size: 1.12rem;
+  color: $ink-2;
+}
+
+.help-shot {
+  margin: 1.5rem 0 2rem;
+
+  img {
+    width: 100%;
+    height: auto;
+    border: 1px solid $line;
+    border-radius: 10px;
+    box-shadow: $shadow;
+  }
+
+  figcaption {
+    margin-top: 0.6rem;
+    font-size: 0.9rem;
+    color: $ink-3;
+  }
+}
+
+.help-tip {
+  margin: 1.25rem 0;
+  padding: 0.9rem 1.1rem;
+  border-left: 3px solid $brand;
+  border-radius: $border-radius-sm;
+  background: $brand-soft;
+  color: $ink;
+
+  p {
+    margin-top: 0;
+  }
+}
+
+.help-pager {
+  display: flex;
+  gap: 1rem;
+  margin-top: 3rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid $line;
+
+  a {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    font-weight: 700;
+    text-decoration: none;
+  }
+
+  span {
+    font-size: 0.8rem;
+    font-weight: 400;
+    color: $ink-3;
+  }
+}
+
+.help-pager-next {
+  margin-left: auto;
+  text-align: right;
+}
+
 // Markdown tables in help pages and posts
 .prose table {
   width: 100%;
