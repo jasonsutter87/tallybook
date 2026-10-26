@@ -1,0 +1,5 @@
+{{- /* A screenshot of the app, exported by auto-documentor: {{< shot "review" "Alt text" "Optional caption" >}} */ -}}
+<figure class="help-shot">
+  <img src="{{ printf "images/help/%s.jpg" (.Get 0) | relURL }}" alt="{{ .Get 1 }}" loading="lazy" decoding="async">
+  {{ with .Get 2 }}<figcaption>{{ . | markdownify }}</figcaption>{{ end }}
+</figure>
