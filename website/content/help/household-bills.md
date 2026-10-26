@@ -4,6 +4,7 @@ description: "Track the household's regular bills and see what's due today and t
 type: "help"
 group: "Run the household"
 weight: 20
+aliases: ["/help/due-dates/"]
 ---
 
 **Bills & due dates** keeps the rent, the phone, insurance and the rest in one
