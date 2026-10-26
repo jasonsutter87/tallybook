@@ -14,6 +14,10 @@ author = 'Jason Sutter'
 # The release the download page points at. Bump on every release.
 version = '0.2.0'
 
+# Help topics, in order. Each page in content/help/ names one with `group:`.
+# Screenshots come from auto-documentor (projects/tallybook.json, `npm run export`).
+helpGroups = ['Getting started', 'Bring in transactions', 'Run the business', 'Run the household', 'Reports and taxes', 'Settings and more']
+
 # tallybook.app belongs to someone else; switch baseURL when Tallybook has its own domain.
 
 # Keep in step with the app (crates/tally-api/src/license.rs, app/src/flows/License.tsx).
