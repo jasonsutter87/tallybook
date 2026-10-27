@@ -1,34 +1,36 @@
 ---
-title: "Customers and vendors"
-description: "Keep the people you sell to and buy from in one list, with what each owes or is owed."
+title: "Customers & vendors"
+description: "Keep the people you bill and the people you pay in one list, and see where each one stands."
 type: "help"
-group: "Business"
-weight: 23
-priority: 0.6
-cta: true
-css: []
-js: []
+group: "Run the business"
+weight: 30
 ---
 
-**Customers & vendors** lists everyone you bill and everyone you pay. Each
-contact shows their email and where you stand: *Owes you*, *You owe*, or
-*All settled*. Filter by **Customers** or **Vendors**.
+**Customers & vendors** lists everyone you sell to or buy from, with what they
+owe you or what you owe them. Filter by **All**, **Customers** or **Vendors**.
 
-{{< shot "contacts" "The contacts list with customers and vendors and their balances" >}}
+{{< shot "contacts" "Customers & vendors: each contact with their email and balance, like Owes you or All settled" >}}
 
 ## Add a contact
 
-Click **Add contact**.
-
-{{< shot "add-contact" "The Add a contact window" >}}
-
-1. Choose what they are: a **Customer** (pays you), a **Vendor** (you pay
+1. Click **Add contact**.
+2. Choose what they are: a **Customer** (pays you), a **Vendor** (you pay
    them), or **Both**.
-2. Fill in the **Name**, and optionally **Company**, **Email**, **Phone** and
+3. Enter a **Name**, and optionally a **Company**, **Email**, **Phone** and
    **Address**.
-3. **Notes** are private: only you see them.
-4. Click **Add contact**.
+4. **Notes** are only for you.
+5. Click **Add contact**.
 
-You can also add a customer while writing an invoice, or a vendor while
-entering a bill. For contractors who may need a 1099, see
-[Tax prep in Tallybook](/help/taxes/).
+{{< shot "add-contact" "Add a contact: customer, vendor or both, name, company, email, phone, address and notes" >}}
+
+You can also add a customer or vendor on the spot while writing an
+[invoice](/help/invoices/) or entering a [bill](/help/bills/).
+
+## A contact's page
+
+Click a contact to see their details, and their invoices with each one's
+status. From there:
+
+- **New invoice** starts an invoice for them.
+- **Edit** changes their details.
+- **Archive** puts away someone you no longer work with.

@@ -2,7 +2,7 @@
 title: "Connecting your bank"
 description: "Connect your bank to Tallybook with bank sync, or import CSV, OFX and QFX files for free. How each works, what it costs, and what stays private."
 type: "help"
-group: "Getting started"
+group: "Bring in transactions"
 weight: 10
 priority: 0.6
 cta: true
@@ -27,6 +27,8 @@ you don't need a developer account or any keys of your own.
 1. Paste your license key into **Settings → License**.
 2. Go to **Banking → Connect a bank**.
 3. Pick your bank and sign in on Plaid's page. That's it.
+
+{{< shot "connect-bank" "The Connect a bank window, which sends you to your bank's sign-in page on Plaid" >}}
 
 ### What stays private
 
@@ -63,6 +65,8 @@ above.
 Download a statement from your bank's website, then **Review → Import file**.
 This is free on every plan.
 
+{{< shot "import-file" "Import a statement: drop a CSV, OFX or QFX file and pick the account it's for" >}}
+
 * **OFX/QFX** ("Quicken" or "Money" format) is the best choice when offered:
   it carries unique transaction ids, so re-importing is always safe.
 * **CSV** works with any bank. Tallybook guesses which columns hold the date,
@@ -71,6 +75,9 @@ This is free on every plan.
   numbers, switch on **Flip signs**.
 * Re-importing an overlapping date range is safe. Duplicates are recognized
   and skipped.
+
+Synced or imported, new transactions wait in [For review](/help/review/) until
+you categorize them.
 
 ## Start dates and opening balances
 

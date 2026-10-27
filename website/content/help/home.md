@@ -1,55 +1,35 @@
 ---
-title: "Home: your money at a glance"
-description: "What the Home screen shows, and the quickest way to log cash, send an invoice or connect a bank."
+title: "Home at a glance"
+description: "Cash on hand, what needs you today, money in and out this month, and where it went."
 type: "help"
 group: "Getting started"
-weight: 1
-priority: 0.6
-cta: true
-css: []
-js: []
+weight: 20
 ---
 
-Home is the first thing you see when a book opens. It answers "how am I
-doing?" without a single click.
+**Home** is the first thing you see when a book opens. It answers "how am I
+doing, and what needs me?" without opening a report.
 
-{{< shot "home" "Tallybook's Home screen: cash on hand, account balances, things that need you, this month's money in and out, and a cash flow chart" >}}
+{{< shot "home" "Home: cash on hand, what needs attention, money in and out, cash flow and where money went" >}}
 
 ## What's on it
 
-* **Cash on hand**: everything in your bank accounts, plus **After cards**
-  (cash minus what's on your cards) and your **Card balances**. Each account
-  has its own tile underneath.
-* **Things that need you**: transactions waiting in Review, invoices that are
-  overdue, and bills due this week. Click one to go straight there.
-* **Money in** and **Money out** this month, compared with last month, plus
-  what customers owe you (**Owed to you**) and what you owe vendors (**You owe**).
-* **Cash flow**: money in and out for each of the last six months.
-* **Where money went**: this month's biggest spending categories, and
-  **Net this month**.
+- **Cash on hand**: what's in your bank accounts, and what's left **after
+  cards**. Each account is listed under it with its balance.
+- **What needs you**: transactions waiting to be categorized, invoices past
+  due, and bills due this week. Click one to go straight there.
+- **Money in** and **money out** this month, compared with last month.
+- **Owed to you** (unpaid invoices) and **You owe** (unpaid bills).
+- **Cash flow**: money in and out for the last six months.
+- **Where money went** this month, by category, and the **net** for the month.
 
-At the bottom are shortcuts to **Send an invoice**, **Enter a bill**,
-**Import a statement** and **See reports**.
+## Shortcuts
 
-## Log cash
+The buttons at the top do the most common jobs:
 
-Use **Log cash** (top right) for money the bank feed won't see: the till,
-cash on hand, checks.
+- **Log cash** records money the bank won't see: the till, cash on hand,
+  checks. See [Log cash and journal entries](/help/log-cash/).
+- **New invoice** starts an invoice. See [Invoices](/help/invoices/).
+- **Connect a bank** opens [Bank connections](/help/bank-connections/).
 
-{{< shot "log-cash" "The Log cash window with Sale or money in, Expense and Deposit or move" >}}
-
-1. Pick **Sale or money in**, **Expense**, or **Deposit or move**.
-2. Fill in **How much?** and **What was it?**, the account it was paid from
-   and **When**.
-3. Optionally choose who it was **Paid to** and add a **Note**. Cash paid to
-   a contractor still counts toward their 1099.
-4. Click **Log it**.
-
-## The sidebar
-
-The left side lists every part of Tallybook. **Household** holds This month,
-Bills & due dates and Goals. **Business** holds Invoices, Vendor bills and
-Customers & vendors. **Insights & setup** holds Reports, Taxes, Bank
-connections, Rules and Settings. A number next to **Review** tells you how
-many transactions are waiting. **Switch book** at the bottom opens another
-book.
+At the bottom are links to **Send an invoice**, **Enter a bill**, **Import a
+statement** and **See reports**.

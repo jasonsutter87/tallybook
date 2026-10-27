@@ -1,55 +1,63 @@
 ---
-title: "Invoices and getting paid"
-description: "Create and issue invoices, track who's paid, and record a customer's payment."
+title: "Invoices"
+description: "Bill a customer, send the invoice, and record the payment when it comes in."
 type: "help"
-group: "Business"
-weight: 21
-priority: 0.6
-cta: true
-css: []
-js: []
+group: "Run the business"
+weight: 10
 ---
 
-**Invoices** shows what customers owe you and who's paid.
+**Invoices** shows what customers owe you and who's paid. The cards at the top
+total what's **Unpaid**, **Overdue**, **Paid in last 30 days**, and the
+**Drafts** you haven't sent. Filter the list with **All**, **Unpaid**,
+**Overdue**, **Paid** and **Drafts**.
 
-{{< shot "invoices" "The Invoices screen with Unpaid, Overdue, Paid and Drafts totals and a list of invoices" >}}
-
-The tiles across the top show what's **Unpaid**, what's **Overdue**, what
-was **Paid in last 30 days**, and how many **Drafts** haven't been sent. Tabs
-filter the list by the same groups, and each invoice shows its customer,
-dates, total, remaining balance and status (*Draft*, *Open*, *Overdue* or
-*Paid*). Overdue invoices say how many days late they are.
+{{< shot "invoices" "Invoices: unpaid, overdue, paid and draft totals, and the list of invoices with their status" >}}
 
 ## Create an invoice
 
-Click **New invoice**. It's also on the Home screen.
+1. Click **New invoice**.
+2. Under **Bill to**, choose the customer, or **New customer** to add one.
+3. Set the **Invoice date** and **Terms** (*Due on receipt*, *Net 15*, *Net
+   30*, *Net 60* or *Custom*). The **Due date** follows from the terms.
+4. Add a line for each thing you're billing: description, quantity, rate, the
+   income category, and whether it's taxable. **Add line** adds another.
+5. Add a **Message on invoice** if you like. It's shown at the bottom of the
+   invoice your customer sees.
+6. Click **Save & issue**, or **Save draft** to finish later. Drafts stay
+   private until you issue them.
 
-{{< shot "new-invoice" "A new invoice with Bill to, dates, terms, line items and totals" >}}
+{{< shot "new-invoice" "A new invoice: customer, dates and terms, line items, message and totals" >}}
 
-1. Choose who it's **Bill to**, or add a **New customer**.
-2. Set the **Invoice date** and **Terms** (*Due on receipt*, *Net 15*,
-   *Net 30*, *Net 60* or *Custom*). The **Due date** follows the terms.
-3. Add lines: description, quantity, rate, the income category, and whether
-   it's taxable. **Add line** adds another.
-4. Optionally set a tax rate, and a **Message on invoice** shown at the
-   bottom of what your customer sees.
-5. **Save draft** keeps it to yourself. Drafts stay private until you issue
-   them with **Save & issue**.
+Payment terms, the next invoice number, a default sales tax rate and the
+footer message are set in [Settings → Invoices](/help/settings/).
 
-Invoice numbers count up on their own. Defaults for terms, sales tax and the
-footer message are in [Settings](/help/settings/).
+## Send it
+
+Open the invoice and, under **Send it**:
+
+- **Email to…** starts an email to the customer.
+- **Copy as text** copies the invoice to paste anywhere.
+- **Print / Save PDF** gives you a PDF to attach.
 
 ## Record a payment
 
-When a customer pays, click **Receive payment**.
+When a customer pays, click **Receive payment** on the Invoices page, or
+**Record payment** on the invoice itself.
 
-{{< shot "receive-payment" "The Receive payment window" >}}
+1. Choose the **Customer** and enter the **Amount received** and **Date
+   received**.
+2. **Deposit to**: usually your business checking account.
+3. Pick the **Payment method** (*ACH*, *Check*, *Card*, *Cash* or *Other*),
+   and add a **Reference** like a check number if you have one.
+4. Click **Record payment**. Their invoices are marked paid.
 
-Pick the **Customer** and enter the **Amount received**, **Date received**
-and the account to **Deposit to** (usually your business checking). Choose
-the **Payment method** (*ACH*, *Check*, *Card*, *Cash* or *Other*) and add a
-**Reference** such as a check number. Click **Record payment**, and their
-invoices are marked paid.
+{{< shot "receive-payment" "Receive payment: customer, amount, date, deposit account, method and reference" >}}
 
-If the deposit later arrives through your bank feed, Review recognizes it as
-this payment and won't count it twice.
+When the deposit later shows up from your bank, [Review](/help/review/) offers
+to **match** it to this payment, so it isn't counted twice.
+
+## Void an invoice
+
+Open it and click **Void** to cancel an invoice you've issued.
+
+See who's late at a glance in [Reports → Who owes you](/help/reports/).

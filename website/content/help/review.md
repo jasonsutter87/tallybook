@@ -1,47 +1,69 @@
 ---
-title: "Review: categorize your transactions"
-description: "New bank transactions land in Review with a suggestion. Accept them one at a time or all at once."
+title: "Review your transactions"
+description: "Categorize new bank transactions, accept suggestions in one click, match payments, split and exclude."
 type: "help"
-group: "Getting started"
-weight: 2
-priority: 0.6
-cta: true
-css: []
-js: []
+group: "Bring in transactions"
+weight: 20
 ---
 
-Every transaction that comes in from your bank, or from a statement you
-import, waits in **Review** until you say where it goes. The number next to
-Review in the sidebar is how many are waiting.
+New transactions from bank sync or an imported statement don't go straight
+into your books. They wait in **Review** until you say what each one was. The
+count next to **Review** in the sidebar is how many are waiting.
 
-{{< shot "review" "The Review screen listing transactions, each with a suggested category or a match" >}}
+{{< shot "review" "For review: each transaction with its date, account, a suggestion or Needs a category, and the amount" >}}
 
-## Read a suggestion
+The top of the page shows how many are waiting and the total in and out.
+Filter by account with the buttons on the right, and switch to **Reviewed** to
+see what you've already done.
 
-Each transaction shows its date, description, account and amount, plus what
-Tallybook thinks it is:
+## What the labels mean
 
-| You see | It means |
+Each transaction shows Tallybook's best guess:
+
+| Label | Means |
 |---|---|
-| **Match:** Payment from Bluebird Coffee | This deposit is a payment you already recorded, so it won't be counted twice. |
-| **Rule →** Advertising & Marketing | One of your [rules](/help/rules/) matched it. |
-| **Last time →** Office Supplies | You put the same thing there before. |
-| **Needs a category** | Tallybook has no guess yet. Pick one. |
+| **Needs a category** | No guess yet. You pick one. |
+| **Last time → …** | You categorized something like this before; it suggests the same. |
+| **Rule → …** | One of your [rules](/help/rules/) matched it. |
+| **Match: …** | It looks like something already in your books, like an invoice payment you recorded. |
 
-## Work through the list
+## Categorize a transaction
 
-* Anything marked **Needs a category** waits for you to pick one.
-* **Accept all suggested** takes every suggestion at once. The button says
-  how many there are.
-* The tabs switch between **For review**, **Reviewed** and **All**. The
-  account filters show one bank or card at a time.
+1. Click the transaction to open it.
+2. Under **Where did this go?** (or **Where did this come from?** for money
+   in), choose a category. Type to narrow the list. Categories are grouped by
+   side, so you can file a card charge as business or household.
+3. Add a **Memo** if you like.
+4. Click **Accept**, or press **Enter**.
 
-The header sums it up, for example *14 transactions waiting · $13,240.35 in ·
-$4,942.61 out*.
+{{< shot "categorize" "A transaction opened in Review, with Categorize, Split, the category list, Memo, Exclude and Accept" >}}
 
-## Import a statement
+Turn on **Remember for…** to have Tallybook remember this choice for that
+description. For more control, make a [rule](/help/rules/).
 
-No bank connection? Click **Import file**, drop in a CSV, OFX or QFX file
-from your bank's website, choose **Which account is this statement for?** and
-click **Import**. The transactions land here for review. See
-[Connecting your bank](/help/bank-connections/) for the details of each format.
+**Add payee** ties the transaction to a contact. Only payments tagged with a
+payee count toward [1099 totals](/help/taxes/).
+
+## Accept every suggestion at once
+
+**Accept all suggested** accepts the transactions Tallybook already has a
+suggestion for; the number on the button says how many. The ones marked
+**Needs a category** stay for you.
+
+## Match a payment you already recorded
+
+When a deposit looks like a payment you've already recorded, it's labeled
+**Match**. Open it and click **Match** to link the two, so the money isn't
+counted twice.
+
+{{< shot "match" "A deposit opened in Review, offering to match it with a payment from Bluebird Coffee" >}}
+
+## Split, or leave it out
+
+- **Split** divides one transaction across several categories, like a store
+  run that was half office supplies and half groceries. Add a line per
+  category with its amount and an optional memo. **Remaining** shows how much
+  is still unassigned, and **Fill remaining** assigns the rest. Then click
+  **Save split**.
+- **Exclude** leaves a transaction out of your books, for duplicates or
+  anything that doesn't belong.

@@ -1,48 +1,49 @@
 ---
 title: "Vendor bills"
-description: "Record bills from your vendors, see what's due, and pay them."
+description: "Enter the bills vendors send you, see what's due, and record paying them."
 type: "help"
-group: "Business"
-weight: 22
-priority: 0.6
-cta: true
-css: []
-js: []
+group: "Run the business"
+weight: 20
 ---
 
-**Vendor bills** tracks money you owe vendors, and when it's due.
+**Vendor bills** is money your business owes: a contractor's invoice, the
+rent, a supplier. Bills are recorded as money you owe until you pay them.
 
-{{< shot "bills" "The Vendor bills screen with To pay, Overdue, Due in 7 days and Paid this month" >}}
+The cards at the top show what's **To pay**, what's **Overdue**, what's **Due
+in 7 days**, and what you've **Paid this month**.
 
-The tiles show what's **To pay**, what's **Overdue**, what's **Due in 7
-days** and what you've **Paid this month**. The list below can be filtered
-to **Unpaid**, **Overdue**, **Paid** or **All**.
+{{< shot "bills" "Vendor bills: to pay, overdue, due soon and paid totals, and the list of bills" >}}
+
+(Household bills like the phone and power are tracked separately, in
+[Bills & due dates](/help/household-bills/).)
 
 ## Enter a bill
 
-Click **Enter a bill**.
+1. Click **Enter a bill**.
+2. Choose the **Vendor**, or **New vendor** to add one.
+3. Enter the **Bill number** (the vendor's invoice or reference number), the
+   **Bill date** and **Terms**. The **Due date** follows from the terms.
+4. Under **What's it for?**, add a line for each part with a category and
+   amount. Use an asset account for equipment.
+5. Add a **Memo** for yourself if you like.
+6. Click **Save bill**, or **Save & pay now** if you've already paid it.
 
-{{< shot "enter-bill" "The Enter a bill form" >}}
-
-1. Pick the **Vendor**, or add a **New vendor**.
-2. Add the **Bill number** (the vendor's invoice or reference number), the
-   **Bill date** and **Terms**. The **Due date** follows.
-3. Under **What's it for?**, add a line for each thing with a description,
-   category and amount. Use an asset account for equipment.
-4. Add a **Memo** if you like, just for yourself.
-5. **Save bill** records it as money you owe. **Save & pay now** records it
-   and pays it in one go.
+{{< shot "enter-bill" "Enter a bill: vendor, bill number, dates and terms, lines with category and amount" >}}
 
 ## Pay bills
 
-Click **Pay bills**.
+1. Click **Pay bills**.
+2. Choose the **Vendor**. Their unpaid bills are listed with what's left on
+   each and when it's due. Choose the ones you're paying; **Clear all**
+   starts over.
+3. Choose **Pay from**, the **Payment date** and the **Method**, and add a
+   reference if you like.
+4. Click **Pay**. The button shows the total.
 
-{{< shot "pay-bills" "The Pay bills window with an unpaid bill selected" >}}
+{{< shot "pay-bills" "Pay bills: the vendor's unpaid bills, the account to pay from, date, method and total" >}}
 
-Choose the **Vendor**. Their unpaid bills are listed with due dates, and you
-pick which ones you're paying. Set **Pay from**, the **Payment date** and the
-**Method**, plus an optional **Reference** and **Memo**. The button shows
-the total, for example **Pay $944.65**.
+You can also open a single bill and click **Pay bill**. Open a bill to
+**Print** or **Void** it.
 
-Bills for the home (rent, the phone, insurance) live in
-[Bills & due dates](/help/due-dates/) instead.
+See everything you owe by how late it is in
+[Reports → Who you owe](/help/reports/).

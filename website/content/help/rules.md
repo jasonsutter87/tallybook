@@ -1,42 +1,44 @@
 ---
-title: "Rules: categorize automatically"
-description: "Teach Tallybook where transactions go, so they arrive in Review already categorized, or skip Review entirely."
+title: "Rules"
+description: "Categorize bank transactions automatically: match the description, amount or account, and choose whether to review first."
 type: "help"
-group: "Getting started"
-weight: 3
-priority: 0.6
-cta: true
-css: []
-js: []
+group: "Bring in transactions"
+weight: 30
 ---
 
-Rules categorize bank transactions for you. Tallybook also learns from what
-you accept, so you only need rules for the things you want to pin down.
+A **rule** categorizes matching transactions for you. Tallybook also learns
+from what you accept in [Review](/help/review/), so you only need rules for
+things you want handled the same way every time.
 
-{{< shot "rules" "The Rules screen listing four rules with their categories and priorities" >}}
+{{< shot "rules" "Rules, each showing what it matches, the category, Auto-add or Suggest in review, and its priority" >}}
 
-Rules run top to bottom, and the first one that matches wins. Each rule shows
-what it matches, the category it picks, and whether it is **Auto-add** or
-**Suggest in review**.
+Rules run **top to bottom**, and the first one that matches wins.
 
 ## Make a rule
 
-Click **New rule**.
-
-{{< shot "new-rule" "The New rule window" >}}
-
-1. **When the description…** *contains*, *is exactly*, or *starts with* some
-   text. Matching isn't case-sensitive.
-2. **And the money is…** *Either way*, *Money in* or *Money out*.
-3. Optionally limit it to one account, or to an amount range with **Amount
-   at least** and **Amount at most**.
-4. **Then categorize as** the category you want. **Rename to** gives the
-   transaction a cleaner name in your books, like "Figma".
-5. Give it a **Rule name** and a **Priority** if you like. Lower numbers run
-   first.
-6. Leave **Add automatically without review** off and matching transactions
-   wait in Review with this category suggested, one click to accept. Turn it
-   on and they skip Review entirely.
+1. Go to **Rules → New rule**.
+2. **When the description…** *contains*, *is exactly* or *starts with* some
+   text. It's not case-sensitive.
+3. **And the money is…** *either way*, *money in* or *money out*.
+4. Optionally limit it to **one account**, or to an amount range with
+   **Amount at least** and **Amount at most**.
+5. **Then categorize as**: pick the category.
+6. Optionally **Rename to** a cleaner name for your books, like "Figma"
+   instead of "FIGMA.COM 8823", and give the rule a name for your reference.
 7. Click **Create rule**.
 
-Each rule has **Edit rule** and **Delete rule** buttons.
+{{< shot "new-rule" "New rule: match text, money in or out, account and amount, the category, rename, priority and Add automatically" >}}
+
+## Review first, or add automatically
+
+By default a matching transaction waits in Review with the category
+suggested, one click to accept (**Suggest in review**). Turn on **Add
+automatically without review** and matching transactions skip Review
+altogether (**Auto-add**).
+
+## Priority
+
+When two rules could match, the one with the **lower priority number** runs
+first.
+
+Edit or delete any rule from its row on the Rules page.
