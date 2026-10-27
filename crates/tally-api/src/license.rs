@@ -25,12 +25,12 @@ use std::path::Path;
 const API: &str = "https://api.lemonsqueezy.com/v1/licenses";
 
 /// The Lemon Squeezy store, from its dashboard. A key from any other store is refused.
-const STORE_ID: u64 = 0;
+const STORE_ID: u64 = 508747;
 /// Each plan's Lemon Squeezy id, matched against a key's product id and its
 /// variant id, so the plans can be separate products or variants of one.
 /// A key that matches none of them is refused.
-const PLANS: [(u64, Tier); 3] = [(0, Tier::Personal), (0, Tier::Business), (0, Tier::Tax)];
-pub const PERSONAL_CHECKOUT: &str = "https://tallybook.lemonsqueezy.com/buy/personal";
+const PLANS: [(u64, Tier); 3] = [(1478035, Tier::Personal), (0, Tier::Business), (0, Tier::Tax)];
+pub const PERSONAL_CHECKOUT: &str = "https://tallybook.lemonsqueezy.com/checkout/buy/b03763ac-fc25-4bea-aff2-2d1d6587d5cc";
 pub const BUSINESS_CHECKOUT: &str = "https://tallybook.lemonsqueezy.com/buy/business";
 pub const TAX_CHECKOUT: &str = "https://tallybook.lemonsqueezy.com/buy/business-tax";
 /// Lemon Squeezy's customer portal: renew, change plan, update a card.
