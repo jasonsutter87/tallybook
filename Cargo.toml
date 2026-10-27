@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/tally-core", "crates/tally-store", "crates/tally-feed", "crates/tally-api", "crates/tally-devserver", "crates/tally-mcp", "crates/tally-connect", "app/src-tauri"]
+members = ["crates/tally-core", "crates/tally-store", "crates/tally-feed", "crates/tally-api", "crates/tally-devserver", "crates/tally-mcp", "crates/tally-connect", "crates/tally-sync", "app/src-tauri"]
 
 [workspace.package]
 version = "0.2.0"
@@ -17,3 +17,12 @@ rusqlite = { version = "0.37", features = ["bundled-sqlcipher-vendored-openssl",
 # Money math must never silently wrap, even in release builds.
 [profile.release]
 overflow-checks = true
+
+# Sync encrypts every snapshot; unoptimized, the cipher makes tests of it
+# crawl. Optimizing these few crates costs nothing else.
+[profile.dev.package.chacha20]
+opt-level = 3
+[profile.dev.package.poly1305]
+opt-level = 3
+[profile.dev.package.chacha20poly1305]
+opt-level = 3

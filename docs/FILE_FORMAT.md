@@ -9,7 +9,7 @@ Everything here is derived from the schema files in
 `crates/tally-store/src/schema*.sql` and the code that writes them. Those
 files are the authority; where this document and they disagree, they win.
 
-Written for schema version 12 (Tallybook 0.2.x, 2026). Later versions only
+Written for schema version 13 (2026). Later versions only
 ever add to the schema, so everything below stays true for newer books.
 
 ## What the file is
@@ -33,7 +33,7 @@ business, a household, or both.
   that has tables but not Tallybook's (`accounts`, `journal_entries`,
   `settings`), and a book holding triggers or views its migrations didn't
   create.
-- **Schema version.** `PRAGMA user_version;` is the schema version, 1 to 12
+- **Schema version.** `PRAGMA user_version;` is the schema version, 1 to 13
   as of this writing. Each version is one file of SQL, applied in order:
   `schema.sql` is v1, `schema_v2.sql` is v2, and so on. Each file's header
   says what it adds. Tallybook refuses to open a book whose version is newer
@@ -95,7 +95,7 @@ DETACH DATABASE plain;
 ```
 
 (`sqlcipher_export` copies tables, not the header fields; on the plain copy
-run `PRAGMA user_version = 12; PRAGMA application_id = 1413565529;`, using
+run `PRAGMA user_version = 13; PRAGMA application_id = 1413565529;`, using
 the version the encrypted book reported, before Tallybook opens it.)
 
 ### Where the key is
@@ -163,6 +163,11 @@ is the point of it.
 - **Timestamps** (`created_at`, `imported_at` and similar) are
   `YYYY-MM-DD HH:MM:SS` in UTC, from SQLite's `datetime('now')`. They record
   when a row was written, not when the money moved.
+- **Row ids** (`INTEGER PRIMARY KEY id`) are numbered per device. The
+  original device uses 1, 2, 3...; a device that joins a book through sync
+  numbers its rows from `n × 2^40` (`n` is in `sync_state.device`), so two
+  devices never make the same id. Ids stay under 2^53. Only the number
+  matters, never the order.
 - **Booleans** are `INTEGER` 0 or 1.
 - **Rates** are integer **basis points** (`tax_rate_bp`, 825 = 8.25%) and
   **quantities** are integer **thousandths** (`quantity_milli`, 1500 = 1.5
@@ -186,7 +191,12 @@ every line negated (`source = 'void'`, `reverses_id` = the original), and
 sets the original's `voided_by_id` to it. Both stay in the books and cancel
 out, so **sum every line, voided or not**, and the totals are right.
 To list only live entries, skip rows where `voided_by_id` or `reverses_id`
-is set.
+is set. A void is set once and not changed, with one exception: when two
+devices voided the same entry, sync keeps the earlier void and cancels the
+other with a further reversal (`source = 'void'`, `reverses_id` = the
+duplicate void), so the lines still sum to a single void (see
+[SYNC.md](SYNC.md)); the trigger allows replacing a void only while sync is
+applying.
 
 **Two sides.** A book keeps a business side, a household side, or both
 (`settings` key `book.sides`). Every account belongs to one side
@@ -398,6 +408,59 @@ recurring bill), `sector` (an account), `store` (the rule made from a saved
 payee), `money`/`savings` (the account money moved through), or `month`
 (`local_id` 0). The full list is at the top of
 `crates/tally-store/src/ledger_import.rs`.
+
+### Sync
+
+These tables are only bookkeeping for keeping copies of a book on several
+devices in step (see [SYNC.md](SYNC.md)). They hold no accounting. A book
+that never syncs has them, empty but for `sync_state`, and can ignore
+them. They are local to the device: sync never sends them.
+
+**`sync_state`** [v13]: one row. `device` is this device's number in the
+book (0 for the original), `enabled` is 1 once sync is turned on (until
+then nothing is recorded), `hlc_wall` and `hlc_counter` are the hybrid
+logical clock (milliseconds and a counter), `applying` is 1 only while
+another device's changes are being applied, and `last_seq` is the last batch
+sequence applied.
+
+**`sync_outbox`** [v13]: changes made here and not yet sent: `seq`, the
+`tbl` and its key `pk` (a JSON array), `op` (`insert`, `update`, `delete`),
+the whole new `row` as JSON (null for a delete) and the clock reading
+`hlc` (`wall-counter-device`, hexadecimal, so text order is clock order).
+Triggers fill it in the same transaction as the change. A book upgraded to
+v13 starts with it empty.
+
+**`sync_rows`** [v13]: for each synced row, when it last changed (`hlc`),
+when it was first seen (`born`) and whether it was deleted. The newest
+change wins; `born` settles which of two rows that want the same unique
+value is the later.
+
+**`sync_ids`** [v13]: the next unused id per table in this device's range,
+so a deleted row's id is never handed out again.
+
+**`sync_renames`** [v13]: an account code or invoice number that was
+changed to `6100-2` because another device made `6100` first: the
+`intended` value it was made with and the `shown` one.
+
+**`sync_shadow`** [v13]: rows set aside, whole, because an earlier row has
+the one-per-thing value they want (a second budget for a month, an open
+reconciliation for an account that already has one, a bank transaction
+with an external id already here, a second link of an account to a bank).
+They come back if the earlier row goes away.
+
+**Which tables sync.** Every table of the book does, because the book is
+the same on every device, except this device's own bookkeeping above and
+the settings that belong to one machine:
+
+| Syncs | Why |
+|---|---|
+| `accounts`, `journal_entries`, `journal_lines`, `reconciliations` | The books. Entries and lines only ever merge by union; see SYNC.md. |
+| `contacts`, `invoices`, `invoice_lines`, `bills`, `bill_lines`, `payments`, `payment_applications`, `tax_payments`, `account_tax_lines` | Documents and the tax center are part of the books. |
+| `bank_transactions`, `bank_links`, `rules` | The inbox and its rules are the same wherever you review. |
+| `bank_connections` | The row syncs so other devices know the account is linked and see its status, but `secret_ref` names an entry in *one* device's keychain: on any other device that entry doesn't exist, so that device shows the connection as "on another device" and never runs bank sync for it. |
+| `people`, `budget_months`, `budgets`, `recurring_bills`, `recurring_bill_marks`, `goals` | The household side. |
+| `import_links` | So importing again from another device adds only what's new. |
+| `settings` | Except `device.*` and `pref.cloud.*` (where this machine backs up to), which stay put. |
 
 ## Reports by hand
 

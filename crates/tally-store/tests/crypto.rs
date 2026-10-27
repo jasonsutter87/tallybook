@@ -113,7 +113,7 @@ fn every_copy_of_a_book_says_what_it_is() {
 
     for (path, key) in [(&plain, None), (&backup, None), (&decrypted, None), (&enc, Some(&key))] {
         assert_eq!(header_value(path, key, "application_id"), i64::from(APPLICATION_ID), "{}", path.display());
-        assert_eq!(header_value(path, key, "user_version"), 12, "{}", path.display());
+        assert_eq!(header_value(path, key, "user_version"), 13, "{}", path.display());
     }
     // "TALY", so a hex dump of the header reads as the app's name.
     assert_eq!(APPLICATION_ID.to_be_bytes(), *b"TALY");

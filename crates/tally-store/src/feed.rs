@@ -9,7 +9,7 @@
 //! Posting or matching marks the bank line `cleared`, so it shows up
 //! pre-checked at reconciliation time. Every action can be undone.
 
-use crate::{Result, StoreError, Store, check_entry_not_locked, check_not_locked, conversion_err, BadValue, entry_in, post_in, rule};
+use crate::{insert_with_id, Result, StoreError, Store, check_entry_not_locked, check_not_locked, conversion_err, BadValue, entry_in, post_in, rule};
 use chrono::NaiveDate;
 use rusqlite::{Connection, OptionalExtension, Row, params};
 use serde::{Deserialize, Serialize};
@@ -319,11 +319,13 @@ impl Store {
         external_id: Option<&str>,
         secret_ref: Option<&str>,
     ) -> Result<ConnectionId> {
-        self.conn.execute(
-            "INSERT INTO bank_connections(provider, institution, external_id, secret_ref) VALUES (?1, ?2, ?3, ?4)",
+        let id = insert_with_id(
+            &self.conn,
+            "bank_connections",
+            "INSERT INTO bank_connections(provider, institution, external_id, secret_ref, id) VALUES (?1, ?2, ?3, ?4, ?5)",
             params![provider.as_str(), institution.trim(), external_id, secret_ref],
         )?;
-        Ok(self.conn.last_insert_rowid())
+        Ok(id)
     }
 
     pub fn connections(&self) -> Result<Vec<BankConnection>> {
@@ -395,12 +397,14 @@ impl Store {
         if self.link_for_account(ledger_account_id)?.is_some() {
             return rule(format!("{} is already linked to a bank feed", account.name));
         }
-        self.conn.execute(
-            "INSERT INTO bank_links(connection_id, external_account_id, ledger_account_id, name, mask, start_date)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        let id = insert_with_id(
+            &self.conn,
+            "bank_links",
+            "INSERT INTO bank_links(connection_id, external_account_id, ledger_account_id, name, mask, start_date, id)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
             params![connection_id, external_account_id, ledger_account_id, name, mask, start_date],
         )?;
-        Ok(self.conn.last_insert_rowid())
+        Ok(id)
     }
 
     pub fn unlink_account(&self, link_id: LinkId) -> Result<()> {
@@ -786,8 +790,10 @@ impl Store {
 
     pub fn create_rule(&self, r: &NewRule) -> Result<RuleId> {
         validate_rule(self, r)?;
-        self.conn.execute(
-            &format!("INSERT INTO rules({}) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)", &RULE_COLS[4..]),
+        insert_with_id(
+            &self.conn,
+            "rules",
+            &format!("INSERT INTO rules({}, id) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)", &RULE_COLS[4..]),
             params![
                 r.name.trim(),
                 r.priority,
@@ -888,10 +894,12 @@ fn validate_rule(store: &Store, r: &NewRule) -> Result<()> {
 }
 
 fn insert_txn(tx: &Connection, ledger_account_id: AccountId, t: &FeedTransaction) -> Result<()> {
-    tx.execute(
+    insert_with_id(
+        tx,
+        "bank_transactions",
         "INSERT INTO bank_transactions(ledger_account_id, external_id, date, amount, description, normalized,
-                                       merchant, category_hint, pending)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                                       merchant, category_hint, pending, id)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
         params![
             ledger_account_id,
             t.external_id,

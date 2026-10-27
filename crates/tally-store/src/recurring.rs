@@ -13,7 +13,7 @@
 //! direction-flipping characters, shown with look-alike letters masked, and
 //! never lets one payee's payments tick off, or hide, another's.
 
-use crate::{BadValue, PersonId, Result, Store, StoreError, Suggestion, conversion_err, rule};
+use crate::{insert_with_id, BadValue, PersonId, Result, Store, StoreError, Suggestion, conversion_err, rule};
 use chrono::{Days, NaiveDate};
 use rusqlite::{OptionalExtension, Row, params};
 use serde::{Deserialize, Serialize};
@@ -413,9 +413,11 @@ impl Store {
     /// and paid (if that's said) from a household bank account or card.
     pub fn create_recurring_bill(&self, b: &NewRecurringBill) -> Result<RecurringBillId> {
         self.validate_bill(b)?;
-        self.conn.execute(
-            "INSERT INTO recurring_bills(name, amount, account_id, paid_from_id, person_id, cadence, start_date, auto_pay, match_text, varies)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+        insert_with_id(
+            &self.conn,
+            "recurring_bills",
+            "INSERT INTO recurring_bills(name, amount, account_id, paid_from_id, person_id, cadence, start_date, auto_pay, match_text, varies, id)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
             params![
                 b.name.trim(),
                 b.amount.0,

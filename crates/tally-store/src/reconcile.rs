@@ -1,7 +1,7 @@
 //! Reconciling an account against a bank statement: starting a session,
 //! ticking lines off, and finishing or undoing it.
 
-use crate::{BadValue, Cleared, LineId, ReconciliationId, Result, Store, StoreError, conversion_err, rule};
+use crate::{insert_with_id, BadValue, Cleared, LineId, ReconciliationId, Result, Store, StoreError, conversion_err, rule};
 use chrono::NaiveDate;
 use rusqlite::{Connection, OptionalExtension, params};
 use serde::Serialize;
@@ -73,11 +73,12 @@ impl Store {
         {
             return rule(format!("statement date must be after the last reconciled statement ({last})"));
         }
-        tx.execute(
-            "INSERT INTO reconciliations(account_id, statement_date, statement_balance) VALUES (?1, ?2, ?3)",
+        let id = insert_with_id(
+            &tx,
+            "reconciliations",
+            "INSERT INTO reconciliations(account_id, statement_date, statement_balance, id) VALUES (?1, ?2, ?3, ?4)",
             params![account_id, statement_date, statement_balance.0],
         )?;
-        let id = tx.last_insert_rowid();
         tx.execute(
             "UPDATE journal_lines SET reconciliation_id = ?1
              WHERE account_id = ?2 AND cleared = 'cleared' AND reconciliation_id IS NULL
