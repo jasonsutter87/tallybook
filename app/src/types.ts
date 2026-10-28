@@ -558,6 +558,23 @@ export interface CloudStatus {
   suggestions: { label: string; path: string }[];
 }
 
+export type CalendarProvider = "google" | "outlook";
+
+export interface CalendarStatus {
+  connected: boolean;
+  provider: CalendarProvider | null;
+  show_amounts: boolean;
+  /** A reminder at 9 am this many days before; 0 for none. */
+  remind_days: number;
+  last: string | null;
+  last_error: string | null;
+  /** The services this build can connect to. */
+  available: CalendarProvider[];
+  horizon_days: number;
+}
+
+export type CalendarSync = { connected: false } | { connected: true; added: number; updated: number; removed: number };
+
 export interface CloudBackupReport {
   folder: { ok: boolean; path: string | null; detail: string | null } | null;
   git: { ok: boolean; path: string | null; detail: string | null } | null;
