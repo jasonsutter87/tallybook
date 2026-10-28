@@ -860,6 +860,40 @@ fn recurring_due_default_window_is_the_past_week_through_next_month() {
     assert_eq!(crate::recurring::default_due_window(d(2027, 1, 31)).unwrap(), (d(2027, 1, 24), d(2027, 2, 28)));
 }
 
+/// A book with no calendar: nothing to sync, the settings stick, and a
+/// keychain name planted in the book doesn't count as a sign-in.
+#[tokio::test]
+async fn calendar_is_off_until_connected() {
+    let (app, dir) = free_app("calendar");
+    app.call("book.create", json!({ "path": dir.join("h.tallybook"), "company_name": "Home", "sides": ["household"] })).await.unwrap();
+    let st = app.call("calendar.status", Value::Null).await.unwrap();
+    assert_eq!((st["connected"].clone(), st["show_amounts"].clone(), st["remind_days"].clone()), (json!(false), json!(false), json!(1)));
+    assert_eq!(app.call("calendar.sync", Value::Null).await.unwrap(), json!({ "connected": false }));
+
+    app.call("calendar.set", json!({ "show_amounts": true, "remind_days": 3 })).await.unwrap();
+    let st = app.call("calendar.status", Value::Null).await.unwrap();
+    assert_eq!((st["show_amounts"].clone(), st["remind_days"].clone()), (json!(true), json!(3)));
+    assert_eq!(app.call("calendar.set", json!({ "remind_days": 30 })).await.unwrap_err().code, "bad_params");
+    // Calendar settings aren't Settings-screen preferences.
+    assert_eq!(app.call("settings.set", json!({ "prefs": { "calendar.amounts": "0" } })).await.unwrap_err().code, "bad_params");
+
+    app.with(|s| {
+        s.set_pref("calendar.provider", Some("google"))?;
+        s.set_pref("calendar.id", Some("cal"))?;
+        s.set_pref("calendar.secret", Some("book-key:1"))
+    })
+    .unwrap();
+    assert_eq!(app.call("calendar.status", Value::Null).await.unwrap()["connected"], false);
+    assert_eq!(app.call("calendar.sync", Value::Null).await.unwrap(), json!({ "connected": false }));
+
+    assert_eq!(app.call("calendar.connect_finish", Value::Null).await.unwrap_err().code, "rule");
+    app.call("calendar.connect_cancel", Value::Null).await.unwrap();
+    // Disconnecting clears what was there, and works with nothing to clear.
+    app.call("calendar.disconnect", Value::Null).await.unwrap();
+    assert!(app.with(|s| s.pref("calendar.secret")).unwrap().is_null());
+    app.call("calendar.disconnect", Value::Null).await.unwrap();
+}
+
 /// `METHODS` lists exactly what the routers dispatch: every entry is routed
 /// (never `unknown_method`), and every method literal in a router is listed.
 #[tokio::test]
@@ -877,6 +911,7 @@ async fn the_method_list_matches_the_routers() {
         include_str!("people.rs"), include_str!("recurring.rs"), include_str!("goals.rs"), include_str!("inbox.rs"), include_str!("import.rs"),
         include_str!("rules.rs"), include_str!("reconcile.rs"), include_str!("contacts.rs"), include_str!("invoices.rs"), include_str!("bills.rs"),
         include_str!("tax_api.rs"), include_str!("sync.rs"), include_str!("license.rs"), include_str!("cloud.rs"),
+        include_str!("calendar.rs"),
     ] {
         for line in src.lines().map(str::trim).filter(|l| l.starts_with('"') && l.contains("=>")) {
             let arms = line.split("=>").next().unwrap();
