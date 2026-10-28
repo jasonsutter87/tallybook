@@ -12,7 +12,7 @@
 //! Errors are [`ApiError`]s whose `code` is one of: `bad_params`, `rule`,
 //! `not_found`, `no_book`, `locked`, `license`, `unsupported_year`,
 //! `unknown_method`, `io`, `keychain`, `bank`, `plaid_not_configured`,
-//! `offline`, `calendar`, `calendar_unavailable`, `cancelled`, `internal`
+//! `offline`, `calendar`, `calendar_unavailable`, `internal`
 //! (each explained in `docs/API.md`).
 //!
 //! Money crosses the boundary as integer cents; dates as `YYYY-MM-DD`;
