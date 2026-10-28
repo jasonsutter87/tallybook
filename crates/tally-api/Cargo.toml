@@ -11,11 +11,12 @@ publish = false
 tally-core = { path = "../tally-core" }
 tally-store = { path = "../tally-store" }
 tally-feed = { path = "../tally-feed" }
+tally-calendar = { path = "../tally-calendar" }
 chrono.workspace = true
 serde.workspace = true
 thiserror.workspace = true
 serde_json = "1"
-tokio = { version = "1", features = ["sync"] }
+tokio = { version = "1", features = ["sync", "time", "macros"] }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 uuid = { version = "1", features = ["v4"] }
 trash = "5"
