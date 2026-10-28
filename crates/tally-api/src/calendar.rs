@@ -259,7 +259,7 @@ impl App {
             .ok_or_else(|| ApiError::new("rule", "start connecting a calendar first"))?;
         let code = tokio::select! {
             code = sign_in.pending.wait_for_code() => code.map_err(cal_err)?,
-            _ = self.calendar_cancel.notified() => return Err(ApiError::new("cancelled", "connecting the calendar was cancelled")),
+            _ = self.calendar_cancel.notified() => return Err(ApiError::new("rule", "connecting the calendar was cancelled")),
             _ = tokio::time::sleep(SIGN_IN_WAIT) => return Err(ApiError::new("calendar", "the sign-in took too long; try again")),
         };
         let tokens = oauth::exchange(&sign_in.app, &sign_in.pending, &code).await.map_err(cal_err)?;
