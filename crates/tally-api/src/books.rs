@@ -210,11 +210,14 @@ impl App {
                 *self.lock() = book;
             }
         };
-        let (name, connections) = match self.open_any(&path).and_then(|store| Ok((store.pref("company.name")?.unwrap_or_default(), store.connections_with_secrets()?))) {
+        let read = self.open_any(&path).and_then(|store| {
+            Ok((store.pref("company.name")?.unwrap_or_default(), store.connections_with_secrets()?, store.pref("calendar.secret")?))
+        });
+        let (name, connections, calendar_secret) = match read {
             Ok(read) => read,
             // Encrypted and no key on this machine: we can't read it, so confirm
             // with the file name instead, and there are no keychain entries to clean.
-            Err(e) if e.code == "locked" => (path.file_stem().and_then(|s| s.to_str()).unwrap_or_default().to_string(), vec![]),
+            Err(e) if e.code == "locked" => (path.file_stem().and_then(|s| s.to_str()).unwrap_or_default().to_string(), vec![], None),
             Err(e) => {
                 restore(was_open);
                 return Err(e);
@@ -242,6 +245,15 @@ impl App {
                     None => report.warnings.push(format!("{}: Plaid keys missing, couldn't revoke", conn.institution)),
                 }
             }
+            match self.secrets.delete(key) {
+                Ok(()) => report.keychain_entries_removed += 1,
+                Err(e) => report.warnings.push(format!("keychain: {e}")),
+            }
+        }
+
+        // The calendar sign-in goes too. Tallybook's calendar itself stays
+        // for the user to delete; disconnecting first removes it.
+        if let Some(key) = calendar_secret.as_deref().and_then(crate::calendar::secret_key) {
             match self.secrets.delete(key) {
                 Ok(()) => report.keychain_entries_removed += 1,
                 Err(e) => report.warnings.push(format!("keychain: {e}")),
