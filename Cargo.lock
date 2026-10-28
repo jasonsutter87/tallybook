@@ -4277,6 +4277,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "tally-calendar"
+version = "0.2.0"
+dependencies = [
+ "base64 0.22.1",
+ "chrono",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror 2.0.21",
+ "tokio",
+ "url",
+ "uuid",
+]
+
+[[package]]
 name = "tally-connect"
 version = "0.2.0"
 dependencies = [
