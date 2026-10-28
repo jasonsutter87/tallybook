@@ -30,13 +30,18 @@ use tally_calendar::{CalendarError, Client, Event, Provider};
 use tally_store::*;
 
 /// Tallybook's OAuth clients, registered with Google (a "Desktop app"
-/// client) and Microsoft (a public client with redirect `http://127.0.0.1`).
-/// Empty until registered; `TALLYBOOK_GOOGLE_CLIENT_ID`,
-/// `TALLYBOOK_GOOGLE_CLIENT_SECRET` and `TALLYBOOK_MICROSOFT_CLIENT_ID`
-/// override them, for development. Google documents a desktop client's
-/// secret as not secret: PKCE protects the sign-in.
-const GOOGLE_CLIENT_ID: &str = "";
-const GOOGLE_CLIENT_SECRET: &str = "";
+/// client in Cloud project `tallybook-513023`) and Microsoft (a public
+/// client with redirect `http://127.0.0.1`). Client ids are public. Google
+/// also issues desktop clients a secret, which it documents as not secret
+/// (PKCE protects the sign-in), but it still stays out of the repository:
+/// release builds take it from `TALLYBOOK_GOOGLE_CLIENT_SECRET` at compile
+/// time. The same variables (and `TALLYBOOK_GOOGLE_CLIENT_ID`,
+/// `TALLYBOOK_MICROSOFT_CLIENT_ID`) override these at run time, for development.
+const GOOGLE_CLIENT_ID: &str = "857541521715-ddnk6l3nj969nohu3lheg084ldjtst4h.apps.googleusercontent.com";
+const GOOGLE_CLIENT_SECRET: &str = match option_env!("TALLYBOOK_GOOGLE_CLIENT_SECRET") {
+    Some(s) => s,
+    None => "",
+};
 const MICROSOFT_CLIENT_ID: &str = "";
 
 /// How far ahead the calendar shows bills.
@@ -115,7 +120,10 @@ fn app_id(provider: Provider) -> Option<AppId> {
         Provider::Google => (env("TALLYBOOK_GOOGLE_CLIENT_ID", GOOGLE_CLIENT_ID), Some(env("TALLYBOOK_GOOGLE_CLIENT_SECRET", GOOGLE_CLIENT_SECRET))),
         Provider::Outlook => (env("TALLYBOOK_MICROSOFT_CLIENT_ID", MICROSOFT_CLIENT_ID), None),
     };
-    (!id.is_empty()).then(|| AppId::new(provider, id, secret.filter(|s| !s.is_empty())))
+    let secret = secret.filter(|s| !s.is_empty());
+    // Google won't trade a desktop client's code without its secret.
+    let complete = !id.is_empty() && (provider != Provider::Google || secret.is_some());
+    complete.then(|| AppId::new(provider, id, secret))
 }
 
 /// The keychain entry named in the book, if it's one Tallybook made
