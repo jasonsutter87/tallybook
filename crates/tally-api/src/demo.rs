@@ -290,8 +290,13 @@ fn seed_invoices(s: &mut Store, rng: &mut Rng, d: &Demo) -> Result<Vec<(NaiveDat
 
 /// The freelancer bills monthly; the paid ones also show up in the checking feed.
 fn seed_freelancer_bills(s: &mut Store, rng: &mut Rng, d: &Demo, feeds: &mut Feeds) -> Result<(), StoreError> {
+    let issue_date = |m: u32| (d.start + Months::new(m)).with_day(12).expect("valid day");
+    // The newest bill always stays open, so A/P has something to age on every
+    // day of the month (paying it on the 26th left nothing open from the 30th
+    // through the 11th).
+    let newest = (0..6).filter(|&m| issue_date(m) <= d.today).last();
     for m in 0..6 {
-        let issue = (d.start + Months::new(m)).with_day(12).expect("valid day");
+        let issue = issue_date(m);
         if issue > d.today {
             break;
         }
@@ -305,7 +310,7 @@ fn seed_freelancer_bills(s: &mut Store, rng: &mut Rng, d: &Demo, feeds: &mut Fee
             lines: vec![BillLineInput { description: "Illustration work".into(), amount, account_id: d.cats.contractors }],
         })?;
         let pay_date = issue + Days::new(14);
-        if pay_date < d.today - Days::new(3) {
+        if Some(m) != newest && pay_date < d.today - Days::new(3) {
             s.pay_bills(&NewPayment {
                 contact_id: d.freelancer,
                 date: pay_date,
