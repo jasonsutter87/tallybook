@@ -12,7 +12,8 @@
 //! Errors are [`ApiError`]s whose `code` is one of: `bad_params`, `rule`,
 //! `not_found`, `no_book`, `locked`, `license`, `unsupported_year`,
 //! `unknown_method`, `io`, `keychain`, `bank`, `plaid_not_configured`,
-//! `offline`, `internal` (each explained in `docs/API.md`).
+//! `offline`, `calendar`, `calendar_unavailable`, `internal`
+//! (each explained in `docs/API.md`).
 //!
 //! Money crosses the boundary as integer cents; dates as `YYYY-MM-DD`;
 //! budget months as `YYYY-MM`.
@@ -25,7 +26,7 @@
 //! (`people.*`, `budget.*`), `recurring.rs`, `goals.rs` (`goals.*`,
 //! `household.*`), `inbox.rs`, `import.rs`, `rules.rs`, `reconcile.rs`,
 //! `contacts.rs`, `invoices.rs`, `bills.rs` (`bills.*`, `payments.*`), `sync.rs`
-//! (`bank.*`), `tax_api.rs` (`tax.*`), `license.rs` and `cloud.rs`. Each
+//! (`bank.*`), `tax_api.rs` (`tax.*`), `license.rs`, `cloud.rs` and `calendar.rs`. Each
 //! method's params are a `#[derive(Deserialize)]` struct beside its `match`
 //! (or a store type taken whole); missing `Option` fields take
 //! the defaults noted beside them, usually "today". A book has one or two
@@ -35,6 +36,7 @@
 mod accounts;
 mod bills;
 mod books;
+mod calendar;
 mod cloud;
 mod contacts;
 mod dashboard;
@@ -214,6 +216,9 @@ pub const METHODS: &[&str] = &[
     "license.status", "license.activate", "license.refresh", "license.deactivate",
     // cloud
     "cloud.status", "cloud.set", "cloud.backup_now",
+    // calendar
+    "calendar.status", "calendar.connect_start", "calendar.connect_finish", "calendar.connect_cancel", "calendar.set",
+    "calendar.sync", "calendar.disconnect",
 ];
 
 pub struct App {
@@ -228,6 +233,12 @@ pub struct App {
     update_recent: std::sync::atomic::AtomicBool,
     /// Tallybook Connect's address, for bank sync on paid plans (`None`: not available).
     connect_url: Option<String>,
+    /// A calendar sign-in waiting for the browser (`calendar.connect_*`).
+    calendar_pending: Mutex<Option<calendar::PendingSignIn>>,
+    /// Wakes a waiting `calendar.connect_finish` to give up.
+    calendar_cancel: tokio::sync::Notify,
+    /// Held through a calendar sync or disconnect, so they never overlap.
+    calendar_syncing: tokio::sync::Mutex<()>,
 }
 
 // ---------------------------------------------------------------- shared param types
@@ -273,6 +284,9 @@ impl App {
             remove_file: books::move_to_trash,
             update_recent: std::sync::atomic::AtomicBool::new(true),
             connect_url: sync::connect_url(),
+            calendar_pending: Mutex::new(None),
+            calendar_cancel: tokio::sync::Notify::new(),
+            calendar_syncing: tokio::sync::Mutex::new(()),
         }
     }
 
@@ -384,6 +398,7 @@ impl App {
                 "tax" => self.tax(method, p).await,
                 "license" => self.license(method, p).await,
                 "cloud" => self.cloud(method, p).await,
+                "calendar" => self.calendar(method, p).await,
                 _ => Err(unknown_method(method)),
             },
         }

@@ -98,7 +98,7 @@ const READ: &[&str] = &[
     "contacts.list", "contacts.get", "invoices.list", "invoices.get", "bills.list", "bills.get", "payments.list",
     "bank.connections", "bank.feed_accounts", "bank.suggest_opening",
     "tax.years", "tax.lines", "tax.profile", "tax.schedule_c", "tax.estimate", "tax.1099",
-    "cloud.status", "license.status",
+    "cloud.status", "license.status", "calendar.status",
 ];
 
 /// Methods that change the book (or the app's settings) and are offered to
@@ -120,6 +120,7 @@ const WRITE: &[&str] = &[
     "invoices.update", "invoices.finalize", "invoices.void", "invoices.delete", "bills.create", "bills.void",
     "payments.receive", "payments.pay", "payments.void", "tax.set_profile", "tax.set_line", "tax.confirm_all",
     "tax.record_payment", "tax.void_payment", "tax.set_payee", "tax.set_contact", "tax.export", "bank.sync",
+    "calendar.sync",
 ];
 
 /// Methods an agent may never call: they destroy books, handle keys or
@@ -129,6 +130,7 @@ const NEVER: &[&str] = &[
     "license.activate", "license.refresh", "license.deactivate", "cloud.set", "cloud.backup_now",
     "bank.plaid_config_get", "bank.plaid_config_set", "bank.plaid_start", "bank.plaid_relink_start", "bank.plaid_poll",
     "bank.simplefin_connect", "bank.simplefin_reconnect", "bank.link", "bank.unlink", "bank.disconnect",
+    "calendar.connect_start", "calendar.connect_finish", "calendar.connect_cancel", "calendar.set", "calendar.disconnect",
 ];
 
 #[derive(Debug, PartialEq, Eq)]

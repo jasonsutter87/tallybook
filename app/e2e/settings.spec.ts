@@ -101,3 +101,18 @@ test("the theme choice applies at once and is still there after a reload", async
   await go(page, "/settings");
   await expect(theme.getByRole("radio", { name: "System" })).toHaveAttribute("aria-checked", "true");
 });
+
+test("the calendar is opt-in: off until connected, and says so when this build can't connect", async ({ page, request }) => {
+  license("free");
+  await householdBook(request);
+  const st = await api<{ connected: boolean; available: string[] }>(request, "calendar.status");
+  expect(st.connected).toBe(false);
+  expect(await api(request, "calendar.sync")).toEqual({ connected: false });
+
+  await go(page, "/settings");
+  const card = page.locator("#calendar");
+  await expect(card.getByRole("heading", { name: "Calendar" })).toBeVisible();
+  // The dev server has no OAuth clients registered unless they're set in its environment.
+  if (st.available.length) await expect(card.getByRole("button", { name: /^Connect / }).first()).toBeVisible();
+  else await expect(card.getByText("Calendar sign-in isn't switched on in this version of Tallybook yet.")).toBeVisible();
+});

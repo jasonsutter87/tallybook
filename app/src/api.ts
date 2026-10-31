@@ -67,6 +67,8 @@ export function useApi<T>(
 export function useAction<T = unknown, P = unknown>(method: string) {
   const qc = useQueryClient();
   return useMutation<T, ApiError, P>({
+    // The method name, so watchers (AutoCalendarSync) can tell what changed.
+    mutationKey: [method],
     mutationFn: (params: P) => call<T>(method, params),
     onSuccess: () => qc.invalidateQueries(),
   });

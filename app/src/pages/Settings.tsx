@@ -1,9 +1,9 @@
 // Book and app settings: company profile, sides of the book, license,
 // invoices, importing from Ledger, fiscal year, closing the books (lock
-// date), appearance, encryption, cloud copies, backups, updates and deleting
+// date), appearance, encryption, bill reminders on a calendar, cloud copies, backups, updates and deleting
 // the book.
 
-import { Building2, CalendarRange, Home, Cloud, KeyRound, DatabaseBackup, Download, FileText, Lock, Palette, ShieldCheck, Trash2 } from "lucide-react";
+import { Building2, CalendarCheck, CalendarRange, Home, Cloud, KeyRound, DatabaseBackup, Download, FileText, Lock, Palette, ShieldCheck, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useApi } from "../api";
 import { useSides } from "../book";
@@ -21,6 +21,7 @@ import LockCard from "./settings/LockCard";
 import AppearanceCard from "./settings/AppearanceCard";
 import SecurityCard from "./settings/SecurityCard";
 import CloudCard from "./settings/CloudCard";
+import CalendarCard from "./settings/CalendarCard";
 import BackupCard from "./settings/BackupCard";
 import UpdatesCard from "./settings/UpdatesCard";
 import DataCard from "./settings/DataCard";
@@ -35,6 +36,7 @@ const ALL_SECTIONS = [
   { id: "license", label: "License", icon: <KeyRound size={16} /> },
   { id: "invoices", label: "Invoices", icon: <FileText size={16} />, business: true },
   { id: "ledger", label: "Move from Ledger", icon: <Download size={16} />, household: true },
+  { id: "calendar", label: "Calendar", icon: <CalendarCheck size={16} /> },
   { id: "fiscal", label: "Fiscal year", icon: <CalendarRange size={16} /> },
   { id: "lock", label: "Close the books", icon: <Lock size={16} /> },
   { id: "appearance", label: "Appearance", icon: <Palette size={16} /> },
@@ -119,6 +121,7 @@ export default function Settings() {
           <LicenseCard />
           {sides.business && <InvoiceCard form={form} />}
           {sides.household && <LedgerCard />}
+          <CalendarCard />
           <FiscalCard current={data.fiscal_year_start_month} />
           <LockCard lockDate={data.lock_date} />
           <AppearanceCard />

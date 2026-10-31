@@ -38,6 +38,13 @@ export default function DataCard() {
           <li>
             <Check size={16} />
             <span>
+              <b>Calendar reminders are opt-in.</b>{" "}
+              <span className="muted">If you connect a calendar, the names and due dates of upcoming bills (and amounts, if you turn them on) go to Google or Microsoft. Nothing else in the book does.</span>
+            </span>
+          </li>
+          <li>
+            <Check size={16} />
+            <span>
               <b>Open format.</b> <span className="muted">The book is a standard SQLite database — readable by many tools, today and decades from now.</span>
             </span>
           </li>

@@ -8,6 +8,7 @@ import { useApi } from "./api";
 import Sidebar from "./components/Sidebar";
 import UpdateBanner from "./components/UpdateBanner";
 import AutoCloudCopy from "./components/AutoCloudCopy";
+import AutoCalendarSync from "./components/AutoCalendarSync";
 import { Loading } from "./components/ui";
 import Dashboard from "./pages/Dashboard";
 import Welcome from "./pages/Welcome";
@@ -75,6 +76,7 @@ export default function App() {
       </main>
       <UpdateBanner />
       <AutoCloudCopy key={status.data.path ?? ""} />
+      <AutoCalendarSync key={`calendar:${status.data.path ?? ""}`} />
     </div>
   );
 }

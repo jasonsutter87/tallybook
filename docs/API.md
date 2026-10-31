@@ -84,6 +84,8 @@ vocabulary (and nothing else):
 | `plaid_not_configured` | Plaid keys haven't been added. | `bank.plaid_*` for a connection made with your own keys, when they're gone. |
 | `connect_unavailable` | This build has no Tallybook Connect address. | `bank.plaid_start` on a plan with bank sync, in a build without Connect. |
 | `offline` | The license server couldn't be reached. | `license.activate`/`refresh`/`deactivate` without a connection. |
+| `calendar` | Google Calendar or Outlook refused, or the sign-in has expired or was removed. | `calendar.connect_finish`, `calendar.sync`. A lapsed sign-in says to connect again. |
+| `calendar_unavailable` | This build has no OAuth client for that calendar service. | `calendar.connect_start` before Tallybook's Google or Microsoft client is registered. |
 | `internal` | A bug or unexpected database failure. | Report it; the book is left unchanged. |
 
 `bank.sync` with no `connection_id` never fails because of one connection:
@@ -401,6 +403,29 @@ Only an encrypted book can be copied.
 | `cloud.status` | read | none | `{ encrypted, folder, git, git_has_remote, auto, keep, last, last_error, due, suggestions }` | |
 | `cloud.set` | never | `folder?`, `git?` (a path, or `null` to clear; omit to leave unchanged), `auto?`, `keep?` (1-100) | `null` | `rule` if `folder` isn't a folder or `git` isn't a repository. |
 | `cloud.backup_now` | never | none | `{ folder, git }`, each `{ ok, path, detail }` or `null` | `rule` unless the book is encrypted and a destination is set. One snapshot is taken under the lock; copying, `git` and pruning run outside it. |
+
+## Calendar: `calendar.*`
+
+Opt-in bill reminders on the user's Google Calendar or Outlook. Tallybook
+makes a calendar of its own ("Tallybook bills") and keeps one all-day event
+there for each bill due in the next 90 days: household due dates that aren't
+paid or skipped, and business bills with money still owing. A sync adds,
+rewrites and removes events to match; events before today are left as
+history, and untagged events the user adds to that calendar are never
+touched. The book holds the provider, the calendar id and the name of the
+keychain entry with the sign-in (`calendar:<uuid>`); the sign-in itself
+stays in this computer's keychain. The UI calls `calendar.sync` after bill
+changes and on a timer.
+
+| Method | Access | Params | Returns | Notes |
+|--------|--------|--------|---------|-------|
+| `calendar.status` | read | none | `{ connected, provider, show_amounts, remind_days, last, last_error, available, horizon_days }` | `available` lists the providers this build can connect to (`"google"`, `"outlook"`). |
+| `calendar.connect_start` | never | `provider` (`"google"` or `"outlook"`) | `{ url }` | Open `url` in the browser. Listens on 127.0.0.1 for the redirect. `rule` if the book already has a calendar; `calendar_unavailable`. |
+| `calendar.connect_finish` | never | none | as `calendar.sync` | Waits up to 10 minutes for the browser, then makes the calendar and fills it. `rule` with no sign-in started, after `connect_cancel`, or if another book was opened meanwhile; `calendar`. |
+| `calendar.connect_cancel` | never | none | `null` | Stops a waiting `connect_finish`. |
+| `calendar.set` | never | `show_amounts?` (amounts in event titles; off by default), `remind_days?` (0-7, a reminder at 9 am that many days before; 0 for none; default 1) | `null` | Takes effect on the next sync. |
+| `calendar.sync` | write | none | `{ connected: false }`, or `{ connected: true, added, updated, removed }` | Records `last`, or `last_error` on failure. A calendar deleted by hand is made again. `calendar`, `keychain`. |
+| `calendar.disconnect` | never | none | `{ warnings }` | Deletes Tallybook's calendar (best effort), revokes the Google sign-in, removes the keychain entry and the book's calendar settings. |
 
 ---
 
