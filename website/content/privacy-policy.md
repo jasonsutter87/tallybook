@@ -3,7 +3,7 @@ title: 'Privacy'
 PageTitle: 'Privacy · Tallybook'
 description: 'Tallybook keeps your books on your computer. What the app and this website send anywhere, and why.'
 type: 'terms'
-updated: 2026-10-24
+updated: 2026-10-31
 priority: 0.1
 cta: false
 ---
@@ -74,7 +74,7 @@ share it, and we won't send you marketing unless you ask for it.
 
 ## This website
 
-This website has no analytics, no advertising and no cookies. Fonts and images
+This website has no advertising and no cookies. We count visits with Zero Trust Analytics (ztas.io). It sets no cookies, stores nothing on your device and does not store your IP address. For each page view it records the page, the site that sent you here, your browser, device type and operating system, an approximate location (country, region and city), and a one-way code that changes every day so a visit isn't counted twice. Fonts and images
 are served from this site. Our host keeps standard server logs (such as IP
 address and the page requested) for a short time to keep the site running and
 secure. Downloads are served by GitHub.
