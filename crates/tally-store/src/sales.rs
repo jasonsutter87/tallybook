@@ -9,7 +9,7 @@
 //! Drafts have no entry and can be edited or deleted. Everything else is
 //! voided, never edited, like the rest of the ledger.
 
-use crate::{Result, Store, StoreError, conversion_err, BadValue, entry_in, post_in, rule, setting, set_setting};
+use crate::{insert_with_id, Result, Store, StoreError, conversion_err, BadValue, entry_in, post_in, rule, setting, set_setting};
 use chrono::NaiveDate;
 use rusqlite::{Connection, OptionalExtension, Row, params};
 use serde::{Deserialize, Serialize};
@@ -400,11 +400,13 @@ impl Store {
             return rule("a name is required");
         }
         check_email(clean(&c.email))?;
-        self.conn.execute(
-            "INSERT INTO contacts(kind, name, company, email, phone, address, notes) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        let id = insert_with_id(
+            &self.conn,
+            "contacts",
+            "INSERT INTO contacts(kind, name, company, email, phone, address, notes, id) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
             params![c.kind.as_str(), c.name.trim(), clean(&c.company), clean(&c.email), clean(&c.phone), clean(&c.address), clean(&c.notes)],
         )?;
-        Ok(self.conn.last_insert_rowid())
+        Ok(id)
     }
 
     pub fn update_contact(&self, id: ContactId, c: &NewContact) -> Result<()> {
@@ -492,9 +494,11 @@ impl Store {
         tx.execute("DELETE FROM invoice_lines WHERE invoice_id = ?1", [id])?;
         for (pos, l) in d.lines.iter().enumerate() {
             let amount = invoice::line_amount(l.quantity_milli, l.unit_price).ok_or_else(|| StoreError::Rule("line amount overflow".into()))?;
-            tx.execute(
-                "INSERT INTO invoice_lines(invoice_id, position, description, quantity_milli, unit_price, amount, account_id, taxable)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            insert_with_id(
+                tx,
+                "invoice_lines",
+                "INSERT INTO invoice_lines(invoice_id, position, description, quantity_milli, unit_price, amount, account_id, taxable, id)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
                 params![id, pos as i64, l.description.trim(), l.quantity_milli, l.unit_price.0, amount.0, l.account_id, l.taxable],
             )?;
         }
@@ -506,12 +510,13 @@ impl Store {
         let totals = self.check_invoice_draft(d)?;
         let number = self.next_invoice_number()?;
         let tx = self.conn.savepoint()?;
-        tx.execute(
-            "INSERT INTO invoices(number, customer_id, issue_date, due_date, memo, tax_rate_bp, subtotal, tax, total)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+        let id = insert_with_id(
+            &tx,
+            "invoices",
+            "INSERT INTO invoices(number, customer_id, issue_date, due_date, memo, tax_rate_bp, subtotal, tax, total, id)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
             params![number, d.customer_id, d.issue_date, d.due_date, d.memo.trim(), d.tax_rate_bp, totals.subtotal.0, totals.tax.0, totals.total.0],
         )?;
-        let id = tx.last_insert_rowid();
         Self::write_invoice_lines(&tx, id, d)?;
         tx.commit()?;
         Ok(id)
@@ -725,14 +730,17 @@ impl Store {
         let tx = self.conn.savepoint()?;
         let entry_id = post_in(&tx, &entry, "bill", None)?;
         tx.execute("UPDATE journal_entries SET payee_id = ?1 WHERE id = ?2", params![b.vendor_id, entry_id])?;
-        tx.execute(
-            "INSERT INTO bills(vendor_id, number, issue_date, due_date, memo, total, entry_id) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        let id = insert_with_id(
+            &tx,
+            "bills",
+            "INSERT INTO bills(vendor_id, number, issue_date, due_date, memo, total, entry_id, id) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
             params![b.vendor_id, b.number.trim(), b.issue_date, b.due_date, b.memo.trim(), total.0, entry_id],
         )?;
-        let id = tx.last_insert_rowid();
         for (pos, l) in b.lines.iter().enumerate() {
-            tx.execute(
-                "INSERT INTO bill_lines(bill_id, position, description, amount, account_id) VALUES (?1, ?2, ?3, ?4, ?5)",
+            insert_with_id(
+                &tx,
+                "bill_lines",
+                "INSERT INTO bill_lines(bill_id, position, description, amount, account_id, id) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
                 params![id, pos as i64, l.description.trim(), l.amount.0, l.account_id],
             )?;
         }
@@ -841,9 +849,11 @@ impl Store {
         let tx = self.conn.savepoint()?;
         let entry_id = post_in(&tx, &entry, "payment", None)?;
         tx.execute("UPDATE journal_entries SET payee_id = ?1 WHERE id = ?2", params![p.contact_id, entry_id])?;
-        tx.execute(
-            "INSERT INTO payments(kind, contact_id, date, amount, account_id, method, reference, memo, entry_id)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+        let id = insert_with_id(
+            &tx,
+            "payments",
+            "INSERT INTO payments(kind, contact_id, date, amount, account_id, method, reference, memo, entry_id, id)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
             params![
                 if received { "received" } else { "made" },
                 p.contact_id,
@@ -856,11 +866,12 @@ impl Store {
                 entry_id
             ],
         )?;
-        let id = tx.last_insert_rowid();
         let column = if received { "invoice_id" } else { "bill_id" };
         for a in &p.applications {
-            tx.execute(
-                &format!("INSERT INTO payment_applications(payment_id, {column}, amount) VALUES (?1, ?2, ?3)"),
+            insert_with_id(
+                &tx,
+                "payment_applications",
+                &format!("INSERT INTO payment_applications(payment_id, {column}, amount, id) VALUES (?1, ?2, ?3, ?4)"),
                 params![id, a.document_id, a.amount.0],
             )?;
         }

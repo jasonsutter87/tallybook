@@ -7,7 +7,7 @@
 //! the books each time they're asked for. The pure arithmetic (goal
 //! projections, the score's weights) lives in `tally_core::insights`.
 
-use crate::{BudgetTarget, DueState, Result, Store, StoreError, check_entry_not_locked, month_of, month_range, rule};
+use crate::{insert_with_id, BudgetTarget, DueState, Result, Store, StoreError, check_entry_not_locked, month_of, month_range, rule};
 use chrono::{Months, NaiveDate};
 use rusqlite::{OptionalExtension, Row, params};
 use serde::{Deserialize, Serialize};
@@ -197,11 +197,13 @@ impl Store {
     /// a transfer with `set_entry_goal`.
     pub fn create_goal(&self, g: &NewGoal) -> Result<GoalId> {
         self.validate_goal(g)?;
-        self.conn.execute(
-            "INSERT INTO goals(name, target, target_date, account_id, starting, note) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        let id = insert_with_id(
+            &self.conn,
+            "goals",
+            "INSERT INTO goals(name, target, target_date, account_id, starting, note, id) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
             params![g.name.trim(), g.target.0, g.target_date, g.account_id, g.starting.0, g.note.trim()],
         )?;
-        Ok(self.conn.last_insert_rowid())
+        Ok(id)
     }
 
     pub fn update_goal(&self, id: GoalId, g: &NewGoal) -> Result<()> {

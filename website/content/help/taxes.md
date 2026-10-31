@@ -2,6 +2,7 @@
 title: "Tax prep in Tallybook"
 description: "What Tallybook's tax center does for sole proprietors and single-member LLCs: Schedule C, quarterly estimates, 1099s and an accountant package, and what it doesn't do."
 type: "help"
+group: "Reports and taxes"
 weight: 20
 priority: 0.6
 cta: true
@@ -20,6 +21,8 @@ that file **Schedule C** with their Form 1040.
 > anything to the IRS or a state. Review its figures with a tax professional,
 > or carefully against the IRS instructions, before you file or pay.
 
+{{< shot "taxes" "The Taxes overview: estimated profit, what to set aside, and a four-step tax checklist" >}}
+
 ## What it does
 
 | Area | What you get |
@@ -28,6 +31,8 @@ that file **Schedule C** with their Form 1040.
 | **Quarterly estimates** | A plan for federal estimated tax (Form 1040-ES) with due dates and payment tracking. Payments are recorded as owner's draws, because estimated income tax is personal, not a business expense. |
 | **1099s** | Totals paid to each payee, split into **bank payments** (reportable by you on 1099-NEC) and **card payments** (reported by the card networks, not you). Flags who's over the threshold and whose W-9 is missing. |
 | **Accountant package** | A folder with a readable tax summary and general ledger as PDFs, plus the Schedule C worksheet, account mapping, general ledger, 1099 summary and estimated payments as spreadsheets, and a README. |
+
+{{< shot "schedule-c" "The Schedule C worksheet, built line by line from your accounts" >}}
 
 ## Two ways to plan estimates
 
@@ -42,6 +47,11 @@ that file **Schedule C** with their Form 1040.
    from the brackets. Paying 90% of the current year's tax also avoids the
    penalty, but this number moves as your income changes.
 
+Record each payment under **Taxes → Quarterly estimates → Record a payment**, so
+the plan knows what's left.
+
+{{< shot "quarterly-estimates" "Quarterly estimates: the plan per quarter, what's paid, and Record a payment" >}}
+
 ### Not included in the projection
 
 - Itemized deductions (it uses the standard deduction)
@@ -51,6 +61,17 @@ that file **Schedule C** with their Form 1040.
 - Newer special deductions (tips, overtime, car-loan interest, seniors)
 - QBI above the threshold, where the real deduction depends on facts Tallybook doesn't have. It's left out, which is conservative.
 - State and local income tax (a rough state set-aside rate is optional)
+
+## 1099s and the accountant package
+
+**Taxes → 1099s** lists everyone you paid this year, with their W-9 status and
+whether they need a 1099-NEC. **Export the 1099 summary** gives you or your
+preparer the totals.
+
+{{< shot "1099s" "Who needs a 1099-NEC: payees, W-9 status, and bank versus card totals" >}}
+
+**Taxes → For your accountant → Create tax package** writes the whole folder.
+Running it again replaces the files with fresh ones.
 
 ## Privacy
 

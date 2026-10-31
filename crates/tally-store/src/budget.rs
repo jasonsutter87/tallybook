@@ -6,7 +6,7 @@
 //! the latest earlier plan, and editing it gives the month its own copy.
 //! Only household money is budgeted.
 
-use crate::{BadValue, DueState, Result, Store, StoreError, check_entry_not_locked, conversion_err, rule};
+use crate::{insert_with_id, BadValue, DueState, Result, Store, StoreError, check_entry_not_locked, conversion_err, rule};
 use chrono::{Datelike, Months, NaiveDate};
 use rusqlite::{OptionalExtension, Row, params};
 use serde::{Deserialize, Serialize};
@@ -314,11 +314,13 @@ impl Store {
             return rule("give them a name");
         }
         let order: i64 = self.conn.query_row("SELECT IFNULL(MAX(sort_order), 0) + 1 FROM people", [], |r| r.get(0))?;
-        self.conn.execute(
-            "INSERT INTO people(name, color, sort_order) VALUES (?1, ?2, ?3)",
+        let id = insert_with_id(
+            &self.conn,
+            "people",
+            "INSERT INTO people(name, color, sort_order, id) VALUES (?1, ?2, ?3, ?4)",
             params![name, p.color.as_deref().unwrap_or(DEFAULT_PERSON_COLOR), order],
         )?;
-        Ok(self.conn.last_insert_rowid())
+        Ok(id)
     }
 
     pub fn update_person(&self, id: PersonId, p: &NewPerson) -> Result<()> {
@@ -383,16 +385,28 @@ impl Store {
         match &from {
             Some(prev) => {
                 tx.execute("INSERT INTO budget_months(month, available) SELECT ?1, available FROM budget_months WHERE month = ?2", params![month, prev])?;
-                tx.execute(
-                    "INSERT INTO budgets(month, person_id, account_id, amount, direction, tolerance_pct)
-                     SELECT ?1, b.person_id, b.account_id, b.amount, b.direction, b.tolerance_pct
-                     FROM budgets b
-                     LEFT JOIN people p ON p.id = b.person_id
-                     LEFT JOIN accounts a ON a.id = b.account_id
-                     WHERE b.month = ?2 AND IFNULL(p.archived, 0) = 0 AND IFNULL(a.archived, 0) = 0
-                     ORDER BY b.id",
-                    params![month, prev],
-                )?;
+                // One insert per line, since each takes an id from this device's range.
+                type Carried = (Option<PersonId>, Option<AccountId>, i64, String, i64);
+                let carried: Vec<Carried> = {
+                    let mut stmt = tx.prepare(
+                        "SELECT b.person_id, b.account_id, b.amount, b.direction, b.tolerance_pct
+                         FROM budgets b
+                         LEFT JOIN people p ON p.id = b.person_id
+                         LEFT JOIN accounts a ON a.id = b.account_id
+                         WHERE b.month = ?1 AND IFNULL(p.archived, 0) = 0 AND IFNULL(a.archived, 0) = 0
+                         ORDER BY b.id",
+                    )?;
+                    stmt.query_map([prev], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)))?
+                        .collect::<rusqlite::Result<_>>()?
+                };
+                for (person, account, amount, direction, tolerance) in carried {
+                    insert_with_id(
+                        &tx,
+                        "budgets",
+                        "INSERT INTO budgets(month, person_id, account_id, amount, direction, tolerance_pct, id) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                        params![month, person, account, amount, direction, tolerance],
+                    )?;
+                }
             }
             None => {
                 tx.execute("INSERT INTO budget_months(month) VALUES (?1)", [month])?;
@@ -449,11 +463,12 @@ impl Store {
                 Ok(id)
             }
             None => {
-                self.conn.execute(
-                    "INSERT INTO budgets(month, person_id, account_id, amount, direction, tolerance_pct) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                insert_with_id(
+                    &self.conn,
+                    "budgets",
+                    "INSERT INTO budgets(month, person_id, account_id, amount, direction, tolerance_pct, id) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
                     params![month, person, account, line.amount.0, line.direction.as_str(), line.tolerance_pct],
-                )?;
-                Ok(self.conn.last_insert_rowid())
+                )
             }
         }
     }

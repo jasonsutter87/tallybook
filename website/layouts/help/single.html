@@ -1,14 +1,35 @@
 {{ define "main" }}
-<section class="page-hero" aria-labelledby="page-title">
-  <div class="container">
-    <p class="eyebrow"><a href="/help/" class="eyebrow-link">Help</a></p>
-    <h1 id="page-title">{{ .Title }}</h1>
-    {{ with .Description }}<p class="page-lede">{{ . }}</p>{{ end }}
-  </div>
-</section>
-<section class="section tight">
-  <div class="container narrow prose">
-    {{ .Content }}
-  </div>
-</section>
+{{ $here := .RelPermalink }}
+{{ $help := where site.RegularPages "Section" "help" }}
+{{ $all := slice }}
+{{ range site.Params.helpGroups }}{{ $all = $all | append (where $help "Params.group" .).ByWeight }}{{ end }}
+<div class="container help-layout">
+  <nav class="help-nav" aria-label="Help topics">
+    <a class="help-nav-home" href="{{ "help/" | relURL }}">All help topics</a>
+    {{ range site.Params.helpGroups }}
+    <h2>{{ . }}</h2>
+    <ul>
+      {{ range (where $help "Params.group" .).ByWeight }}
+      <li><a href="{{ .RelPermalink }}" {{ if eq .RelPermalink $here }}aria-current="page"{{ end }}>{{ .Title }}</a></li>
+      {{ end }}
+    </ul>
+    {{ end }}
+  </nav>
+
+  <article class="help-article">
+    <header class="help-head">
+      <p class="eyebrow"><a href="{{ "help/" | relURL }}" class="eyebrow-link">Help</a>{{ with .Params.group }} · {{ . }}{{ end }}</p>
+      <h1>{{ .Title }}</h1>
+      {{ with .Description }}<p class="help-lede">{{ . }}</p>{{ end }}
+    </header>
+    <div class="prose">
+      {{ .Content }}
+    </div>
+    <nav class="help-pager" aria-label="Next and previous topics">
+      {{ $i := 0 }}{{ range $n, $p := $all }}{{ if eq $p.RelPermalink $here }}{{ $i = $n }}{{ end }}{{ end }}
+      {{ if gt $i 0 }}{{ with index $all (sub $i 1) }}<a class="help-pager-prev" href="{{ .RelPermalink }}"><span>Previous</span>{{ .Title }}</a>{{ end }}{{ end }}
+      {{ if lt (add $i 1) (len $all) }}{{ with index $all (add $i 1) }}<a class="help-pager-next" href="{{ .RelPermalink }}"><span>Next</span>{{ .Title }}</a>{{ end }}{{ end }}
+    </nav>
+  </article>
+</div>
 {{ end }}

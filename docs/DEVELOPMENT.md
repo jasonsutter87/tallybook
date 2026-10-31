@@ -34,6 +34,8 @@ crates/
   tally-feed/       Plaid (Hosted Link + /transactions/sync), SimpleFIN, CSV, OFX/QFX
   tally-api/        the application layer: one JSON dispatcher, App::call(method, params)
   tally-devserver/  serves tally-api over HTTP for browser development
+  tally-sync/       device sync: encrypted batches and snapshots, the engine that trades them
+                    with Connect (see SYNC.md); the store half lives in tally-store/src/sync*.rs
   tally-connect/    self-hosted Plaid proxy for paid plans (see CONNECT.md); the only server
 app/                React UI (Vite)
 app/src-tauri/      desktop shell: a single IPC command forwarding to tally-api
@@ -96,6 +98,19 @@ slow to build; CI runs it in release mode:
 ```sh
 cargo test --release -p tally-api --test big_book -- --ignored --nocapture
 ```
+
+`crates/tally-sync/tests/fuzz.rs` makes two or three devices do random
+bookkeeping offline, sync at random moments (with lost requests and
+responses mixed in), and checks they end with identical, balanced books. A
+plain `cargo test` runs 60 seeds; set `FUZZ_SEEDS=n` for more, or run the
+ignored heavy variant (CI does, in release mode):
+
+```sh
+cargo test --release -p tally-sync --test fuzz -- --ignored many_more --nocapture
+```
+
+A failure names its seed; `FUZZ_SEED=<n> cargo test -p tally-sync --test fuzz
+one_seed -- --ignored --nocapture` replays it.
 
 ### End-to-end tests
 

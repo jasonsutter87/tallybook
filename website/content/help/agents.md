@@ -2,7 +2,8 @@
 title: "Use Tallybook with AI agents"
 description: "Connect Claude, OpenAI's Codex and Agents SDK, OpenClaw, or any MCP-capable agent to Tallybook, so it can answer questions about your books and, if you allow it, keep them."
 type: "help"
-weight: 30
+group: "Settings and more"
+weight: 20
 priority: 0.6
 cta: true
 css: []
