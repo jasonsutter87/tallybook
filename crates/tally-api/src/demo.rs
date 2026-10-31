@@ -294,7 +294,7 @@ fn seed_freelancer_bills(s: &mut Store, rng: &mut Rng, d: &Demo, feeds: &mut Fee
     // The newest bill always stays open, so A/P has something to age on every
     // day of the month (paying it on the 26th left nothing open from the 30th
     // through the 11th).
-    let newest = (0..6).filter(|&m| issue_date(m) <= d.today).last();
+    let newest = (0..6).rev().find(|&m| issue_date(m) <= d.today);
     for m in 0..6 {
         let issue = issue_date(m);
         if issue > d.today {
