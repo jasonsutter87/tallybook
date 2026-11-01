@@ -5,10 +5,11 @@
      CSP header on /* would also land on /admin/ and, combined with the admin
      page's own policy, block the CMS. frame-ancestors can't be set from a meta
      tag; netlify.toml sends it as a header for every path. Scripts and styles
-     come only from this origin. style-src-attr allows the style="" attributes
+     come only from this origin, plus the Zero Trust Analytics script (ztas.io)
+     and the endpoint it sends visits to (app.ztas.io). style-src-attr allows the style="" attributes
      Hugo's syntax highlighter writes into code blocks. JSON-LD blocks are data,
      not script, so script-src doesn't apply to them. */}}
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; style-src-attr 'unsafe-inline'; img-src 'self'; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://ztas.io; style-src 'self'; style-src-attr 'unsafe-inline'; img-src 'self'; font-src 'self'; connect-src 'self' https://app.ztas.io; object-src 'none'; base-uri 'self'; form-action 'self'">
 <title>
   {{- block "title" . -}}
     {{- if .Params.PageTitle -}}{{ .Params.PageTitle }}{{- else if .IsHome -}}{{ .Site.Title }} · Bookkeeping and budgeting on your own computer{{- else -}}{{ .Title }} · {{ .Site.Title }}{{- end -}}
