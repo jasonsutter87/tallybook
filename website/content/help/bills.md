@@ -4,6 +4,7 @@ description: "Enter the bills vendors send you, see what's due, and record payin
 type: "help"
 group: "Run the business"
 weight: 20
+priority: 0.6
 ---
 
 **Vendor bills** is money your business owes: a contractor's invoice, the

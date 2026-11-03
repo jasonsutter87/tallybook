@@ -5,6 +5,7 @@ type: "help"
 group: "Run the business"
 weight: 40
 aliases: ["/help/accounts/"]
+priority: 0.6
 ---
 
 Most money comes in through [bank sync or an imported

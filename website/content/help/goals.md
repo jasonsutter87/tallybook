@@ -4,6 +4,7 @@ description: "Save toward a trip, a cushion or a new car, and see when you'll ge
 type: "help"
 group: "Run the household"
 weight: 30
+priority: 0.6
 ---
 
 **Goals** are things you're saving toward. They add up month after month

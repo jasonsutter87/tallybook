@@ -4,6 +4,7 @@ description: "Categorize bank transactions automatically: match the description,
 type: "help"
 group: "Bring in transactions"
 weight: 30
+priority: 0.6
 ---
 
 A **rule** categorizes matching transactions for you. Tallybook also learns
