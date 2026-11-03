@@ -4,6 +4,7 @@ description: "Cash on hand, what needs you today, money in and out this month, a
 type: "help"
 group: "Getting started"
 weight: 20
+priority: 0.6
 ---
 
 **Home** is the first thing you see when a book opens. It answers "how am I

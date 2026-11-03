@@ -4,6 +4,7 @@ description: "Keep the people you bill and the people you pay in one list, and s
 type: "help"
 group: "Run the business"
 weight: 30
+priority: 0.6
 ---
 
 **Customers & vendors** lists everyone you sell to or buy from, with what they

@@ -4,6 +4,7 @@ description: "Profit and loss, the balance sheet, who owes you, who you owe, and
 type: "help"
 group: "Reports and taxes"
 weight: 10
+priority: 0.6
 ---
 
 **Reports** has five, each for the **Business** or **Household** side. Every

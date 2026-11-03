@@ -4,6 +4,7 @@ description: "Create a book for your business, your household, or both, and find
 type: "help"
 group: "Getting started"
 weight: 10
+priority: 0.6
 ---
 
 Everything in Tallybook lives in a **book**: one file on your computer that

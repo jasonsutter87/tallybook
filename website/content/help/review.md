@@ -4,6 +4,7 @@ description: "Categorize new bank transactions, accept suggestions in one click,
 type: "help"
 group: "Bring in transactions"
 weight: 20
+priority: 0.6
 ---
 
 New transactions from bank sync or an imported statement don't go straight

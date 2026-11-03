@@ -4,6 +4,7 @@ description: "Your business details, both sides of the book, your license, invoi
 type: "help"
 group: "Settings and more"
 weight: 10
+priority: 0.6
 ---
 
 **Settings** keeps everything about the book in one place. Pick a topic from

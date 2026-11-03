@@ -5,6 +5,7 @@ type: "help"
 group: "Run the household"
 weight: 20
 aliases: ["/help/due-dates/"]
+priority: 0.6
 ---
 
 **Bills & due dates** keeps the rent, the phone, insurance and the rest in one

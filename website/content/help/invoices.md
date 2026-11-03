@@ -4,6 +4,7 @@ description: "Bill a customer, send the invoice, and record the payment when it 
 type: "help"
 group: "Run the business"
 weight: 10
+priority: 0.6
 ---
 
 **Invoices** shows what customers owe you and who's paid. The cards at the top

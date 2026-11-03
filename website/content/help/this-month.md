@@ -4,6 +4,7 @@ description: "Make a monthly plan, see what came in and went out, who it was for
 type: "help"
 group: "Run the household"
 weight: 10
+priority: 0.6
 ---
 
 **This month** is the household budget: what came in, what went out, and
